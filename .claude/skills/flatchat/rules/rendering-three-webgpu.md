@@ -2,7 +2,7 @@
 title: Rendering with three.js r186 — WebGPURenderer, the WebGL2 Fallback, Backends, Adapters and Frame Measurement
 impact: HIGH
 impactDescription: Reading the backend before init, mistaking a software renderer's numbers for performance, sizing a benchmark by the window, or importing the wrong three entry point produces wrong frame-rate claims, blank screens on machines without WebGPU, or measurements that change with the window manager.
-tags: drawn vs shown, refresh rate, judder, memory clock switching, three.js, three, r186, webgpu, webgl2, WebGPURenderer, three/webgpu, three/tsl, renderer.init, backend, isWebGPUBackend, fallback, adapter, requestAdapter, WEBGL_debug_renderer_info, swiftshader, warp, software rendering, Microsoft Basic Render Driver, llvmpipe, frame rate, fps, frame time, percentile, 1% low, bench, drawing buffer, setSize, setPixelRatio, tiling window manager, hyprland, wayland, vulkan, greybox, scene, setAnimationLoop, vsync
+tags: powerPreference, high-performance, discrete gpu, drawn vs shown, refresh rate, judder, memory clock switching, three.js, three, r186, webgpu, webgl2, WebGPURenderer, three/webgpu, three/tsl, renderer.init, backend, isWebGPUBackend, fallback, adapter, requestAdapter, WEBGL_debug_renderer_info, swiftshader, warp, software rendering, Microsoft Basic Render Driver, llvmpipe, frame rate, fps, frame time, percentile, 1% low, bench, drawing buffer, setSize, setPixelRatio, tiling window manager, hyprland, wayland, vulkan, greybox, scene, setAnimationLoop, vsync
 ---
 
 This rule governs how the client draws: three.js r186's `WebGPURenderer`, which uses WebGPU when the GPU and driver allow it and falls back to WebGL2 by itself, and how frame rates are measured so the numbers mean something. The scene code lives in `apps/client/src/renderer/src/`: `greybox.ts` builds the scene graph (pure three objects, testable in Node), `scene.ts` owns the renderer and the loop, `frame-stats.ts` turns frame times into a summary.
@@ -12,7 +12,7 @@ This rule governs how the client draws: three.js r186's `WebGPURenderer`, which 
 | Step | Code | Why |
 |---|---|---|
 | Import | `import * as THREE from 'three/webgpu'` (TSL from `'three/tsl'`) | `three/webgpu` carries the WebGPURenderer and node materials; in r186 it shares `three.core.js` with plain `three`, so mixing the two entry points does not duplicate the core |
-| Create | `new THREE.WebGPURenderer({ canvas, antialias: true })` | One renderer for both backends |
+| Create | `new THREE.WebGPURenderer({ canvas, antialias: true, powerPreference: 'high-performance' })` | One renderer for both backends; the power preference makes machines with two GPUs (laptops with a discrete card, desktops with the CPU's graphics on) draw on the stronger one |
 | Initialise | `await renderer.init()` | The backend is chosen here; reading it earlier gives the wrong answer |
 | Which backend | `renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2'` | Report it in every log and test result |
 | Loop | `await renderer.setAnimationLoop((time) => …)`; stop with `setAnimationLoop(null)` | Drives rendering for both backends |

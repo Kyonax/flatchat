@@ -9,9 +9,12 @@ export type Cmd = readonly string[];
 /** One laptop class the desktop card imitates. */
 export interface TargetProfile {
   label: string;
-  /** Locked as min = max, from the card's supported list for the memory clock below. */
+  /** Locked as min = max: a clock the card offers with the memory clock below (or, unlocked, with its top memory clock). */
   graphicsClockMHz: number;
-  memoryClockMHz: number;
+  /** The memory clock to lock; required unless lockMemory is false. */
+  memoryClockMHz?: number;
+  /** false for a card whose driver accepts a memory lock without enforcing it: a compute-only stand-in. Default true. */
+  lockMemory?: boolean;
   /** taskset's CPU list, for example "0-3". */
   cpus: string;
   /** systemd's CPUQuota for the client's scope, for example "300%". */
@@ -20,6 +23,10 @@ export interface TargetProfile {
   memoryMax: string;
   /** The drawing buffer, for example "1280x720". */
   size: string;
+  /** The laptop class's frame-rate floor at `size`, for example 30. */
+  floorFps?: number;
+  /** How far above the floor the stand-in's average must be (for example 1.5), covering what it cannot imitate. */
+  headroom?: number;
   note?: string;
 }
 
@@ -50,7 +57,14 @@ export function validateProfile(data: unknown): { profile?: StandinProfile; erro
       }
       if (typeof t['label'] !== 'string' || !t['label'].trim()) errors.push(`${at}.label is required`);
       if (!intIn(t['graphicsClockMHz'], 100, 5000)) errors.push(`${at}.graphicsClockMHz must be a whole number of MHz from 100 to 5000`);
-      if (!intIn(t['memoryClockMHz'], 100, 40000)) errors.push(`${at}.memoryClockMHz must be a whole number of MHz from 100 to 40000`);
+      if (t['lockMemory'] !== undefined && typeof t['lockMemory'] !== 'boolean') errors.push(`${at}.lockMemory must be true or false`);
+      if ((t['lockMemory'] !== false || t['memoryClockMHz'] !== undefined) && !intIn(t['memoryClockMHz'], 100, 40000)) {
+        errors.push(`${at}.memoryClockMHz must be a whole number of MHz from 100 to 40000 (it may be left out when lockMemory is false)`);
+      }
+      if (t['floorFps'] !== undefined && !intIn(t['floorFps'], 1, 240)) errors.push(`${at}.floorFps must be a whole number of fps from 1 to 240`);
+      if (t['headroom'] !== undefined && !(typeof t['headroom'] === 'number' && t['headroom'] >= 1 && t['headroom'] <= 4)) {
+        errors.push(`${at}.headroom must be a number from 1 to 4`);
+      }
       if (typeof t['cpus'] !== 'string' || !/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(t['cpus'])) errors.push(`${at}.cpus must be a CPU list such as "0-3"`);
       if (typeof t['cpuQuota'] !== 'string' || !/^\d{1,4}%$/.test(t['cpuQuota'])) errors.push(`${at}.cpuQuota must look like "300%"`);
       if (typeof t['memoryMax'] !== 'string' || !/^\d+(\.\d+)?[KMGT]?$/.test(t['memoryMax'])) errors.push(`${at}.memoryMax must look like "4G"`);
@@ -78,14 +92,17 @@ export function parseSupportedClocks(text: string): Map<number, number[]> {
 }
 
 export function checkClocks(target: TargetProfile, supported: Map<number, number[]>): string[] {
-  const graphics = supported.get(target.memoryClockMHz);
+  if (supported.size === 0) return ['the card listed no supported clocks'];
+  // Unlocked memory runs at the card's top clock under load, so the graphics lock must be offered there.
+  const memory = target.lockMemory === false ? Math.max(...supported.keys()) : target.memoryClockMHz;
+  const graphics = memory === undefined ? undefined : supported.get(memory);
   if (!graphics) {
-    return [`memory clock ${target.memoryClockMHz} MHz is not supported; the card offers ${[...supported.keys()].join(', ')} MHz`];
+    return [`memory clock ${String(memory)} MHz is not supported; the card offers ${[...supported.keys()].join(', ')} MHz`];
   }
   if (!graphics.includes(target.graphicsClockMHz)) {
     const lo = Math.min(...graphics);
     const hi = Math.max(...graphics);
-    return [`graphics clock ${target.graphicsClockMHz} MHz is not offered with memory at ${target.memoryClockMHz} MHz (${lo}–${hi} MHz, in its own steps)`];
+    return [`graphics clock ${target.graphicsClockMHz} MHz is not offered with memory at ${String(memory)} MHz (${lo}–${hi} MHz, in its own steps)`];
   }
   return [];
 }
@@ -138,7 +155,7 @@ export function planRun(o: PlanOptions): Plan {
     auth: ['sudo', '-v'],
     lock: [
       ['sudo', 'nvidia-smi', id, `--lock-gpu-clocks=${t.graphicsClockMHz},${t.graphicsClockMHz}`],
-      ['sudo', 'nvidia-smi', id, `--lock-memory-clocks=${t.memoryClockMHz},${t.memoryClockMHz}`],
+      ...(t.lockMemory === false ? [] : [['sudo', 'nvidia-smi', id, `--lock-memory-clocks=${t.memoryClockMHz},${t.memoryClockMHz}`]]),
     ],
     sampler: ['nvidia-smi', id, '--query-gpu=timestamp,clocks.gr,clocks.mem,utilization.gpu', '--format=csv,noheader,nounits', '--loop-ms=500'],
     client: [
@@ -279,23 +296,59 @@ export type ResetVerdict = 'verified' | 'graphics-only' | 'not-verified';
 export const LOCK_SLACK_MHZ = 15;
 export const RESET_MARGIN_MHZ = 100;
 
+export type MemoryLock = 'held' | 'not-held' | 'not-locked';
+
 export interface Verdict {
   graphicsLockHeld: boolean;
-  memoryLockHeld: boolean;
-  /** Both clocks held: the run imitates the target. */
+  /** 'not-locked': the profile leaves memory alone (a compute-only stand-in). */
+  memoryLock: MemoryLock;
+  /** Every clock the profile locks held: the run imitates the target as configured. */
   lockHeld: boolean;
   reset: ResetVerdict;
 }
 
 export function judge(t: TargetProfile, during: ClockSummary, after: ClockSummary): Verdict {
   const graphicsLockHeld = during.samples > 0 && during.graphicsMaxMHz <= t.graphicsClockMHz + LOCK_SLACK_MHZ;
-  const memoryLockHeld = during.samples > 0 && during.memoryMaxMHz <= t.memoryClockMHz + LOCK_SLACK_MHZ;
+  const memoryLocked = t.lockMemory !== false;
+  const memoryLock: MemoryLock = !memoryLocked
+    ? 'not-locked'
+    : during.samples > 0 && during.memoryMaxMHz <= (t.memoryClockMHz ?? 0) + LOCK_SLACK_MHZ
+      ? 'held'
+      : 'not-held';
   const graphicsFree = after.samples > 0 && after.graphicsMaxMHz > t.graphicsClockMHz + RESET_MARGIN_MHZ;
-  const memoryFree = after.samples > 0 && after.memoryMaxMHz > t.memoryClockMHz + RESET_MARGIN_MHZ;
+  const memoryFree = !memoryLocked || (after.samples > 0 && after.memoryMaxMHz > (t.memoryClockMHz ?? 0) + RESET_MARGIN_MHZ);
   return {
     graphicsLockHeld,
-    memoryLockHeld,
-    lockHeld: graphicsLockHeld && memoryLockHeld,
+    memoryLock,
+    lockHeld: graphicsLockHeld && memoryLock !== 'not-held',
     reset: graphicsFree && memoryFree ? 'verified' : graphicsFree ? 'graphics-only' : 'not-verified',
+  };
+}
+
+export interface FloorCheck {
+  floorFps: number;
+  headroom: number;
+  /** The average the stand-in must reach: floor × headroom. */
+  needAvgFps: number;
+  /** The 1% low it must keep: the floor itself. */
+  needLowFps: number;
+  avgFps: number;
+  lowFps: number;
+  pass: boolean;
+}
+
+/** Does a stand-in run clear the laptop floor with the profile's headroom? Undefined when no floor is set. */
+export function floorCheck(t: TargetProfile, summary: { avgFps: number; low1PctFps: number } | undefined): FloorCheck | undefined {
+  if (t.floorFps === undefined || !summary) return undefined;
+  const headroom = t.headroom ?? 1;
+  const needAvgFps = Math.round(t.floorFps * headroom * 100) / 100;
+  return {
+    floorFps: t.floorFps,
+    headroom,
+    needAvgFps,
+    needLowFps: t.floorFps,
+    avgFps: summary.avgFps,
+    lowFps: summary.low1PctFps,
+    pass: summary.avgFps >= needAvgFps && summary.low1PctFps >= t.floorFps,
   };
 }

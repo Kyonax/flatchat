@@ -49,7 +49,8 @@ const SMOKE_AFTER_MS = 3000;
 const BENCH_WARMUP_MS = 2000;
 
 export async function startScene(canvas: HTMLCanvasElement, options: SceneOptions): Promise<() => void> {
-  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+  // Machines with two GPUs (laptops with a discrete card, desktops with the CPU's graphics on) must draw on the stronger one.
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   await renderer.init();
   const backend: Backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
   const adapter = await describeAdapter(renderer, backend);

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkClocks,
   execute,
+  floorCheck,
   judge,
   parseClockSamples,
   parseSupportedClocks,
@@ -137,23 +138,65 @@ describe('the verdict', () => {
   it('sees a held lock and a verified reset', () => {
     const during = samples(['2026/10/16 14:00:00.000, 645, 810, 99', '2026/10/16 14:00:00.500, 645, 810, 98']);
     const after = samples(['2026/10/16 14:01:00.000, 1905, 7001, 97']);
-    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLockHeld: true, lockHeld: true, reset: 'verified' });
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLock: 'held', lockHeld: true, reset: 'verified' });
   });
 
   it('sees a lock that did not hold and a reset that freed only the graphics clock', () => {
     const during = samples(['x, 1800, 7001, 90']);
     const after = samples(['x, 1905, 810, 97']);
-    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: false, memoryLockHeld: false, lockHeld: false, reset: 'graphics-only' });
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: false, memoryLock: 'not-held', lockHeld: false, reset: 'graphics-only' });
   });
 
   it('tells a held graphics lock from a memory lock the driver did not enforce (2026-10-16, GTX 1660 SUPER)', () => {
     const during = samples(['x, 645, 405, 30', 'x, 645, 5000, 60', 'x, 645, 7000, 82']);
     const after = samples(['x, 1530, 7000, 31']);
-    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLockHeld: false, lockHeld: false, reset: 'verified' });
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLock: 'not-held', lockHeld: false, reset: 'verified' });
   });
 
   it('sees no reset when the clocks stay low under load, or when there are no samples', () => {
     expect(judge(t, samples(['x, 645, 810, 99']), samples(['x, 645, 810, 99'])).reset).toBe('not-verified');
-    expect(judge(t, samples([]), samples([]))).toEqual({ graphicsLockHeld: false, memoryLockHeld: false, lockHeld: false, reset: 'not-verified' });
+    expect(judge(t, samples([]), samples([]))).toEqual({ graphicsLockHeld: false, memoryLock: 'not-held', lockHeld: false, reset: 'not-verified' });
+  });
+
+  it('judges a compute-only profile on its graphics lock alone', () => {
+    const computeOnly = { ...t, lockMemory: false, memoryClockMHz: undefined };
+    const during = samples(['x, 480, 405, 30', 'x, 480, 7000, 70']);
+    const after = samples(['x, 1530, 7000, 31']);
+    expect(judge(computeOnly, during, after)).toEqual({ graphicsLockHeld: true, memoryLock: 'not-locked', lockHeld: true, reset: 'verified' });
+  });
+});
+
+describe('a compute-only profile and the floor check', () => {
+  const computeOnly: StandinProfile = {
+    gpu: 'Example GPU 3000',
+    targets: { 'iris-xe': { label: 'Iris Xe class', graphicsClockMHz: 645, lockMemory: false, cpus: '0-3', cpuQuota: '300%', memoryMax: '4G', size: '1280x720', floorFps: 30, headroom: 1.5 } },
+  };
+
+  it('accepts a profile without a memory clock when memory is not locked, and plans no memory lock', () => {
+    expect(validateProfile(computeOnly).errors).toEqual([]);
+    const p = planRun({ profile: computeOnly, target: 'iris-xe', clientPath: '/c', seconds: 5, outDir: '/o', stamp: 'S' });
+    expect(p.lock).toEqual([['sudo', 'nvidia-smi', '--id=0', '--lock-gpu-clocks=645,645']]);
+    expect(p.reset.map((c) => c.at(-1))).toEqual(['--reset-gpu-clocks', '--reset-memory-clocks']);
+  });
+
+  it('checks the graphics clock against the top memory clock when memory is not locked', () => {
+    const supported = parseSupportedClocks(SUPPORTED);
+    expect(checkClocks(computeOnly.targets['iris-xe']!, supported)).toEqual([]);
+    expect(checkClocks({ ...computeOnly.targets['iris-xe']!, graphicsClockMHz: 300 }, supported)[0]).toContain('not offered with memory at 7001 MHz');
+  });
+
+  it('still needs a memory clock when memory is locked, and checks floor and headroom', () => {
+    const rest: Record<string, unknown> = { ...PROFILE.targets['iris-xe']! };
+    delete rest['memoryClockMHz'];
+    expect(validateProfile({ gpu: 'g', targets: { a: { ...rest, lockMemory: true } } }).errors[0]).toContain('memoryClockMHz');
+    expect(validateProfile({ gpu: 'g', targets: { a: { ...computeOnly.targets['iris-xe']!, headroom: 9 } } }).errors[0]).toContain('headroom');
+  });
+
+  it('passes the floor only with the headroom on the average and the floor on the 1% low', () => {
+    const t = computeOnly.targets['iris-xe']!;
+    expect(floorCheck(t, { avgFps: 50, low1PctFps: 31 })).toMatchObject({ needAvgFps: 45, needLowFps: 30, pass: true });
+    expect(floorCheck(t, { avgFps: 44, low1PctFps: 40 })?.pass).toBe(false);
+    expect(floorCheck(t, { avgFps: 60, low1PctFps: 25 })?.pass).toBe(false);
+    expect(floorCheck(PROFILE.targets['iris-xe']!, { avgFps: 60, low1PctFps: 25 })).toBeUndefined();
   });
 });

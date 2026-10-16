@@ -22,6 +22,7 @@ import {
   CHECK_SECONDS,
   checkClocks,
   execute,
+  floorCheck,
   judge,
   parseClockSamples,
   parseSupportedClocks,
@@ -88,7 +89,11 @@ function preflight(profile: StandinProfile, plan: Plan, clientPath: string, quer
     const problems = checkClocks(plan.profile, supported);
     checks.push({
       ok: problems.length === 0,
-      text: problems[0] ?? `${plan.profile.graphicsClockMHz} MHz graphics with ${plan.profile.memoryClockMHz} MHz memory is a supported pair`,
+      text:
+        problems[0] ??
+        (plan.profile.lockMemory === false
+          ? `${plan.profile.graphicsClockMHz} MHz graphics is offered at the card's top memory clock (memory is not locked: a compute-only stand-in)`
+          : `${plan.profile.graphicsClockMHz} MHz graphics with ${String(plan.profile.memoryClockMHz)} MHz memory is a supported pair`),
     });
   }
   if (uid !== undefined) {
@@ -110,6 +115,10 @@ function preflight(profile: StandinProfile, plan: Plan, clientPath: string, quer
 function printPlan(plan: Plan, profileFile: string, profile: StandinProfile, checks: Check[]): void {
   console.log(`standin plan · target ${plan.target}: ${plan.profile.label}`);
   console.log(`profile: ${profileFile} (card: ${profile.gpu})`);
+  if (plan.profile.lockMemory === false) console.log('memory: not locked (lockMemory: false): a compute-only stand-in, so read results with its headroom');
+  if (plan.profile.floorFps !== undefined) {
+    console.log(`floor check: an average of at least ${plan.profile.floorFps * (plan.profile.headroom ?? 1)} fps and a 1% low of at least ${plan.profile.floorFps} fps at ${plan.profile.size}`);
+  }
   if (plan.profile.note) console.log(`note: ${plan.profile.note}`);
   console.log('preflight (read-only):');
   for (const c of checks) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.text}`);
@@ -184,6 +193,7 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
   const after = summarizeClocks(parseClockSamples(existsSync(plan.afterClocksFile) ? readFileSync(plan.afterClocksFile, 'utf8') : ''));
   const verdict = judge(plan.profile, during, after);
   const frames = readJson(plan.framesFile);
+  const floor = floorCheck(plan.profile, frames?.['summary'] as { avgFps: number; low1PctFps: number } | undefined);
   const report = {
     event: 'standin',
     target: plan.target,
@@ -192,20 +202,32 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
     outcome,
     clocks: { during, after },
     verdict,
+    floor: floor ?? null,
     bench: frames ? { backend: frames['backend'], adapter: frames['adapter'], width: frames['width'], height: frames['height'], summary: frames['summary'] } : null,
   };
   writeFileSync(plan.reportFile, `${JSON.stringify(report, null, 2)}\n`);
 
   const s = frames?.['summary'] as Record<string, number> | undefined;
   console.log(`\nstandin: ${plan.target} · ${String(frames?.['backend'] ?? 'no bench result')}${s ? ` · ${s['frames']} frames in ${s['seconds']} s · ${s['avgFps']} fps average · p95 ${s['p95Ms']} ms · 1% low ${s['low1PctFps']} fps` : ''}`);
-  const held = (ok: boolean): string => (ok ? 'lock held' : 'lock NOT held');
-  console.log(`  clocks during the run (${during.samples} samples): graphics ${during.graphicsMinMHz}–${during.graphicsMaxMHz} MHz, ${held(verdict.graphicsLockHeld)}; memory ${during.memoryMinMHz}–${during.memoryMaxMHz} MHz, ${held(verdict.memoryLockHeld)}`);
+  const memoryText = { held: 'lock held', 'not-held': 'lock NOT held', 'not-locked': 'not locked (compute-only profile)' }[verdict.memoryLock];
+  console.log(`  clocks during the run (${during.samples} samples): graphics ${during.graphicsMinMHz}–${during.graphicsMaxMHz} MHz, ${verdict.graphicsLockHeld ? 'lock held' : 'lock NOT held'}; memory ${during.memoryMinMHz}–${during.memoryMaxMHz} MHz, ${memoryText}`);
   console.log(`  after the reset: graphics up to ${after.graphicsMaxMHz} MHz, memory up to ${after.memoryMaxMHz} MHz: reset ${verdict.reset}`);
-  if (verdict.graphicsLockHeld && !verdict.memoryLockHeld) {
+  if (verdict.graphicsLockHeld && verdict.memoryLock === 'not-held') {
     console.log(`  The memory lock was not enforced; the driver said: ${outcome.lockOutput[1] || '(nothing)'}`);
     console.log('  So this run imitates the target\'s compute only: memory bandwidth stayed the card\'s own (optimistic), and memory-clock changes can stall frames.');
+    console.log('  If this card never enforces it, set "lockMemory": false in the profile and give the target a headroom.');
   }
-  console.log(`  result: ${verdict.lockHeld ? 'a full stand-in run' : verdict.graphicsLockHeld ? 'graphics-only, not a full stand-in run' : 'not a stand-in run'} · report: ${plan.reportFile}`);
+  if (floor) {
+    console.log(`  floor check: ${floor.avgFps} fps average (needs ${floor.needAvgFps}: ${floor.floorFps} × ${floor.headroom}) and a 1% low of ${floor.lowFps} fps (needs ${floor.needLowFps}): ${floor.pass ? 'PASS' : 'FAIL'}`);
+  }
+  const kind = !verdict.graphicsLockHeld
+    ? 'not a stand-in run'
+    : verdict.memoryLock === 'held'
+      ? 'a full stand-in run'
+      : verdict.memoryLock === 'not-locked'
+        ? 'a compute-only stand-in run'
+        : 'graphics-only: the driver ignored the memory lock';
+  console.log(`  result: ${kind} · report: ${plan.reportFile}`);
   if (verdict.reset !== 'verified') {
     console.log('  The card may still be locked: check with  npm run standin -- status  and clear it with  npm run standin -- reset  (or reboot).');
   }

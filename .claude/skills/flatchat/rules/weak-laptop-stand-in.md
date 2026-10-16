@@ -2,7 +2,7 @@
 title: The Weak-Laptop Stand-In — Imitating an Iris Xe or Radeon 680M Laptop on a Desktop NVIDIA Card, Safely
 impact: HIGH
 impactDescription: Performance targets are set for integrated-graphics laptops; measuring on a full-speed desktop flatters every number, a stand-in run whose clock lock did not hold measures nothing, and a locked card that is never reset stays slow for every other program until a reboot.
-tags: memory lock not enforced, graphics-only run, sudo -v, lock output, stand-in, standin, weak laptop, floor, iris xe, intel iris xe, radeon 680m, 680m, integrated graphics, igpu, nvidia-smi, lock-gpu-clocks, lock-memory-clocks, reset-gpu-clocks, reset-memory-clocks, lgc, lmc, rgc, rmc, sudo, clocks, supported clocks, tflops, fp32, memory bandwidth, gddr6, cpu quota, CPUQuota, MemoryMax, systemd-run, scope, taskset, cgroup, delegation, bench, frame times, 1280x720, profile, standin.json, FLATCHAT_STANDIN_PROFILE, plan, run, status, reset, verdict, lock held, reset verified, tuning, real laptop
+tags: compute-only, lockMemory, floor check, headroom, floorFps, benchmark ratio, time spy, calibration, memory lock not enforced, graphics-only run, sudo -v, lock output, stand-in, standin, weak laptop, floor, iris xe, intel iris xe, radeon 680m, 680m, integrated graphics, igpu, nvidia-smi, lock-gpu-clocks, lock-memory-clocks, reset-gpu-clocks, reset-memory-clocks, lgc, lmc, rgc, rmc, sudo, clocks, supported clocks, tflops, fp32, memory bandwidth, gddr6, cpu quota, CPUQuota, MemoryMax, systemd-run, scope, taskset, cgroup, delegation, bench, frame times, 1280x720, profile, standin.json, FLATCHAT_STANDIN_PROFILE, plan, run, status, reset, verdict, lock held, reset verified, tuning, real laptop
 ---
 
 This rule governs `npm run standin`: making a desktop with an NVIDIA card behave like an integrated-graphics laptop (the platform's performance floor: an Intel Iris Xe or AMD Radeon 680M class machine at 30 fps and 720p), running the client's bench on it, and putting the card back. The clock lines need root, so they run through `sudo` in the terminal of the person who owns the machine; an agent prepares the profile and the plan, reads the results, and never changes the system's sudo configuration.
@@ -11,8 +11,8 @@ This rule governs `npm run standin`: making a desktop with an NVIDIA card behave
 
 | Part of a laptop | How the stand-in imitates it |
 |---|---|
-| GPU compute | `nvidia-smi --lock-gpu-clocks=X,X`: the graphics clock fixed so the card's FP32 rate matches the target's |
-| GPU memory bandwidth | `nvidia-smi --lock-memory-clocks=Y,Y`: the supported memory clock nearest the target's bandwidth, usually below it |
+| GPU throughput | `nvidia-smi --lock-gpu-clocks=X,X`: the graphics clock fixed so the card does the target's share of work (calibrated below) |
+| GPU memory bandwidth | `nvidia-smi --lock-memory-clocks=Y,Y`, only on cards that enforce it (`lockMemory`); otherwise left alone, and a compute-only stand-in covers the gap with headroom |
 | CPU cores | `taskset --cpu-list 0-3`: the client on four CPUs |
 | CPU throughput | `systemd-run --user --scope -p CPUQuota=…`: a cap on the client's total CPU time |
 | RAM | `systemd-run … -p MemoryMax=…`: a cap on the client's processes' memory |
@@ -21,6 +21,17 @@ This rule governs `npm run standin`: making a desktop with an NVIDIA card behave
 The user scope needs the systemd user manager to delegate the `cpu` and `memory` controllers (check `/sys/fs/cgroup/user.slice/user-$UID.slice/user@$UID.service/cgroup.controllers`). `CPUQuota` caps total CPU time, not single-thread speed: a busy main thread still runs at the desktop's clock, so results bound by one thread stay optimistic. The desktop card's own video memory is not capped; an integrated GPU shares system RAM with the CPU, which the stand-in does not reproduce.
 
 ## Deriving a Profile for a Card
+
+**Preferred: published benchmark ratios.** A benchmark score already includes each machine's memory bandwidth, so the ratio of a target's score to the card's score says what share of the card's work the laptop does. Lock the graphics clock at that share of the card's clock under load (about 1900 MHz for a Turing card at stock), rounded to a step the card offers. 3DMark Time Spy Graphics averages (Notebookcheck, read 2026-10-16):
+
+| Target | Time Spy Graphics |
+|---|---|
+| Intel Iris Xe G7, 96 EU | 1496 |
+| AMD Radeon 680M | 2232 |
+
+Example: a card scoring 5979 gives Iris Xe 1496 ÷ 5979 = 25.0%, so 0.250 × 1900 ≈ 475 MHz, locked at an offered 480 MHz; the 680M's 37.3% gives about 709 MHz, locked at 705 MHz. Not every graphics clock is offered at every memory clock; the preflight checks the one you pick.
+
+**Fallback: shader arithmetic,** when no benchmark covers the card:
 
 | Quantity | Formula |
 |---|---|
@@ -35,7 +46,7 @@ The user scope needs the systemd user manager to delegate the `cpu` and `memory`
 
 Worked example for an illustrative card with 2048 shader cores and a 256-bit GDDR6 bus: for the Iris Xe class, 1.9 TFLOPS × 1000 ÷ 4096 ≈ 464 MHz, so the nearest offered graphics clock, for example 465 MHz; its bandwidth at a reported 7001 MHz is 7001 × 2 × 256 ÷ 8 ÷ 1000 ≈ 448 GB/s, so the target's 51–68 GB/s needs a memory clock near 800–1060 MHz, and the nearest offered one (for example 810 MHz, about 52 GB/s) is used. Only a clock the card offers *for that memory clock* can be locked; list them with `nvidia-smi -q -d SUPPORTED_CLOCKS` (read-only). Cards often offer just a few memory clocks (for example 405, 810, 5001, 6801 and 7001 MHz), so the bandwidth match is coarse; prefer the lower one, since the target is a floor.
 
-These spec-derived numbers are a starting point. Architectures differ in caches and compression, so a profile is **tuned** against a real laptop: run the same bench (`--bench=60` on the laptop's client build) on both, and adjust `graphicsClockMHz` until the stand-in's average and 1% low match the laptop's within about 10%. Record what it was tuned against in the profile's `source` and `note`.
+Spec-derived and benchmark-derived numbers are both starting points. Architectures differ in caches and compression, so a profile is **tuned** against a real laptop: run the same bench (`--bench=60` on the laptop's client build) on both, and adjust `graphicsClockMHz` until the stand-in's average and 1% low match the laptop's within about 10%. Record what it was tuned against in the profile's `source` and `note`.
 
 ## The Profile File
 
@@ -48,13 +59,15 @@ The profile belongs to the machine, not the repository. The script reads `--prof
   "targets": {
     "iris-xe": {
       "label": "Intel Iris Xe class (96 EU), 8 GB laptop",
-      "graphicsClockMHz": 465,
-      "memoryClockMHz": 810,
+      "graphicsClockMHz": 480,
+      "lockMemory": false,
       "cpus": "0-3",
       "cpuQuota": "300%",
       "memoryMax": "4G",
       "size": "1280x720",
-      "note": "provisional until tuned against a real laptop"
+      "floorFps": 30,
+      "headroom": 1.5,
+      "note": "compute-only: this card ignores memory locks; provisional until tuned against a real laptop"
     }
   }
 }
@@ -64,7 +77,10 @@ The profile belongs to the machine, not the repository. The script reads `--prof
 |---|---|
 | `gpu` | Must equal the card's name, or the run refuses to start |
 | target name | Lowercase letters, digits and dashes (`iris-xe`, `680m`) |
-| `graphicsClockMHz`, `memoryClockMHz` | Whole MHz; the pair must be in the card's supported list |
+| `graphicsClockMHz` | Whole MHz; offered with `memoryClockMHz`, or with the card's top memory clock when memory is not locked |
+| `memoryClockMHz` | Whole MHz from the card's list; required unless `lockMemory` is `false` |
+| `lockMemory` | `false` for a card whose driver accepts a memory lock without enforcing it: the run skips that line and is a compute-only stand-in (default `true`) |
+| `floorFps`, `headroom` | The laptop floor (30) and the margin (1.5) the floor check uses; a compute-only stand-in always gets a headroom above 1 |
 | `cpus` | A CPU list such as `0-3` or `0,2,4,6` |
 | `cpuQuota` | A percentage of one CPU, such as `300%` |
 | `memoryMax` | systemd's size syntax, such as `4G` |
@@ -93,10 +109,13 @@ Files in `out/standin/<time>-<target>/`: `frames.json` (the bench report with ev
 |---|---|---|
 | graphics and memory lock held | Every sample during the run was at most each locked clock plus one 15 MHz step | A full stand-in run: the frame times are a stand-in measurement |
 | graphics held, memory NOT held | The driver accepted the memory lock but the memory clock moved | A graphics-only run: compute imitated, memory bandwidth the card's own (optimistic); memory-clock changes may also stall frames. Read the memory lock line's output in `run.json` |
+| graphics held, memory not locked | The profile leaves memory alone (`lockMemory: false`) | A compute-only stand-in run: read it with the floor check's headroom |
 | graphics lock NOT held | A sample exceeded the graphics lock | Not a stand-in run; read the lock lines' output |
 | reset `verified` | After the reset, both clocks rose more than 100 MHz above the lock under load | The card is back to normal |
 | reset `graphics-only` | The graphics clock rose, the memory clock was not seen above the lock | Check with `status` under load; run `reset` if needed |
 | reset `not-verified` | Neither rose | Run `npm run standin -- reset`, or reboot; locks never survive a reboot |
+
+The floor check, when the target has `floorFps`: the run passes only if its average is at least `floorFps × headroom` and its 1% low at least `floorFps` (for 30 and 1.5: 45 fps average, 30 fps 1% low). A compute-only stand-in leaves the laptop's memory limit out, so it needs that margin; the margin is revisited when a real laptop calibrates the profile, and testers' laptops still have the last word.
 
 The command exits 0 when the client ran, both reset lines succeeded, the graphics lock held and the reset was at least `graphics-only`; its last lines say whether it was a full, a graphics-only or no stand-in run.
 
