@@ -99,6 +99,8 @@ export interface Plan {
   afterFramesFile: string;
   afterClocksFile: string;
   reportFile: string;
+  /** `sudo -v`: the password prompt, once, before anything else runs. */
+  auth: Cmd;
   lock: Cmd[];
   sampler: Cmd;
   client: Cmd;
@@ -133,6 +135,7 @@ export function planRun(o: PlanOptions): Plan {
     afterFramesFile: `${dir}/after-reset-frames.json`,
     afterClocksFile: `${dir}/after-reset-clocks.csv`,
     reportFile: `${dir}/run.json`,
+    auth: ['sudo', '-v'],
     lock: [
       ['sudo', 'nvidia-smi', id, `--lock-gpu-clocks=${t.graphicsClockMHz},${t.graphicsClockMHz}`],
       ['sudo', 'nvidia-smi', id, `--lock-memory-clocks=${t.memoryClockMHz},${t.memoryClockMHz}`],
@@ -154,12 +157,13 @@ export function planRun(o: PlanOptions): Plan {
 
 export interface RunResult {
   code: number;
-  stdout: string;
+  /** What the command printed, stdout and stderr together, when it did not share the terminal. */
+  output: string;
 }
 
 /** The only part that touches the machine: real processes in standin.ts, a recorder in the tests. */
 export interface Runner {
-  /** Run to the end. inherit = share the terminal (sudo's password prompt, the client's log). */
+  /** Run to the end. inherit = share the terminal (the client's log); otherwise the output is captured. */
   run(cmd: Cmd, options?: { inherit?: boolean }): Promise<RunResult>;
   /** Start in the background with stdout going to a file; stop() ends it and waits. */
   background(cmd: Cmd, outFile: string): { stop: () => Promise<void> };
@@ -168,6 +172,8 @@ export interface Runner {
 
 export interface Outcome {
   locked: boolean;
+  /** What each lock line printed: a driver may accept a lock it does not enforce, and say so here. */
+  lockOutput: string[];
   clientCode: number | undefined;
   resetCodes: number[];
   checkCode: number | undefined;
@@ -180,11 +186,17 @@ export interface Outcome {
  * interrupt alike. Then a short uncapped run, sampled again, shows whether the clocks are free.
  */
 export async function execute(plan: Plan, runner: Runner, interrupted: () => boolean = () => false): Promise<Outcome> {
-  const outcome: Outcome = { locked: false, clientCode: undefined, resetCodes: [], checkCode: undefined, interrupted: false };
+  const outcome: Outcome = { locked: false, lockOutput: [], clientCode: undefined, resetCodes: [], checkCode: undefined, interrupted: false };
   try {
+    runner.log(`$ ${plan.auth.join(' ')}`);
+    const auth = await runner.run(plan.auth, { inherit: true });
+    if (auth.code !== 0) throw new Error(`${plan.auth.join(' ')} exited with ${auth.code}`);
     for (const cmd of plan.lock) {
       runner.log(`$ ${cmd.join(' ')}`);
-      const r = await runner.run(cmd, { inherit: true });
+      const r = await runner.run(cmd);
+      const said = r.output.trim();
+      outcome.lockOutput.push(said);
+      if (said) runner.log(said.split('\n').map((l) => `  ${l}`).join('\n'));
       if (r.code !== 0) throw new Error(`${cmd.join(' ')} exited with ${r.code}`);
     }
     outcome.locked = true;
@@ -267,12 +279,23 @@ export type ResetVerdict = 'verified' | 'graphics-only' | 'not-verified';
 export const LOCK_SLACK_MHZ = 15;
 export const RESET_MARGIN_MHZ = 100;
 
-export function judge(t: TargetProfile, during: ClockSummary, after: ClockSummary): { lockHeld: boolean; reset: ResetVerdict } {
-  const lockHeld =
-    during.samples > 0 &&
-    during.graphicsMaxMHz <= t.graphicsClockMHz + LOCK_SLACK_MHZ &&
-    during.memoryMaxMHz <= t.memoryClockMHz + LOCK_SLACK_MHZ;
+export interface Verdict {
+  graphicsLockHeld: boolean;
+  memoryLockHeld: boolean;
+  /** Both clocks held: the run imitates the target. */
+  lockHeld: boolean;
+  reset: ResetVerdict;
+}
+
+export function judge(t: TargetProfile, during: ClockSummary, after: ClockSummary): Verdict {
+  const graphicsLockHeld = during.samples > 0 && during.graphicsMaxMHz <= t.graphicsClockMHz + LOCK_SLACK_MHZ;
+  const memoryLockHeld = during.samples > 0 && during.memoryMaxMHz <= t.memoryClockMHz + LOCK_SLACK_MHZ;
   const graphicsFree = after.samples > 0 && after.graphicsMaxMHz > t.graphicsClockMHz + RESET_MARGIN_MHZ;
   const memoryFree = after.samples > 0 && after.memoryMaxMHz > t.memoryClockMHz + RESET_MARGIN_MHZ;
-  return { lockHeld, reset: graphicsFree && memoryFree ? 'verified' : graphicsFree ? 'graphics-only' : 'not-verified' };
+  return {
+    graphicsLockHeld,
+    memoryLockHeld,
+    lockHeld: graphicsLockHeld && memoryLockHeld,
+    reset: graphicsFree && memoryFree ? 'verified' : graphicsFree ? 'graphics-only' : 'not-verified',
+  };
 }

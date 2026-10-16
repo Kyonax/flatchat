@@ -58,6 +58,7 @@ Every workspace extends `tsconfig.base.json`: target ES2024, `module`/`moduleRes
 | The first `electron` run after any `npm install` or `npm ci` prints "Downloading Electron binary..." | Electron 44 fetches its binary into `node_modules/electron/dist` on first use, not at install; a reinstall removes it | Let it run (about 110 MB, cached in `~/.cache/electron`); if it fails, delete `node_modules/electron` and run `npx install-electron --no` |
 | Packaging downloads an Electron zip | `electron-builder` fetches the exact `electronVersion` for the target platform | Needs network on the first build per platform |
 | `npm ci` on Windows with a lockfile written on Linux | The lockfile lists every platform's optional native package | Works; CI's Windows job proves it on every push |
+| CI's `npm ci` fails with `Missing: @flatchat/<name>@0.0.0 from lock file` (all three jobs, before any check) | A workspace or dependency was added without running `npm install` afterwards, so `package-lock.json` does not list it; local runs still pass because `node_modules` and the workspace globs do not need the lock | `npm install`, commit `package-lock.json`; the harness's `lock` check finds this before a push (it happened on 2026-10-16) |
 
 ## Rules for Upgrades
 
@@ -65,7 +66,7 @@ Every workspace extends `tsconfig.base.json`: target ES2024, `module`/`moduleRes
 2. Read the new major's breaking changes before bumping; ESLint, Vite, Vitest and Electron majors have each changed defaults.
 3. Electron: change `electron` in `apps/client/package.json` and `electronVersion` in `electron-builder.yml` together, then run the client's smoke and bench locally and let CI's Linux and Windows jobs pass.
 4. Node: change `.tool-versions` only; CI follows it. Keep the major at 24 until a deliberate move.
-5. Commit the updated `package-lock.json` with the change.
+5. Commit the updated `package-lock.json` with the change; the harness's `lock` check fails until the lock matches every `package.json`.
 
 ## Correct vs. Incorrect
 

@@ -2,7 +2,7 @@
 title: The Harness and the Trap Linter — One Command for Every Headless Check, and How to Add a Check or a Trap
 impact: HIGH
 impactDescription: Work declared done without the harness's full pass misses whichever check was skipped, a trap added without its rule text or test fails the skill check or catches nothing, and a suppression without a reason hides a real security finding.
-tags: harness, npm run harness, check.ts, checks, verify, verification, done, layout, skill, skill-check, traps, trap linter, trap-lint, lint:traps, lint, eslint, types, typecheck, tests, server, client, --with-client, --only, --skip, --list, --verbose, github actions groups, adding a trap, adding a check, TRAPS table, suppress, allow comment, exit codes, json output, --strict
+tags: harness, npm run harness, check.ts, checks, lock-check, package-lock, npm ci, verify, verification, done, layout, skill, skill-check, traps, trap linter, trap-lint, lint:traps, lint, eslint, types, typecheck, tests, server, client, --with-client, --only, --skip, --list, --verbose, github actions groups, adding a trap, adding a check, TRAPS table, suppress, allow comment, exit codes, json output, --strict
 ---
 
 This rule governs `tools/harness`: the single command that tells whether the repository is healthy, the trap linter inside it, and how either grows. Agents finish every change by running `npm run harness`; CI runs the same command, so a green harness locally predicts a green checks job.
@@ -11,6 +11,7 @@ This rule governs `tools/harness`: the single command that tells whether the rep
 
 | Check | What runs | Passes when |
 |---|---|---|
+| `lock` | `node tools/harness/src/lock-check.ts` | `package-lock.json` lists every workspace (with its `node_modules` link) and the same dependency lists as every `package.json`, as CI's `npm ci` requires |
 | `layout` | `node tools/repo/check-layout.mjs` | Folders, licence files, LICENSING rows and SPDX headers are right |
 | `skill` | `node tools/harness/src/skill-check.ts` | The agent skill has the shape agents rely on (see below) |
 | `traps` | `node tools/harness/src/trap-lint.ts` | No trap at error level |

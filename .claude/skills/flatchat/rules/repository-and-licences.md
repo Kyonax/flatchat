@@ -36,7 +36,7 @@ A file's licence is that of the **longest listed folder** that contains it; a fi
 |---|---|
 | Required files at the root: `README.md`, `README.es.md`, `LICENSE`, `LICENSING.md`, `CONTRIBUTING.md`, `CREDITS.md`, `package.json` | `missing file` |
 | The five top-level folders `apps`, `packages`, `tools`, `kits`, `docs` exist; `tools/repo` and `docs/spikes` exist | `missing folder` |
-| No other top-level folder (dot-folders and `node_modules` are ignored) | `unexpected top-level folder` |
+| No other top-level folder (dot-folders and the git-ignored outputs in `skipFolders`, such as `node_modules`, `out`, `dist`, are ignored) | `unexpected top-level folder` |
 | The root `LICENSE` is the MPL-2.0 text | `LICENSE is not the MPL-2.0 text` |
 | Every listed folder has a `LICENSE` with its licence's opening lines, and a `README.md` | `missing …/LICENSE`, `… is not the … text`, `missing …/README.md` |
 | `LICENSING.md` has a row naming the folder and its SPDX id, both in backticks | `LICENSING.md has no row for …` |

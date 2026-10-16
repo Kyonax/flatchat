@@ -67,7 +67,8 @@ for (const d of [...layout.topLevelFolders, ...layout.requiredFolders]) {
   if (!isDir(join(root, d))) problems.push(`missing folder: ${d}/`);
 }
 for (const name of readdirSync(root)) {
-  if (name.startsWith('.') || name === 'node_modules') continue;
+  // Dot-folders and git-ignored outputs (node_modules, out, dist, …: skipFolders) are not part of the layout.
+  if (name.startsWith('.') || layout.skipFolders.includes(name)) continue;
   if (isDir(join(root, name)) && !layout.topLevelFolders.includes(name)) {
     problems.push(`unexpected top-level folder: ${name}/ (add it to tools/repo/layout.json if it belongs)`);
   }

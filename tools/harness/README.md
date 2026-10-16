@@ -6,7 +6,8 @@ The repository's own checking and measuring tools.
 
 | Command | File | What it does |
 |---|---|---|
-| `npm run harness` | `src/check.ts` | Every headless check in one command: the layout check, the agent-skill check, the trap linter, ESLint, TypeScript, the unit and process tests, and a headless world server run. `-- --list` shows them, `-- --only a,b` and `-- --skip a,b` pick, `-- --with-client` adds the client's smoke test (needs a display). CI runs it on every push. |
+| `npm run harness` | `src/check.ts` | Every headless check in one command: the lock-file check, the layout check, the agent-skill check, the trap linter, ESLint, TypeScript, the unit and process tests, and a headless world server run. `-- --list` shows them, `-- --only a,b` and `-- --skip a,b` pick, `-- --with-client` adds the client's smoke test (needs a display). CI runs it on every push. |
+| (part of the harness) | `src/lock-check.ts` | Checks that `package-lock.json` lists every workspace and the same dependencies as every `package.json`, which CI's `npm ci` requires. |
 | `npm run lint:traps` | `src/trap-lint.ts` | The trap linter: the security and setup mistakes this project has met (T01–T16), found in parsed code, Vue templates, the renderer's HTML and the CI workflows. `--strict` fails on warnings, `--json` prints machine output. |
 | (part of the harness) | `src/skill-check.ts` | Checks that the agent skill in `.claude/skills/flatchat` has the shape agents rely on, and that every trap is explained in its rule. |
 | `npm run standin -- plan --target NAME` | `src/standin.ts` | The weak-laptop stand-in: prints every command of a run and changes nothing. |
@@ -19,4 +20,4 @@ The clocks and limits for each target belong to the machine, so the profile live
 
 ## Tests
 
-`npm test -w @flatchat/harness`: the trap linter against planted traps, the skill check on throwaway folders, and the stand-in's whole sequence against a recording runner, so no GPU, sudo or client is needed.
+`npm test -w @flatchat/harness`: the trap linter against planted traps, the skill and lock-file checks on throwaway folders, and the stand-in's whole sequence against a recording runner, so no GPU, sudo or client is needed.

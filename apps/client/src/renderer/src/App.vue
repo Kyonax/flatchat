@@ -30,7 +30,8 @@ const bench: BenchOptions | undefined =
 
 onMounted(async () => {
   if (!canvas.value) return;
-  if (bench) benchLine.value = `Bench: ${bench.seconds} s at ${bench.width}×${bench.height}, no frame-rate cap`;
+  // The count is frames drawn; the screen still shows at most its refresh rate, unevenly paced.
+  if (bench) benchLine.value = `Bench: ${bench.seconds} s at ${bench.width}×${bench.height}, no frame-rate cap (fps = frames drawn, not shown)`;
   try {
     stop = await startScene(canvas.value, {
       onStats: (s) => {

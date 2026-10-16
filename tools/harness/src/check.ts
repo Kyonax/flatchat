@@ -4,6 +4,7 @@
 //
 //   npm run harness [-- --only a,b] [-- --skip a,b] [-- --with-client] [-- --verbose] [-- --list]
 //
+// lock    package-lock.json in step with every package.json (what CI's npm ci needs)
 // layout  the folders, licence files and SPDX headers      skill   the agent skill's shape
 // traps   the trap linter                                   lint    ESLint
 // types   TypeScript in every workspace                     tests   unit and process tests
@@ -86,6 +87,7 @@ async function serverCheck(): Promise<Result> {
 }
 
 const CHECKS: Check[] = [
+  { name: 'lock', title: 'package-lock.json in step with every package.json', run: () => node('tools/harness/src/lock-check.ts') },
   { name: 'layout', title: 'Folders, licence files and SPDX headers', run: () => node('tools/repo/check-layout.mjs') },
   { name: 'skill', title: 'The agent skill', run: () => node('tools/harness/src/skill-check.ts') },
   { name: 'traps', title: 'Trap linter', run: () => node('tools/harness/src/trap-lint.ts') },

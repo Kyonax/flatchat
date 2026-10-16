@@ -42,7 +42,7 @@ function recorder(codes: Record<string, number> = {}, onRun?: (cmd: Cmd) => void
       calls.push(cmd.join(' '));
       onRun?.(cmd);
       const hit = Object.entries(codes).find(([prefix]) => cmd.join(' ').includes(prefix));
-      return { code: hit ? hit[1] : 0, stdout: '' };
+      return { code: hit ? hit[1] : 0, output: cmd.includes('--lock-memory-clocks=810,810') ? 'Memory clocks set.' : '' };
     },
     background: (cmd, file) => {
       calls.push(`bg ${cmd[0]} > ${file}`);
@@ -88,6 +88,7 @@ describe('execute', () => {
     const r = recorder();
     const outcome = await execute(plan(), r);
     expect(r.calls.map((c) => c.split(' ').slice(0, 4).join(' '))).toEqual([
+      'sudo -v',
       'sudo nvidia-smi --id=0 --lock-gpu-clocks=645,645',
       'sudo nvidia-smi --id=0 --lock-memory-clocks=810,810',
       'bg nvidia-smi > /tmp/out/S-iris-xe/clocks.csv',
@@ -99,7 +100,7 @@ describe('execute', () => {
       '/opt/flatchat --bench=4 --bench-out=/tmp/out/S-iris-xe/after-reset-frames.json --bench-size=1280x720',
       'stop /tmp/out/S-iris-xe/after-reset-clocks.csv',
     ]);
-    expect(outcome).toMatchObject({ locked: true, clientCode: 0, resetCodes: [0, 0], checkCode: 0, interrupted: false });
+    expect(outcome).toMatchObject({ locked: true, lockOutput: ['', 'Memory clocks set.'], clientCode: 0, resetCodes: [0, 0], checkCode: 0, interrupted: false });
   });
 
   it('resets after a failed lock and skips the client', async () => {
@@ -136,17 +137,23 @@ describe('the verdict', () => {
   it('sees a held lock and a verified reset', () => {
     const during = samples(['2026/10/16 14:00:00.000, 645, 810, 99', '2026/10/16 14:00:00.500, 645, 810, 98']);
     const after = samples(['2026/10/16 14:01:00.000, 1905, 7001, 97']);
-    expect(judge(t, during, after)).toEqual({ lockHeld: true, reset: 'verified' });
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLockHeld: true, lockHeld: true, reset: 'verified' });
   });
 
   it('sees a lock that did not hold and a reset that freed only the graphics clock', () => {
     const during = samples(['x, 1800, 7001, 90']);
     const after = samples(['x, 1905, 810, 97']);
-    expect(judge(t, during, after)).toEqual({ lockHeld: false, reset: 'graphics-only' });
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: false, memoryLockHeld: false, lockHeld: false, reset: 'graphics-only' });
+  });
+
+  it('tells a held graphics lock from a memory lock the driver did not enforce (2026-10-16, GTX 1660 SUPER)', () => {
+    const during = samples(['x, 645, 405, 30', 'x, 645, 5000, 60', 'x, 645, 7000, 82']);
+    const after = samples(['x, 1530, 7000, 31']);
+    expect(judge(t, during, after)).toEqual({ graphicsLockHeld: true, memoryLockHeld: false, lockHeld: false, reset: 'verified' });
   });
 
   it('sees no reset when the clocks stay low under load, or when there are no samples', () => {
     expect(judge(t, samples(['x, 645, 810, 99']), samples(['x, 645, 810, 99'])).reset).toBe('not-verified');
-    expect(judge(t, samples([]), samples([]))).toEqual({ lockHeld: false, reset: 'not-verified' });
+    expect(judge(t, samples([]), samples([]))).toEqual({ graphicsLockHeld: false, memoryLockHeld: false, lockHeld: false, reset: 'not-verified' });
   });
 });

@@ -115,7 +115,8 @@ function printPlan(plan: Plan, profileFile: string, profile: StandinProfile, che
   for (const c of checks) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.text}`);
   console.log('commands, in order (a dry run runs none of them):');
   const rows: [string, string, string][] = [
-    ...plan.lock.map((c) => ['root', shell(c), 'lock the clock'] as [string, string, string]),
+    ['root', shell(plan.auth), 'asks for your password once, before anything changes'],
+    ...plan.lock.map((c) => ['root', shell(c), 'lock the clock; what the driver prints is kept in run.json'] as [string, string, string]),
     ['bg', `${shell(plan.sampler)} > ${quote(plan.clocksFile)}`, 'sample the clocks twice a second'],
     ['', shell(plan.client), `the bench: 4 cores, CPU and memory caps, ${plan.profile.size}`],
     ...plan.reset.map((c) => ['root', shell(c), 'always, also after a failure or Ctrl+C'] as [string, string, string]),
@@ -131,14 +132,16 @@ let current: ChildProcess | undefined;
 const realRunner: Runner = {
   run: (cmd, options) =>
     new Promise((done) => {
-      const child = spawn(cmd[0]!, cmd.slice(1), { stdio: options?.inherit ? 'inherit' : ['ignore', 'pipe', 'inherit'] });
+      // Captured commands keep the terminal as stdin, so sudo can still ask for a password.
+      const child = spawn(cmd[0]!, cmd.slice(1), { stdio: options?.inherit ? 'inherit' : ['inherit', 'pipe', 'pipe'] });
       current = child;
-      let stdout = '';
-      child.stdout?.on('data', (d: Buffer) => (stdout += d.toString()));
-      child.on('error', (err) => done({ code: 127, stdout: err.message }));
+      let output = '';
+      child.stdout?.on('data', (d: Buffer) => (output += d.toString()));
+      child.stderr?.on('data', (d: Buffer) => (output += d.toString()));
+      child.on('error', (err) => done({ code: 127, output: err.message }));
       child.on('close', (code, signal) => {
         if (current === child) current = undefined;
-        done({ code: code ?? (signal ? 128 : 1), stdout });
+        done({ code: code ?? (signal ? 128 : 1), output });
       });
     }),
   background: (cmd, outFile) => {
@@ -185,7 +188,7 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
     event: 'standin',
     target: plan.target,
     profile: { file: profileFile, gpu: profile.gpu, ...plan.profile },
-    commands: { lock: plan.lock, sampler: plan.sampler, client: plan.client, reset: plan.reset, check: plan.check },
+    commands: { auth: plan.auth, lock: plan.lock, sampler: plan.sampler, client: plan.client, reset: plan.reset, check: plan.check },
     outcome,
     clocks: { during, after },
     verdict,
@@ -195,13 +198,18 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
 
   const s = frames?.['summary'] as Record<string, number> | undefined;
   console.log(`\nstandin: ${plan.target} · ${String(frames?.['backend'] ?? 'no bench result')}${s ? ` · ${s['frames']} frames in ${s['seconds']} s · ${s['avgFps']} fps average · p95 ${s['p95Ms']} ms · 1% low ${s['low1PctFps']} fps` : ''}`);
-  console.log(`  clocks during the run: graphics ${during.graphicsMinMHz}–${during.graphicsMaxMHz} MHz, memory ${during.memoryMinMHz}–${during.memoryMaxMHz} MHz (${during.samples} samples): lock ${verdict.lockHeld ? 'held' : 'NOT held'}`);
+  const held = (ok: boolean): string => (ok ? 'lock held' : 'lock NOT held');
+  console.log(`  clocks during the run (${during.samples} samples): graphics ${during.graphicsMinMHz}–${during.graphicsMaxMHz} MHz, ${held(verdict.graphicsLockHeld)}; memory ${during.memoryMinMHz}–${during.memoryMaxMHz} MHz, ${held(verdict.memoryLockHeld)}`);
   console.log(`  after the reset: graphics up to ${after.graphicsMaxMHz} MHz, memory up to ${after.memoryMaxMHz} MHz: reset ${verdict.reset}`);
-  console.log(`  report: ${plan.reportFile}`);
+  if (verdict.graphicsLockHeld && !verdict.memoryLockHeld) {
+    console.log(`  The memory lock was not enforced; the driver said: ${outcome.lockOutput[1] || '(nothing)'}`);
+    console.log('  So this run imitates the target\'s compute only: memory bandwidth stayed the card\'s own (optimistic), and memory-clock changes can stall frames.');
+  }
+  console.log(`  result: ${verdict.lockHeld ? 'a full stand-in run' : verdict.graphicsLockHeld ? 'graphics-only, not a full stand-in run' : 'not a stand-in run'} · report: ${plan.reportFile}`);
   if (verdict.reset !== 'verified') {
     console.log('  The card may still be locked: check with  npm run standin -- status  and clear it with  npm run standin -- reset  (or reboot).');
   }
-  const ok = !outcome.error && outcome.clientCode === 0 && outcome.resetCodes.every((c) => c === 0) && verdict.lockHeld && verdict.reset !== 'not-verified';
+  const ok = !outcome.error && outcome.clientCode === 0 && outcome.resetCodes.every((c) => c === 0) && verdict.graphicsLockHeld && verdict.reset !== 'not-verified';
   if (outcome.error) console.log(`  error: ${outcome.error}`);
   return ok ? 0 : 1;
 }

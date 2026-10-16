@@ -2,7 +2,7 @@
 title: The Weak-Laptop Stand-In — Imitating an Iris Xe or Radeon 680M Laptop on a Desktop NVIDIA Card, Safely
 impact: HIGH
 impactDescription: Performance targets are set for integrated-graphics laptops; measuring on a full-speed desktop flatters every number, a stand-in run whose clock lock did not hold measures nothing, and a locked card that is never reset stays slow for every other program until a reboot.
-tags: stand-in, standin, weak laptop, floor, iris xe, intel iris xe, radeon 680m, 680m, integrated graphics, igpu, nvidia-smi, lock-gpu-clocks, lock-memory-clocks, reset-gpu-clocks, reset-memory-clocks, lgc, lmc, rgc, rmc, sudo, clocks, supported clocks, tflops, fp32, memory bandwidth, gddr6, cpu quota, CPUQuota, MemoryMax, systemd-run, scope, taskset, cgroup, delegation, bench, frame times, 1280x720, profile, standin.json, FLATCHAT_STANDIN_PROFILE, plan, run, status, reset, verdict, lock held, reset verified, tuning, real laptop
+tags: memory lock not enforced, graphics-only run, sudo -v, lock output, stand-in, standin, weak laptop, floor, iris xe, intel iris xe, radeon 680m, 680m, integrated graphics, igpu, nvidia-smi, lock-gpu-clocks, lock-memory-clocks, reset-gpu-clocks, reset-memory-clocks, lgc, lmc, rgc, rmc, sudo, clocks, supported clocks, tflops, fp32, memory bandwidth, gddr6, cpu quota, CPUQuota, MemoryMax, systemd-run, scope, taskset, cgroup, delegation, bench, frame times, 1280x720, profile, standin.json, FLATCHAT_STANDIN_PROFILE, plan, run, status, reset, verdict, lock held, reset verified, tuning, real laptop
 ---
 
 This rule governs `npm run standin`: making a desktop with an NVIDIA card behave like an integrated-graphics laptop (the platform's performance floor: an Intel Iris Xe or AMD Radeon 680M class machine at 30 fps and 720p), running the client's bench on it, and putting the card back. The clock lines need root, so they run through `sudo` in the terminal of the person who owns the machine; an agent prepares the profile and the plan, reads the results, and never changes the system's sudo configuration.
@@ -83,7 +83,7 @@ Options: `--profile FILE`, `--seconds N` (5–3600, default 60), `--client PATH`
 
 Preflight (refuses to run on any failure, with the card untouched): not root; Linux; `nvidia-smi`, `sudo`, `systemd-run` and `taskset` present; the card's name matches the profile; the clock pair is supported; the user manager delegates `cpu` and `memory`; the client build exists and is executable.
 
-A run, in order: `sudo nvidia-smi --lock-gpu-clocks`, `sudo nvidia-smi --lock-memory-clocks`, a background `nvidia-smi --loop-ms=500` sampler into `clocks.csv`, the client's bench in the capped scope, then **always** `sudo nvidia-smi --reset-gpu-clocks` and `--reset-memory-clocks` (after a failed lock, a failed client and Ctrl+C alike), then a 4-second uncapped bench with the sampler again, to see the clocks rise. Sudo asks for the password in the person's terminal; run it in a real terminal, since a shell without a terminal cannot prompt.
+A run, in order: `sudo -v` (the password prompt, once), `sudo nvidia-smi --lock-gpu-clocks`, `sudo nvidia-smi --lock-memory-clocks` (each lock line's output is captured and kept in `run.json`), a background `nvidia-smi --loop-ms=500` sampler into `clocks.csv`, the client's bench in the capped scope, then **always** `sudo nvidia-smi --reset-gpu-clocks` and `--reset-memory-clocks` (after a failed lock, a failed client and Ctrl+C alike), then a 4-second uncapped bench with the sampler again, to see the clocks rise. Sudo asks for the password in the person's terminal; run it in a real terminal, since a shell without a terminal cannot prompt.
 
 ## Reading the Results
 
@@ -91,11 +91,16 @@ Files in `out/standin/<time>-<target>/`: `frames.json` (the bench report with ev
 
 | Verdict | Meaning | Action |
 |---|---|---|
-| lock held | Every sample during the run was at most the locked clocks plus one 15 MHz step | The frame times are a stand-in measurement |
-| lock NOT held | A sample exceeded the lock | Discard the run; check the lock lines' output |
+| graphics and memory lock held | Every sample during the run was at most each locked clock plus one 15 MHz step | A full stand-in run: the frame times are a stand-in measurement |
+| graphics held, memory NOT held | The driver accepted the memory lock but the memory clock moved | A graphics-only run: compute imitated, memory bandwidth the card's own (optimistic); memory-clock changes may also stall frames. Read the memory lock line's output in `run.json` |
+| graphics lock NOT held | A sample exceeded the graphics lock | Not a stand-in run; read the lock lines' output |
 | reset `verified` | After the reset, both clocks rose more than 100 MHz above the lock under load | The card is back to normal |
 | reset `graphics-only` | The graphics clock rose, the memory clock was not seen above the lock | Check with `status` under load; run `reset` if needed |
 | reset `not-verified` | Neither rose | Run `npm run standin -- reset`, or reboot; locks never survive a reboot |
+
+The command exits 0 when the client ran, both reset lines succeeded, the graphics lock held and the reset was at least `graphics-only`; its last lines say whether it was a full, a graphics-only or no stand-in run.
+
+**A memory lock can be accepted and not enforced.** On 2026-10-16 an NVIDIA GTX 1660 SUPER (Turing) on driver 610.57 reported `Memory Clock Switching Type: Runtime` (`nvidia-smi -lmci`) and both lock lines exited 0, yet its memory clock moved between 405, 5000 and 7000 MHz while the graphics lock held at 645 MHz. Never assume a lock works because its command succeeded: the verdict, from the sampled clocks, is the proof.
 
 Report a stand-in result with its target, profile source, backend and adapter, and the bench summary (average fps, p95, 1% low), and always call it a stand-in measurement, not a laptop measurement.
 

@@ -2,7 +2,7 @@
 title: Rendering with three.js r186 — WebGPURenderer, the WebGL2 Fallback, Backends, Adapters and Frame Measurement
 impact: HIGH
 impactDescription: Reading the backend before init, mistaking a software renderer's numbers for performance, sizing a benchmark by the window, or importing the wrong three entry point produces wrong frame-rate claims, blank screens on machines without WebGPU, or measurements that change with the window manager.
-tags: three.js, three, r186, webgpu, webgl2, WebGPURenderer, three/webgpu, three/tsl, renderer.init, backend, isWebGPUBackend, fallback, adapter, requestAdapter, WEBGL_debug_renderer_info, swiftshader, warp, software rendering, Microsoft Basic Render Driver, llvmpipe, frame rate, fps, frame time, percentile, 1% low, bench, drawing buffer, setSize, setPixelRatio, tiling window manager, hyprland, wayland, vulkan, greybox, scene, setAnimationLoop, vsync
+tags: drawn vs shown, refresh rate, judder, memory clock switching, three.js, three, r186, webgpu, webgl2, WebGPURenderer, three/webgpu, three/tsl, renderer.init, backend, isWebGPUBackend, fallback, adapter, requestAdapter, WEBGL_debug_renderer_info, swiftshader, warp, software rendering, Microsoft Basic Render Driver, llvmpipe, frame rate, fps, frame time, percentile, 1% low, bench, drawing buffer, setSize, setPixelRatio, tiling window manager, hyprland, wayland, vulkan, greybox, scene, setAnimationLoop, vsync
 ---
 
 This rule governs how the client draws: three.js r186's `WebGPURenderer`, which uses WebGPU when the GPU and driver allow it and falls back to WebGL2 by itself, and how frame rates are measured so the numbers mean something. The scene code lives in `apps/client/src/renderer/src/`: `greybox.ts` builds the scene graph (pure three objects, testable in Node), `scene.ts` owns the renderer and the loop, `frame-stats.ts` turns frame times into a summary.
@@ -53,6 +53,12 @@ Never quote a software renderer's frame rate as performance, and never compare f
 | Report | `window.flatchat.benchReport({ backend, adapter, width, height, warmupSeconds, summary, frameTimesMs })` |
 
 Judge a target by the 1% low and p95 as well as the average: a 30 fps floor with a 1% low of 12 fps stutters.
+
+## Drawn Is Not Shown
+
+The bench counts frames **drawn**. A display shows at most its refresh rate (a 144 Hz monitor, 144 frames a second); with the cap and vsync off, the compositor shows the newest finished frame at each refresh and drops the rest, and the frames it shows come from uneven moments, so motion judders. A bench run therefore looks *less* smooth than a normal run while reporting a far larger number (measured 2026-10-16: about 1000 fps drawn on a 144 Hz screen). The bench measures what a frame costs (0.9 ms for the blank scene); judge smoothness on a normal run, which follows the display's refresh.
+
+On NVIDIA cards a change of the memory clock (for example 405 ↔ 5000 ↔ 7000 MHz between power states) stalls the GPU briefly; a run whose memory clock kept changing showed frames of 90 ms and more that runs with a steady memory clock did not. Read the clock samples next to the frame times before blaming the code for a hitch.
 
 ## Correct vs. Incorrect
 
