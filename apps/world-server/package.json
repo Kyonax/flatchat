@@ -1,0 +1,17 @@
+{
+  "name": "@flatchat/world-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's world server: one world, run headless by its host.",
+  "license": "MPL-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

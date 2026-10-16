@@ -1,0 +1,30 @@
+{
+  "name": "@flatchat/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's desktop client for Windows and Linux.",
+  "license": "MPL-2.0",
+  "author": "Kyonax",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "smoke": "electron-vite build && electron . --smoke",
+    "typecheck": "vue-tsc -p tsconfig.json",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "dist:win": "electron-vite build && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@webgpu/types": "^0.1.74",
+    "electron": "44.8.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^6.0.0",
+    "three": "^0.186.1",
+    "vite": "^8.3.4",
+    "vue": "^3.5.44",
+    "vue-tsc": "^3.3.13"
+  }
+}

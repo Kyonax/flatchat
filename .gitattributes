@@ -1,0 +1,23 @@
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ktx2 binary
+*.glb binary
+*.vrm binary
+*.vrma binary
+*.fbx binary
+*.blend binary
+*.wav binary
+*.ogg binary
+*.opus binary
+*.efk binary
+*.efkefc binary
+*.efkpkg binary
+*.ttf binary
+*.otf binary
+*.woff2 binary
+*.zip binary

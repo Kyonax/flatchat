@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: MPL-2.0
+# Every push and pull request: the layout check, lint, types and tests, then the client built,
+# packaged and smoke-tested on Linux and on Windows. GitHub's runners are free for public repositories.
+# Each job has a time limit, so a hung smoke test fails in minutes instead of GitHub's six hours.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Layout, lint, types and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - run: npm ci
+      - run: npm run check:layout
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  client-linux:
+    name: Client on Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - run: npm ci
+      - run: npm run dist:linux -w @flatchat/client
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # The runner has no GPU, and Chromium no longer falls back to SwiftShader for WebGL by itself.
+      - name: Smoke test on a virtual display
+        run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --smoke --enable-unsafe-swiftshader --smoke-out=smoke-linux.json
+      - run: cat smoke-linux.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-linux
+          path: apps/client/release/linux-unpacked
+          retention-days: 7
+
+  client-windows:
+    name: Client on Windows
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - run: npm ci
+      - run: npm run dist:win -w @flatchat/client
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $app = Start-Process apps/client/release/win-unpacked/FlatChat.exe -ArgumentList '--smoke', '--smoke-out=smoke-windows.json' -PassThru -Wait
+          Get-Content smoke-windows.json
+          exit $app.ExitCode
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-windows
+          path: apps/client/release/*.zip
+          retention-days: 7

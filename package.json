@@ -1,0 +1,40 @@
+{
+  "name": "flatchat",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat (codename): a social world platform like VRChat or Second Life, played on a flat screen.",
+  "license": "SEE LICENSE IN LICENSING.md",
+  "author": "Kyonax",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kyonax/flatchat.git"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check:layout": "node tools/repo/check-layout.mjs",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "client": "npm run dev -w @flatchat/client",
+    "client:smoke": "npm run smoke -w @flatchat/client",
+    "server": "npm run start -w @flatchat/world-server --"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-vue": "^10.11.1",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5",
+    "vue-eslint-parser": "^10.4.1"
+  }
+}

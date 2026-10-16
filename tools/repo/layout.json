@@ -1,0 +1,73 @@
+{
+  "codename": "FlatChat",
+  "requiredFiles": [
+    "README.md",
+    "README.es.md",
+    "LICENSE",
+    "LICENSING.md",
+    "CONTRIBUTING.md",
+    "CREDITS.md",
+    "package.json"
+  ],
+  "topLevelFolders": [
+    "apps",
+    "packages",
+    "tools",
+    "kits",
+    "docs"
+  ],
+  "requiredFolders": [
+    "tools/repo",
+    "docs/spikes"
+  ],
+  "defaultLicence": "MPL-2.0",
+  "folders": {
+    "apps/client": "MPL-2.0",
+    "apps/world-server": "MPL-2.0",
+    "apps/core": "AGPL-3.0-or-later",
+    "packages/protocol": "Apache-2.0",
+    "packages/sim": "Apache-2.0",
+    "packages/content": "Apache-2.0",
+    "packages/plugin-sdk": "Apache-2.0",
+    "tools/converter": "MPL-2.0",
+    "tools/host-tool": "MPL-2.0",
+    "tools/bots": "MPL-2.0",
+    "tools/blender": "GPL-3.0-or-later",
+    "kits": "CC-BY-4.0",
+    "docs": "CC-BY-4.0"
+  },
+  "sourceExtensions": [
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".vue",
+    ".py",
+    ".sh",
+    ".css",
+    ".scss",
+    ".html",
+    ".glsl",
+    ".wgsl",
+    ".cs",
+    ".gd"
+  ],
+  "skipFolders": [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "release",
+    "coverage",
+    ".cache",
+    "third_party",
+    ".godot",
+    "bin",
+    "obj"
+  ]
+}

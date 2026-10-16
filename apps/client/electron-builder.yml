@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MPL-2.0
+# Packages the built client (out/) for Linux and Windows. Windows builds from Linux as a zip:
+# signing and editing the executable's resources need Wine and wait for the release builds.
+appId: com.kyonax.flatchat
+productName: FlatChat
+electronVersion: 44.8.0
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+asar: true
+linux:
+  target: dir
+  executableName: flatchat
+  category: Game
+win:
+  target: zip
+  signAndEditExecutable: false
