@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('flatchat', {
     node: process.versions['node'],
   },
   smokeReport: (report: unknown): Promise<void> => ipcRenderer.invoke('flatchat:smoke-report', report),
+  benchReport: (report: unknown): Promise<void> => ipcRenderer.invoke('flatchat:bench-report', report),
 });

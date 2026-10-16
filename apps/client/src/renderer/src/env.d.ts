@@ -11,6 +11,7 @@ declare module '*.vue' {
 interface FlatchatBridge {
   versions: { electron: string; chrome: string; node: string };
   smokeReport(report: unknown): Promise<void>;
+  benchReport(report: unknown): Promise<void>;
 }
 
 interface Window {

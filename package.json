@@ -19,12 +19,15 @@
   },
   "scripts": {
     "check:layout": "node tools/repo/check-layout.mjs",
+    "harness": "node tools/harness/src/check.ts",
+    "lint:traps": "node tools/harness/src/trap-lint.ts",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "client": "npm run dev -w @flatchat/client",
     "client:smoke": "npm run smoke -w @flatchat/client",
-    "server": "npm run start -w @flatchat/world-server --"
+    "server": "npm run start -w @flatchat/world-server --",
+    "standin": "node tools/harness/src/standin.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -35,6 +38,7 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.5",
-    "vue-eslint-parser": "^10.4.1"
+    "vue-eslint-parser": "^10.4.1",
+    "yaml": "^2.9.1"
   }
 }

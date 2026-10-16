@@ -11,6 +11,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "smoke": "electron-vite build && electron . --smoke",
+    "bench": "electron-vite build && electron . --bench=10 --bench-out=out/bench.json",
+    "test": "vitest run",
     "typecheck": "vue-tsc -p tsconfig.json",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "dist:win": "electron-vite build && electron-builder --win --x64"

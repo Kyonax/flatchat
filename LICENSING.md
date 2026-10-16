@@ -10,6 +10,7 @@ FlatChat is open source. Each folder has its own licence, chosen for its role. E
 | `tools/converter` | Mozilla Public License 2.0 | `MPL-2.0` |
 | `tools/host-tool` | Mozilla Public License 2.0 | `MPL-2.0` |
 | `tools/bots` | Mozilla Public License 2.0 | `MPL-2.0` |
+| `tools/harness` | Mozilla Public License 2.0 | `MPL-2.0` |
 | `packages/protocol` | Apache License 2.0 | `Apache-2.0` |
 | `packages/sim` | Apache License 2.0 | `Apache-2.0` |
 | `packages/content` | Apache License 2.0 | `Apache-2.0` |

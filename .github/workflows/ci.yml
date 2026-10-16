@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
-# Every push and pull request: the layout check, lint, types and tests, then the client built,
-# packaged and smoke-tested on Linux and on Windows. GitHub's runners are free for public repositories.
+# Every push and pull request: the harness (the layout check, the agent-skill check, the trap linter,
+# lint, types, tests and a headless world server), then the client built, packaged and smoke-tested
+# on Linux and on Windows. GitHub's runners are free for public repositories.
 # Each job has a time limit, so a hung smoke test fails in minutes instead of GitHub's six hours.
 name: CI
 
@@ -17,7 +18,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Layout, lint, types and tests
+    name: Harness
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -27,10 +28,7 @@ jobs:
           node-version-file: .tool-versions
           cache: npm
       - run: npm ci
-      - run: npm run check:layout
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
+      - run: npm run harness
 
   client-linux:
     name: Client on Linux
@@ -50,6 +48,14 @@ jobs:
       - name: Smoke test on a virtual display
         run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --smoke --enable-unsafe-swiftshader --smoke-out=smoke-linux.json
       - run: cat smoke-linux.json
+      # The same build with no way to draw must fail its smoke test, or a blank client could pass.
+      - name: Smoke test fails when nothing can draw
+        run: |
+          if xvfb-run -a apps/client/release/linux-unpacked/flatchat --smoke --disable-gpu --smoke-out=smoke-nodraw.json; then
+            echo "::error::the smoke test passed although nothing could draw"
+            exit 1
+          fi
+          cat smoke-nodraw.json || true
       - uses: actions/upload-artifact@v7
         with:
           name: client-linux

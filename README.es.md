@@ -37,6 +37,7 @@ Después, el MVP etapa por etapa: el núcleo en greybox (cuentas, el mundo del c
 | `tools/bots` | Clientes sin interfaz que hablan el protocolo real, para pruebas de carga |
 | `tools/blender` | El script puente con Blender |
 | `tools/repo` | Comprobaciones de este repositorio |
+| `tools/harness` | Todas las comprobaciones sin pantalla en un solo comando, el linter de trampas y el sustituto de portátil débil |
 | `kits` | Los tres kits de cuerpos y la biblioteca base |
 | `docs` | El formato de mundo, la API de plugins, los informes de las pruebas y las páginas de ayuda |
 
@@ -49,7 +50,7 @@ Cada carpeta tiene su propia licencia, elegida según su papel ([LICENSING.md](L
 | Carpeta | Licencia |
 |---|---|
 | `apps/core` | AGPL-3.0-or-later |
-| `apps/client`, `apps/world-server`, `tools/converter`, `tools/host-tool`, `tools/bots` | MPL-2.0 |
+| `apps/client`, `apps/world-server`, `tools/converter`, `tools/host-tool`, `tools/bots`, `tools/harness` | MPL-2.0 |
 | `packages/*` | Apache-2.0 |
 | `tools/blender` | GPL-3.0-or-later |
 | `kits`, `docs` | CC BY 4.0 |
@@ -71,12 +72,18 @@ npm run lint           # ESLint con las reglas de TypeScript y Vue
 npm run typecheck      # TypeScript en todos los espacios de trabajo
 npm run check:layout   # la estructura de carpetas, los archivos de licencia y las cabeceras SPDX
 npm run client:smoke   # compila el cliente, dibuja 3 s, imprime su backend gráfico y sus cuadros por segundo, y sale
+npm run harness        # todo lo anterior que no necesita pantalla, más el linter de trampas, la revisión de la skill de agentes y un servidor de mundo sin interfaz
+npm run lint:traps     # solo el linter de trampas: los errores de seguridad y de configuración que este proyecto ya encontró
 ```
 
 El servidor de mundo acepta `--port` (0 elige uno libre), `--tick-hz` y `--ticks` (se detiene tras ese número de ticks), por ejemplo `npm run server -- --port 0 --ticks 100`.
 
 Para empaquetar el cliente: `npm run dist:linux -w @flatchat/client` arma una carpeta sin empaquetar para Linux, y `npm run dist:win -w @flatchat/client` arma un zip para Windows desde Linux, sin Wine. Ambos quedan en `apps/client/release/`.
 
-Cada push y cada pull request corre estas comprobaciones en GitHub Actions, y luego compila el cliente para Linux y Windows y le hace una prueba rápida en ambos ([ci.yml](.github/workflows/ci.yml)).
+Para medir el cliente en un sustituto de portátil débil (una tarjeta NVIDIA bloqueada a relojes de clase Iris Xe y el cliente limitado a cuatro núcleos), `npm run standin -- plan --target iris-xe` imprime cada comando que correría; `run` los corre, pide sudo solo para las líneas de los relojes y siempre deja la tarjeta como estaba. Lee un perfil escrito para la máquina, descrito en [tools/harness](tools/harness/README.md).
+
+Los agentes de programación con IA empiezan por [AGENTS.md](AGENTS.md).
+
+Cada push y cada pull request corre el arnés en GitHub Actions, y luego compila el cliente para Linux y Windows y le hace una prueba rápida en ambos ([ci.yml](.github/workflows/ci.yml)).
 
 Lee [CONTRIBUTING.md](CONTRIBUTING.md) antes de abrir un pull request.

@@ -7,5 +7,5 @@
     "types": ["node", "@webgpu/types"],
     "jsx": "preserve"
   },
-  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.vue"]
+  "include": ["electron.vite.config.ts", "src/**/*.ts", "src/**/*.vue", "test/**/*.ts"]
 }

@@ -1,0 +1,16 @@
+{
+  "name": "@flatchat/harness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's harness: the headless checks, the trap linter, the agent-skill check and the weak-laptop stand-in.",
+  "license": "MPL-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

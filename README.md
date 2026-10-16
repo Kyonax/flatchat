@@ -37,6 +37,7 @@ Then the MVP, stage by stage: the core greybox (accounts, the creator's world, j
 | `tools/bots` | Headless clients that speak the real protocol, for load tests |
 | `tools/blender` | The Blender bridge script |
 | `tools/repo` | Checks for this repository |
+| `tools/harness` | Every headless check in one command, the trap linter and the weak-laptop stand-in |
 | `kits` | The three body kits and the base library |
 | `docs` | The world format, the plugin API, spike reports and help pages |
 
@@ -49,7 +50,7 @@ Each folder has its own licence, chosen for its role ([LICENSING.md](LICENSING.m
 | Folder | Licence |
 |---|---|
 | `apps/core` | AGPL-3.0-or-later |
-| `apps/client`, `apps/world-server`, `tools/converter`, `tools/host-tool`, `tools/bots` | MPL-2.0 |
+| `apps/client`, `apps/world-server`, `tools/converter`, `tools/host-tool`, `tools/bots`, `tools/harness` | MPL-2.0 |
 | `packages/*` | Apache-2.0 |
 | `tools/blender` | GPL-3.0-or-later |
 | `kits`, `docs` | CC BY 4.0 |
@@ -71,12 +72,18 @@ npm run lint           # ESLint with the TypeScript and Vue rules
 npm run typecheck      # TypeScript in every workspace
 npm run check:layout   # the folder layout, licence files and SPDX headers
 npm run client:smoke   # builds the client, draws for 3 s, prints its graphics backend and frame rate, quits
+npm run harness        # every check above that needs no display, plus the trap linter, the agent-skill check and a headless world server
+npm run lint:traps     # only the trap linter: the security and setup mistakes this project has met
 ```
 
 The world server takes `--port` (0 picks a free one), `--tick-hz` and `--ticks` (stop after that many ticks), for example `npm run server -- --port 0 --ticks 100`.
 
 To package the client: `npm run dist:linux -w @flatchat/client` builds an unpacked Linux folder, and `npm run dist:win -w @flatchat/client` builds a Windows zip on Linux, without Wine. Both land in `apps/client/release/`.
 
-Every push and pull request runs these checks on GitHub Actions, then builds the client for Linux and Windows and smoke-tests both ([ci.yml](.github/workflows/ci.yml)).
+To measure the client on a weak-laptop stand-in (an NVIDIA card locked to Iris Xe-class clocks, the client held to four cores), `npm run standin -- plan --target iris-xe` prints every command it would run; `run` runs them, asking sudo only for the clock lines, and always puts the card back. It reads a profile written for the machine, described in [tools/harness](tools/harness/README.md).
+
+AI coding agents start from [AGENTS.md](AGENTS.md).
+
+Every push and pull request runs the harness on GitHub Actions, then builds the client for Linux and Windows and smoke-tests both ([ci.yml](.github/workflows/ci.yml)).
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.

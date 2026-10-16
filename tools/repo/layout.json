@@ -32,6 +32,7 @@
     "tools/converter": "MPL-2.0",
     "tools/host-tool": "MPL-2.0",
     "tools/bots": "MPL-2.0",
+    "tools/harness": "MPL-2.0",
     "tools/blender": "GPL-3.0-or-later",
     "kits": "CC-BY-4.0",
     "docs": "CC-BY-4.0"
