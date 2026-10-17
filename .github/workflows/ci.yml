@@ -36,6 +36,33 @@ jobs:
       - name: Bots, 10 for 2 minutes on each transport
         run: npm run bots -- smoke --bots 10 --seconds 120
 
+  host-tool:
+    name: Host tool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - run: npm ci
+      # S2.02: the package a host downloads (with Node.js), then the container image, which checks a world inside it.
+      - run: node tools/host-tool/scripts/pack.ts --out release/host
+      - name: The package works with no Node.js on the path
+        run: |
+          mkdir fresh && tar -xzf release/host/flatchat-host-*-linux-x64.tar.gz -C fresh
+          env -i HOME="$PWD/fresh" PATH=/usr/bin:/bin fresh/flatchat-host-*/bin/flatchat-host new fresh/w
+          env -i HOME="$PWD/fresh" PATH=/usr/bin:/bin fresh/flatchat-host-*/bin/flatchat-host build fresh/w
+      - run: node tools/host-tool/scripts/pack.ts --no-node --out release/image
+      - run: docker build -t flatchat-host -f tools/host-tool/Dockerfile release/image/flatchat-host-*-linux-x64
+      - run: docker run --rm flatchat-host check /flatchat/kits/worlds/plaza
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatchat-host-linux
+          path: release/host/flatchat-host-*-linux-x64.tar.gz
+          retention-days: 30
+
   client-linux:
     name: Client on Linux
     runs-on: ubuntu-24.04
