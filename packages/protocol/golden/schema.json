@@ -1,6 +1,6 @@
 {
-  "protocol": 1,
-  "fingerprint": "5af998cf",
+  "protocol": 2,
+  "fingerprint": "3ff4d993",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -717,6 +717,131 @@
                     }
                   ]
                 }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "content",
+        "id": 64,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "world",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            },
+            {
+              "name": "size",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "fetch",
+        "id": 65,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            },
+            {
+              "name": "from",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "chunk",
+        "id": 66,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            },
+            {
+              "name": "offset",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "total",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "data",
+              "type": {
+                "kind": "bytes",
+                "maxBytes": 16384
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "unfetch",
+        "id": 67,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "notFound",
+        "id": 68,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
               }
             }
           ]

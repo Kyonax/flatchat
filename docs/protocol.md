@@ -1,4 +1,4 @@
-# The FlatChat protocol, version 1
+# The FlatChat protocol, version 2
 
 How FlatChat's programs talk: the client, the world server, the bots and the core. This page is the specification; the reference implementation is [`packages/protocol`](../packages/protocol) (TypeScript, Apache-2.0), the machine-readable schema is [`golden/schema.json`](../packages/protocol/golden/schema.json), and the golden packets in the same folder pin every byte. Version 0 was the first, built in Stage 0 (S0.06) and measured with 200 bots in spike S0.07. Version 1 (spike S0.08) gives every voice frame a `start` bit and makes its `seq` count 20 ms slots: see [Versions](#versions).
 
@@ -87,6 +87,13 @@ A world server may send **several snapshots for one tick**, each kept to about o
 | `chat` | 0x21 | server | reliable | from, text | A chat line to show: from an entity, or from the world when `from` is absent; always shown as text, never as HTML |
 | `voice` | 0x30 | client | unreliable | seq, start, mouth, opus | One 20 ms Opus frame (255 bytes at most) and the mouth shapes that go with it; `seq` counts 20 ms slots, the silent ones too, and `start` marks the first frame after silence |
 | `voiceBundle` | 0x31 | server | unreliable | frames | Up to 16 speakers' frames for one listener and one 20 ms step, each with the speaker's entity number, its `seq` and `start` as sent |
+| `content` | 0x40 | server | reliable | world, size | The world's built content: the SHA-256 of its `world.json` (32 bytes) and that file's size; sent after `welcome` |
+| `fetch` | 0x41 | client | reliable | hash, from | Asks for one file by its SHA-256, from a byte offset (0, or where a lost connection stopped) |
+| `chunk` | 0x42 | server | reliable | hash, offset, total, data | Up to 16,384 bytes of a file, at `offset`, of `total`; the server paces them so content never starves the game |
+| `unfetch` | 0x43 | client | reliable | hash | Stops a fetch (the player left, or found the file elsewhere) |
+| `notFound` | 0x44 | server | reliable | hash | The server does not have that file |
+
+A world's content travels over the world connection itself (S2.04): no second port, no web server, no certificate for the host. The client checks every file's SHA-256 before it uses it, keeps it in a cache by hash (a file shared by two worlds downloads once), and reads `world.json` (the built world: [world-format.md](world-format.md) and `packages/content`) as untrusted data.
 
 The mouth shapes are the five VRM visemes `aa`, `ih`, `ou`, `ee`, `oh` and the `level` (loudness), each 0 to 15: three bytes per frame, so lips move with the voice.
 
@@ -163,3 +170,4 @@ The golden writer refuses step 3 without step 2, the tests fail while the golden
 |---|---|
 | 0 | The first: thirteen messages, the connect token, the version handshake (S0.06) |
 | 1 | `voice` and each `voiceBundle` frame gain `start`, and their `seq` counts 20 ms slots including silence: a voice gate that closes and reopens within a moment left gaps the listener could not see, and frames after them played late or were concealed (S0.08, measured with real speech) |
+| 2 | `content`, `fetch`, `chunk`, `unfetch` and `notFound`: worlds download over the world connection (S2.04) |

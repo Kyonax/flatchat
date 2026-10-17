@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -160,6 +160,14 @@ export const MESSAGES = {
     channel: 'unreliable',
     body: struct({ frames: list(struct({ from: u16, seq: u16, start: bool, mouth, opus: bytes(255) }), 16) }),
   },
+  // World content (version 2, S2.04): the server names its built world by the SHA-256 of its
+  // world.json; the client fetches what its cache lacks, file by file, from any offset (resuming
+  // after a lost connection), and checks each file's hash before using it.
+  content: { id: 0x40, from: 'server', channel: 'reliable', body: struct({ world: fixedBytes(32), size: u32 }) },
+  fetch: { id: 0x41, from: 'client', channel: 'reliable', body: struct({ hash: fixedBytes(32), from: u32 }) },
+  chunk: { id: 0x42, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32), offset: u32, total: u32, data: bytes(16_384) }) },
+  unfetch: { id: 0x43, from: 'client', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
+  notFound: { id: 0x44, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
 } as const satisfies Record<string, MessageDef>;
 
 /** The connect token's format version, written as its first byte. */

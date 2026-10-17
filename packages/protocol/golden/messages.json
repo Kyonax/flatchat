@@ -260,6 +260,60 @@
         "frames": []
       },
       "hex": "3100"
+    },
+    {
+      "name": "content",
+      "value": {
+        "type": "content",
+        "world": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "size": 4096
+      },
+      "hex": "409f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00100000"
+    },
+    {
+      "name": "fetch",
+      "value": {
+        "type": "fetch",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "from": 0
+      },
+      "hex": "419f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00000000"
+    },
+    {
+      "name": "fetch-resume",
+      "value": {
+        "type": "fetch",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "from": 65536
+      },
+      "hex": "419f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00000100"
+    },
+    {
+      "name": "chunk",
+      "value": {
+        "type": "chunk",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "offset": 16384,
+        "total": 40000,
+        "data": "0001020304fffefd"
+      },
+      "hex": "429f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00400000409c0000080001020304fffefd"
+    },
+    {
+      "name": "unfetch",
+      "value": {
+        "type": "unfetch",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+      },
+      "hex": "439f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+    },
+    {
+      "name": "not-found",
+      "value": {
+        "type": "notFound",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+      },
+      "hex": "449f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
     }
   ]
 }
