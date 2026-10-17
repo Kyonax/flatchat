@@ -2,13 +2,16 @@
 // The core's HTTP service (DR-05): the sign-in and sign-up pages, and the JSON API the client uses.
 // Built as a function so tests run every route in-process (Fastify's inject) against a real
 // PostgreSQL database, and main.ts only adds the socket, the migrations and the signals.
+import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import type { AgePolicy } from './age.ts';
 import type { Db } from './db.ts';
+import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
+import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
 import { CSS, messagePage, PAGE_POLICY, privacyPage, signinPage, signupPage, type SignupValues } from './pages.ts';
-import { type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
+import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
 import {
   authenticate,
   completeLoginRequest,
@@ -42,6 +45,8 @@ export interface CoreOptions {
   behindTunnel?: boolean;
   /** One JSON line per request (method, route, status, time); never a query, a body or a token. */
   log?: (event: string, fields: Record<string, unknown>) => void;
+  /** STUN and TURN for players and worlds (S1.13); STUN only by default. */
+  ice?: IceConfig;
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -80,7 +85,10 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     refreshByAddress: new RateLimiter(LIMITS.refreshByAddress),
     joinByAccount: new RateLimiter(LIMITS.joinByAccount),
     apiByAddress: new RateLimiter(LIMITS.apiByAddress),
+    hostByAddress: new RateLimiter(LIMITS.hostByAddress),
   };
+  const hosts = new HostRegistry();
+  const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   const app = Fastify({
     logger: false,
@@ -88,6 +96,9 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     trustProxy: o.behindTunnel ? ['127.0.0.1', '::1'] : false,
     routerOptions: { ignoreTrailingSlash: true },
   });
+
+  await app.register(websocket, { options: { maxPayload: 256 * 1024 } });
+  app.addHook('onClose', async () => hosts.closeAll());
 
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
     done(null, Object.fromEntries(new URLSearchParams(body as string)));
@@ -342,10 +353,54 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const who = await bearer(req, reply);
     if (!who) return reply;
     if (limited(limits.joinByAccount, who.accountId, reply)) return reply;
-    const result = await connectToken(o.db, sealing, who.accountId, (req.params as { id: string }).id, now());
+    const worldId = (req.params as { id: string }).id;
+    const result = await connectToken(o.db, sealing, who.accountId, worldId, now());
     if (!result.ok) return sendProblem(reply, problem(result.problem === 'no-world' ? 404 : 403, result.problem, 'this world cannot be joined now'));
     const sealed = Buffer.from(result.token).toString('base64url');
-    return { token: sealed, address: result.address, expiresAt: result.expiresAt };
+    // A world hosted from home takes its offers through the core (S1.13).
+    const address = result.address === 'relay' ? `${publicUrl}/api/v1/worlds/${worldId}/signal` : result.address;
+    return { token: sealed, address, expiresAt: result.expiresAt, iceServers: await ice.for(who.accountId, now(), 3600) };
+  });
+
+  // ------------------------------------------------------------- hosting from home (S1.13)
+
+  // A world's host channel: an outbound WebSocket from the world server, which proves it holds the
+  // world's key and then answers the offers relayed below.
+  app.get('/api/v1/worlds/:id/host', { websocket: true }, (socket, req) => {
+    const worldId = (req.params as { id: string }).id;
+    if (!limits.hostByAddress.take(req.ip, now().getTime()) || !String(req.headers['sec-websocket-protocol'] ?? '').includes(HOST_PROTOCOL)) {
+      socket.close(4029, 'refused');
+      return;
+    }
+    hosts.accept(
+      worldId,
+      socket,
+      async () => {
+        const w = /^[0-9a-f-]{36}$/i.test(worldId) ? (await o.db.query<{ status: string; key_sealed: Buffer | null }>('select status, key_sealed from worlds where id = $1', [worldId]))[0] : undefined;
+        return w?.status === 'approved' && w.key_sealed ? openWorldKey(sealing, worldId, w.key_sealed) : undefined;
+      },
+      async (send) => {
+        o.log?.('host-online', { world: worldId });
+        send({ type: 'ice', iceServers: await ice.for(`world-${worldId}`, now(), 86_400) });
+      },
+    );
+  });
+
+  app.post('/api/v1/worlds/:id/signal', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (limited(limits.joinByAccount, who.accountId, reply)) return reply;
+    const worldId = (req.params as { id: string }).id;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (b['type'] !== 'offer' || typeof b['sdp'] !== 'string' || b['sdp'].length > 64 * 1024) return sendProblem(reply, problem(400, 'bad-offer', 'an offer is { type: "offer", sdp }'));
+    const w = await worldById(o.db, worldId);
+    if (!w || w.status !== 'approved' || w.address !== 'relay') return sendProblem(reply, problem(404, 'no-world', 'no such world takes offers here'));
+    try {
+      return { type: 'answer', sdp: await hosts.relay(worldId, b['sdp']) };
+    } catch (err) {
+      const code = err instanceof RelayError ? err.code : 'world-error';
+      return sendProblem(reply, problem(code === 'world-timeout' ? 504 : 503, code, 'the world cannot be reached right now'));
+    }
   });
 
   return app;

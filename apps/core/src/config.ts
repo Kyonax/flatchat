@@ -9,6 +9,11 @@
 //   FLATCHAT_CORE_OPERATOR  who runs it, for the privacy notice
 //   FLATCHAT_CORE_CONTACT   how to reach them about privacy (an email address or a page)
 //   FLATCHAT_CORE_TUNNEL    1 behind a Cloudflare Tunnel (the client's address from the forwarded header)
+//   FLATCHAT_CORE_STUN      STUN URLs, comma-separated (default stun:stun.cloudflare.com:3478; "none" for none)
+//   FLATCHAT_CORE_TURN_URLS and FLATCHAT_CORE_TURN_SECRET   coturn with use-auth-secret ("the relay we run")
+//   FLATCHAT_CORE_CF_TURN_KEY and FLATCHAT_CORE_CF_TURN_TOKEN   Cloudflare Realtime TURN
+
+import { DEFAULT_STUN, type IceConfig } from './ice.ts';
 
 export interface CoreEnv {
   db: string;
@@ -17,7 +22,10 @@ export interface CoreEnv {
   operator: string;
   contact: string;
   behindTunnel: boolean;
+  ice: IceConfig;
 }
+
+const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 export class ConfigError extends Error {}
 
@@ -43,5 +51,11 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     operator: env['FLATCHAT_CORE_OPERATOR'] ?? 'The operator of this FlatChat core',
     contact: env['FLATCHAT_CORE_CONTACT'] ?? 'the contact address published by the operator',
     behindTunnel: env['FLATCHAT_CORE_TUNNEL'] === '1',
+    ice: {
+      stun: env['FLATCHAT_CORE_STUN'] === 'none' ? [] : env['FLATCHAT_CORE_STUN'] ? list(env['FLATCHAT_CORE_STUN']) : DEFAULT_STUN,
+      turnUrls: list(env['FLATCHAT_CORE_TURN_URLS']),
+      ...(env['FLATCHAT_CORE_TURN_SECRET'] ? { turnSecret: env['FLATCHAT_CORE_TURN_SECRET'] } : {}),
+      ...(env['FLATCHAT_CORE_CF_TURN_KEY'] && env['FLATCHAT_CORE_CF_TURN_TOKEN'] ? { cloudflare: { keyId: env['FLATCHAT_CORE_CF_TURN_KEY'], token: env['FLATCHAT_CORE_CF_TURN_TOKEN'] } } : {}),
+    },
   };
 }

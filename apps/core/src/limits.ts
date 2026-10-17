@@ -72,6 +72,8 @@ export const LIMITS = {
   refreshByAddress: { burst: 60, everyMs: 1_000 },
   /** Connect tokens per account. */
   joinByAccount: { burst: 30, everyMs: 2_000 },
+  /** World host connections per address. */
+  hostByAddress: { burst: 10, everyMs: 6_000 },
   /** Any other API call per address. */
   apiByAddress: { burst: 120, everyMs: 250 },
 } satisfies Record<string, LimitSpec>;

@@ -14,6 +14,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@fastify/websocket": "11.3.4",
     "@flatchat/protocol": "*",
     "fastify": "5.12.7",
     "pg": "8.23.1"

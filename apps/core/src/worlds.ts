@@ -50,9 +50,11 @@ export function cleanWorldName(name: string): string | undefined {
   return n;
 }
 
-/** Where clients reach the world: its WebRTC signalling URL. https anywhere, http on a private
- *  or loopback address (tests and a LAN). */
+/** Where clients reach the world: `relay` (offers go through the core: a world on a home PC,
+ *  S1.13), or its own WebRTC signalling URL, https anywhere or http on a private or loopback
+ *  address (tests and a LAN). */
 export function cleanAddress(address: string): string | undefined {
+  if (address.trim() === 'relay') return 'relay';
   let url: URL;
   try {
     url = new URL(address.trim());
