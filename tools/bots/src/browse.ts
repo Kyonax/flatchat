@@ -10,7 +10,7 @@
 //   node tools/bots/src/browse.ts [--recommended 4] [--capacity 6] [--keep]
 //
 // One JSON line: { event: 'browse', ok, steps } ; exit 0 when every check passed.
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util';
 import { fromHex } from '@flatchat/protocol';
 import { Bot } from './bot.ts';
 import { DEFAULT_BRAIN } from './brain.ts';
-import { children, freePort, run, start, stop, waitFor } from './procs.ts';
+import { children, freePort, run, signUpAndIn, start, stop, waitFor } from './procs.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
@@ -38,7 +38,6 @@ if (!Number.isInteger(recommended) || !Number.isInteger(capacity) || recommended
 const steps: Record<string, unknown> = {};
 const counts: Array<{ players: number; listed: boolean; expected: boolean }> = [];
 const say = (event: string, fields: Record<string, unknown>): void => void process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
-const json = { 'content-type': 'application/json' };
 
 const dir = mkdtempSync(join(tmpdir(), 'fcbrowse-'));
 const bots: Bot[] = [];
@@ -54,19 +53,8 @@ try {
   const core = await start([process.execPath, join(CORE, 'src', 'main.ts'), '--port', String(corePort), '--stop-on-stdin'], coreEnv, 'ready');
   const admin = (...args: string[]): Promise<string> => run([process.execPath, join(CORE, 'src', 'admin.ts'), ...args], coreEnv);
   const invite = (await admin('invite', '--email', EMAIL, '--note', 'browse')).match(/invite=(\S+)/)?.[1];
-  const signup = await fetch(`${coreUrl}/signup?lang=en`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ invitation: invite ?? '', email: EMAIL, password: PASSWORD, displayName: 'Browser', birthMonth: '4', birthYear: '1994', country: 'CO', consent: 'yes' }),
-  });
-  if (signup.status !== 201) throw new Error(`sign-up answered ${signup.status}`);
-  const verifier = randomBytes(48).toString('base64url');
-  const lr = (await (await fetch(`${coreUrl}/api/v1/login-requests`, { method: 'POST', headers: json, body: JSON.stringify({ challenge: createHash('sha256').update(verifier).digest('base64url'), port: 50_000 }) })).json()) as { request: string };
-  const posted = await fetch(`${coreUrl}/signin?lang=en`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ request: lr.request, email: EMAIL, password: PASSWORD }), redirect: 'manual' });
-  const code = new URL(posted.headers.get('location') ?? 'http://x/').searchParams.get('code') ?? '';
-  const session = (await (await fetch(`${coreUrl}/api/v1/sessions`, { method: 'POST', headers: json, body: JSON.stringify({ request: lr.request, code, verifier }) })).json()) as { access?: string };
-  if (!session.access) throw new Error('no session');
-  const bearer = { authorization: `Bearer ${session.access}` };
+  const access = await signUpAndIn(coreUrl, invite ?? '', EMAIL, PASSWORD, 'Browser');
+  const bearer = { authorization: `Bearer ${access}` };
   steps['signedIn'] = true;
 
   // 2. A world, approved for `capacity` players, reporting to the core over its host channel.

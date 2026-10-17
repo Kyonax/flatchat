@@ -4,12 +4,15 @@
 // a plaza hosted the way a home PC hosts it (its WebRTC offers relayed by the core over the world's
 // own WebSocket, S1.13; the plaza converted from kits/worlds/plaza and downloaded by the client
 // over its connection, S2.03 and S2.04; each plaza with a portal to the other, S2.11), and the
-// packaged client driven by Playwright. The test plays the system browser over HTTP
+// packaged client driven by Playwright. With --relay the client runs --relay-only, as a player behind
+// a NAT that lets nothing through but a TURN relay (S2.12): its first join must fail while no relay
+// runs, then coturn starts ("the relay we run", with the core's shared-secret credentials) and the
+// same join goes through it. --relay needs coturn's turnserver on the PATH. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
 // client's loopback port); everything else is the client's own: the world browser, joining, the
 // microphone question, walking, chat, and walking through the portal into the second world. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
-//   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--keep]
+//   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--relay] [--keep]
 //
 // One JSON line: { event: 'e2e', ok, steps, server } ; exit 0 when every step passed.
 import { randomBytes } from 'node:crypto';
@@ -18,7 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { _electron as electron } from 'playwright-core';
-import { children, freePort, run, start, stop, waitFor } from './procs.ts';
+import { children, freePort, run, start, startTurn, stop, waitFor } from './procs.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
@@ -27,7 +30,10 @@ const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts'
 const EMAIL = 'e2e@example.org';
 const PASSWORD = 'an end-to-end password';
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { shot: { type: 'string' }, shots: { type: 'string' }, keep: { type: 'boolean', default: false } } });
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { shot: { type: 'string' }, shots: { type: 'string' }, relay: { type: 'boolean', default: false }, keep: { type: 'boolean', default: false } },
+});
 const client = positionals[0];
 if (!client) {
   process.stderr.write('usage: node tools/bots/src/e2e.ts -- CLIENT [--shot FILE]\n');
@@ -46,8 +52,17 @@ try {
   if (!db) throw new Error('no database');
   const corePort = await freePort();
   const coreUrl = `http://127.0.0.1:${corePort}`;
-  // No STUN: the test stays on this machine.
-  const coreEnv = { FLATCHAT_CORE_DB: db, FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'), FLATCHAT_CORE_URL: coreUrl, FLATCHAT_CORE_STUN: 'none' };
+  // No STUN: the test stays on this machine. With --relay the core hands out credentials for a
+  // TURN server that is not running yet.
+  const turnPort = await freePort();
+  const turnSecret = randomBytes(24).toString('hex');
+  const coreEnv = {
+    FLATCHAT_CORE_DB: db,
+    FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'),
+    FLATCHAT_CORE_URL: coreUrl,
+    FLATCHAT_CORE_STUN: 'none',
+    ...(values.relay ? { FLATCHAT_CORE_TURN_URLS: `turn:127.0.0.1:${turnPort}?transport=udp`, FLATCHAT_CORE_TURN_SECRET: turnSecret } : {}),
+  };
   const core = await start([process.execPath, join(CORE, 'src', 'main.ts'), '--port', String(corePort), '--stop-on-stdin'], coreEnv, 'ready');
   const admin = (...args: string[]): Promise<string> => run([process.execPath, join(CORE, 'src', 'admin.ts'), ...args], coreEnv);
   const invite = (await admin('invite', '--email', EMAIL, '--note', 'e2e')).match(/invite=(\S+)/)?.[1];
@@ -91,7 +106,7 @@ try {
   // 3. The client, with its own empty profile; the system browser is replaced by this test.
   const app = await electron.launch({
     executablePath: client,
-    args: [`--core=${coreUrl}`, ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
+    args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
     env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config') },
     timeout: 60_000,
   });
@@ -127,6 +142,15 @@ try {
     const joinPlaza = page.locator(`[data-test=public] [data-world="${plaza.id}"] [data-test=join]`);
     await joinPlaza.waitFor({ timeout: 20_000 });
     await snap('0-home');
+    if (values.relay) {
+      // Relay only, and no relay yet: the join cannot reach the world.
+      await joinPlaza.click({ timeout: 20_000 });
+      await page.locator('[data-test=world-back]').waitFor({ timeout: 45_000 });
+      steps['withoutRelay'] = 'no connection';
+      await page.locator('[data-test=world-back]').click();
+      await startTurn(turnPort, turnSecret, dir);
+      steps['relay'] = 'coturn running';
+    }
     await joinPlaza.click({ timeout: 20_000 });
     steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
     await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
