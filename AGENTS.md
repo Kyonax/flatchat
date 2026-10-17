@@ -22,6 +22,8 @@ npm run server -- --port 0 --ticks 100        # a short headless world server ru
 npm run bots -- smoke                         # 12 bots on each transport for 4 s (part of the harness)
 npm run bots -- run --transport rtc --bots 200 --minutes 30 --server-cpus 0-1 --bot-cpus 2-7   # a measured load test
 npm run golden -w @flatchat/protocol          # check the protocol's golden files; -- --write after a version bump
+npm run core:db -- start                      # a private PostgreSQL for the core (no root); prints FLATCHAT_CORE_DB
+npm run core:admin -- invite                  # the core's admin command line (needs its environment: apps/core/README.md)
 npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's commands; changes nothing
 ```
 
@@ -45,7 +47,7 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 | `apps/client` | The Electron client: `src/main` (window, flags, the bridge's handlers, the avatar protocol), `src/preload`, `src/renderer` (the scene, `net/`, `voice/`, `lounge/`, `crowd/`); `scripts/` (the notices file, the voice sample) |
 | `apps/world-server` | The world server: `src/main.ts` (the program), `src/server.ts` (joins, ticks, voice, chat), `src/world/` (cells, interest, snapshots, voice routing), `src/net/` (raw UDP and WebRTC transports) |
 | `packages/protocol` | The wire protocol: codecs, messages, connect tokens, the version handshake, golden packets ([docs/protocol.md](docs/protocol.md)) |
-| `apps/core` | The central service (not started) |
+| `apps/core` | The central service: `src/app.ts` (the routes), `src/main.ts` (the program), `src/admin.ts` (the admin command line), accounts, the age rule, sign-in and sessions, worlds and connect tokens, `src/migrations/` (PostgreSQL) |
 | `packages/*` | The other shared libraries: sim, content, plugin-sdk (not started) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |

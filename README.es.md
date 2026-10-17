@@ -80,6 +80,8 @@ npm run bots -- smoke  # un servidor de mundo y 12 bots en cada transporte (UDP 
 
 El servidor de mundo acepta `--port` (0 elige uno libre), `--transport udp|rtc|both`, `--tick-hz` y `--ticks` (se detiene tras ese número de ticks), por ejemplo `npm run server -- --port 0 --ticks 100`; [apps/world-server](apps/world-server/README.md) enumera el resto. Para probarlo con carga, `npm run bots -- run --transport rtc --bots 200 --minutes 30` arranca un servidor y 200 bots en una red aislada y escribe un informe ([tools/bots](tools/bots/README.md)).
 
+El núcleo necesita los programas de PostgreSQL (no un servicio en marcha): `npm run core:db -- start` crea una base de datos privada en tu carpeta personal e imprime su cadena de conexión; [apps/core](apps/core/README.md) explica el resto (su configuración, la línea de comandos de administración, las invitaciones, la aprobación de un mundo).
+
 Para empaquetar el cliente: `npm run dist:linux -w @flatchat/client` arma una carpeta sin empaquetar para Linux, y `npm run dist:win -w @flatchat/client` arma un zip para Windows desde Linux, sin Wine. Ambos quedan en `apps/client/release/`.
 
 Para medir el cliente en un sustituto de portátil débil (una tarjeta NVIDIA bloqueada a relojes de clase Iris Xe y el cliente limitado a cuatro núcleos), `npm run standin -- plan --target iris-xe` imprime cada comando que correría; `run` los corre, pide sudo solo para las líneas de los relojes y siempre deja la tarjeta como estaba. Lee un perfil escrito para la máquina, descrito en [tools/harness](tools/harness/README.md).

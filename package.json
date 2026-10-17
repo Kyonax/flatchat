@@ -27,6 +27,9 @@
     "client": "npm run dev -w @flatchat/client",
     "client:smoke": "npm run smoke -w @flatchat/client",
     "server": "npm run start -w @flatchat/world-server --",
+    "core": "npm run start -w @flatchat/core --",
+    "core:admin": "npm run admin -w @flatchat/core --",
+    "core:db": "npm run db -w @flatchat/core --",
     "bots": "node tools/bots/src/run.ts",
     "standin": "node tools/harness/src/standin.ts"
   },

@@ -1,0 +1,31 @@
+{
+  "name": "@flatchat/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's core: accounts and sign-in, worlds and their approvals, connect tokens.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    "./app": "./src/app.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@flatchat/protocol": "*",
+    "fastify": "5.12.7",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "admin": "node src/admin.ts",
+    "db": "node scripts/db.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
