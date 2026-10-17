@@ -26,6 +26,7 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 | libopus, compiled to WebAssembly inside libopus-wasm | the client | Xiph.Org Foundation and the Opus contributors | [xiph/opus](https://github.com/xiph/opus) | BSD-3-Clause | 1.6.1 |
 | three-vrm, with its `@pixiv/three-vrm-*` packages | the client | pixiv Inc. and the three-vrm contributors | [pixiv/three-vrm](https://github.com/pixiv/three-vrm) | MIT | 3.5.5 |
 | meshoptimizer | the client | Arseny Kapoulkine | [zeux/meshoptimizer](https://github.com/zeux/meshoptimizer) | MIT | 1.3.0 |
+| vue-i18n, with its `@intlify/*` packages | the client | kazuya kawaguchi and the intlify contributors | [intlify/vue-i18n](https://github.com/intlify/vue-i18n) | MIT | 11.4.14 |
 | node-datachannel | the world server | Murat Doğan and Paul-Louis Ageneau | [murat-dogan/node-datachannel](https://github.com/murat-dogan/node-datachannel) | MPL-2.0 | 0.33.4 |
 | libdatachannel, inside node-datachannel | the world server | Paul-Louis Ageneau | [paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | MPL-2.0 | 0.24.5 |
 | Fastify, with the packages it loads (find-my-way, pino, avvio and others) | the core | Matteo Collina, Tomas Della Vedova and the Fastify contributors | [fastify/fastify](https://github.com/fastify/fastify) | MIT | 5.12.7 |

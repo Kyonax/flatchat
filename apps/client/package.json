@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@flatchat/protocol": "*",
+    "@flatchat/sim": "^0.0.0",
     "@pixiv/three-vrm": "3.5.5",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-vue": "^6.0.10",
@@ -31,6 +32,7 @@
     "three": "^0.186.1",
     "vite": "^8.3.4",
     "vue": "^3.5.44",
+    "vue-i18n": "11.4.14",
     "vue-tsc": "^3.3.13"
   }
 }

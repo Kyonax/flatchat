@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// The client's main process: one window with locked-down web preferences, and two measuring modes
-// (see flags.ts). --smoke draws for a few seconds and runs the protocol's golden packets in the
+// The client's main process: one window with locked-down web preferences. With no mode flag it is
+// the app: the player signs in through the system browser (auth.ts), the settings live in a file
+// (settings-file.ts), and the page asks for the world list and connect tokens through the bridge;
+// it never holds an account token. The measuring modes (see flags.ts): --smoke draws for a few seconds and runs the protocol's golden packets in the
 // renderer, then prints one JSON line (the graphics backend, the frame rate, the protocol check and
 // Chromium's GPU status), writes it to --smoke-out=FILE if given, and quits. With --join and
 // --join-token it also joins that loopback world server over WebRTC (net-check.ts).
@@ -9,13 +11,17 @@
 // protocol check failed, exits 1. --crowd=SECONDS --avatars=DIR is spike S0.09's crowd bench: the
 // folder's VRM avatars served read-only (avatar-files.ts), every process's memory sampled each
 // second, and the report judged against the pass lines (crowd-pass.ts).
-import { statSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, type ProcessMetric, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
+import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
 import { runCensus } from './census/probe';
+import { CoreApi, coreBase, CoreError } from './core-api';
+import { DEFAULT_CORE } from './core-url';
 import { crowdPass } from './crowd-pass';
 import { exitCodeFor, parseFlags, rendererQuery } from './flags';
+import { SettingsFile } from './settings-file';
 import { signal } from './signal';
 
 const { flags, errors } = parseFlags(process.argv);
@@ -25,6 +31,8 @@ if (errors.length > 0) {
 }
 
 const SMOKE_TIMEOUT_MS = 30_000;
+/** No measuring mode: the app itself. */
+const isApp = !flags.smoke && flags.bench === undefined && !flags.crowd && flags.voiceTest === undefined && flags.voiceLoad === undefined && flags.lounge === undefined && !flags.census;
 const BENCH_SLACK_MS = 60_000;
 
 if (flags.crowd) registerAvatarScheme();
@@ -70,7 +78,76 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-ipcMain.handle('flatchat:signal', (_event, url: unknown, offer: unknown) => signal(url, offer));
+// ------------------------------------------------------------------------------- the app
+
+let settings: SettingsFile | undefined;
+let auth: Auth | undefined;
+/** The address the core gave with the latest connect token: signaling may go there too. */
+let joinedAddress: string | undefined;
+
+/** The refresh token, encrypted by the operating system. Linux without a secret service would fall
+ *  back to a fixed key ("basic_text"), so there the session is kept in memory only. */
+function tokenStore(): TokenStore {
+  const file = join(app.getPath('userData'), 'session.bin');
+  const durable = safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text');
+  return {
+    durable,
+    load: () => {
+      if (!durable) return undefined;
+      try {
+        return safeStorage.decryptString(readFileSync(file));
+      } catch {
+        return undefined;
+      }
+    },
+    save: (refresh) => {
+      if (!refresh || !durable) rmSync(file, { force: true });
+      else writeFileSync(file, safeStorage.encryptString(refresh), { mode: 0o600 });
+    },
+  };
+}
+
+function startAccount(): void {
+  settings = new SettingsFile(join(app.getPath('userData'), 'settings.json'));
+  const base = coreBase(flags.core ?? (settings.get().core || DEFAULT_CORE)) ?? coreBase(DEFAULT_CORE)!;
+  const openSignin = (url: URL): Promise<void> =>
+    // trap-lint: allow T16 because the URL is the core's own sign-in page, checked in CoreApi.loginRequest
+    shell.openExternal(url.href);
+  auth = new Auth(new CoreApi(base), tokenStore(), openSignin);
+  auth.onChange((state) => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('flatchat:auth', state);
+  });
+  void auth.restore();
+}
+
+const failure = (err: unknown): { ok: false; error: string } => ({ ok: false, error: err instanceof CoreError ? err.code : 'failed' });
+
+ipcMain.handle('flatchat:locale', () => app.getLocale());
+ipcMain.handle('flatchat:settings', () => settings?.get());
+ipcMain.handle('flatchat:settings-set', (_event, patch: unknown) => settings?.update(patch));
+ipcMain.handle('flatchat:auth-state', () => auth?.state);
+ipcMain.handle('flatchat:sign-in', () => auth?.signIn());
+ipcMain.handle('flatchat:sign-in-cancel', () => auth?.cancel());
+ipcMain.handle('flatchat:sign-out', () => auth?.signOut());
+ipcMain.handle('flatchat:worlds', async () => {
+  try {
+    return { ok: true, worlds: (await auth?.worlds()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
+  if (typeof worldId !== 'string' || !auth) return { ok: false, error: 'bad-world' };
+  try {
+    const ticket = await auth.join(worldId);
+    joinedAddress = ticket.address;
+    return { ok: true, token: ticket.token, address: ticket.address, expiresAt: ticket.expiresAt };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
+ipcMain.handle('flatchat:signal', (_event, url: unknown, offer: unknown) => signal(url, offer, joinedAddress));
 
 ipcMain.handle('flatchat:smoke-report', (_event, report: Record<string, unknown>) => {
   if (flags.smoke) finish('smoke', report, flags.smokeOut);
@@ -138,14 +215,16 @@ async function census(): Promise<void> {
 }
 
 // Electron grants every permission a page asks for unless told otherwise. FlatChat's page gets only
-// what it needs: the microphone, and only in the voice lounge (S0.08); everything else is refused.
+// what it needs: the microphone (never the camera), in the app and the voice lounge (S0.08), and
+// pointer lock for mouse look; everything else is refused.
 function lockPermissions(): void {
+  const voice = isApp || flags.lounge !== undefined;
   const allowed = (permission: string, mediaTypes?: readonly string[]): boolean =>
-    flags.lounge !== undefined && permission === 'media' && (mediaTypes ?? []).every((t) => t === 'audio');
+    (voice && permission === 'media' && (mediaTypes ?? []).every((t) => t === 'audio')) || (isApp && permission === 'pointerLock');
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
     callback(allowed(permission, (details as { mediaTypes?: string[] }).mediaTypes));
   });
-  session.defaultSession.setPermissionCheckHandler((_wc, permission) => flags.lounge !== undefined && permission === 'media');
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => (voice && permission === 'media') || (isApp && permission === 'pointerLock'));
 }
 
 void app.whenReady().then(() => {
@@ -171,6 +250,7 @@ void app.whenReady().then(() => {
     // Loading dozens of avatars on a slow machine takes minutes before the measured run starts.
     setTimeout(() => finish('crowd-timeout', { error: 'timed out' }, flags.crowd?.out), flags.crowd.seconds * 1000 + 600_000);
   }
+  if (isApp) startAccount();
   createWindow();
   if (flags.smoke) setTimeout(() => finish('smoke-timeout', {}, flags.smokeOut), SMOKE_TIMEOUT_MS);
   if (flags.bench !== undefined) {

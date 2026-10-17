@@ -3,20 +3,22 @@
 // world server's /rtc URL through the preload bridge, and gets the answer back. The page therefore
 // needs no network permission in its content security policy, and the URL is checked here: in
 // Stage 0 only a world server on this machine, on the local network (RFC 1918 addresses) or on a
-// private overlay network such as Tailscale (100.64.0.0/10), over HTTP or HTTPS, at /rtc. In
-// Stage 1 signaling goes through the core.
+// private overlay network such as Tailscale (100.64.0.0/10), over HTTP or HTTPS, at /rtc; or the
+// exact address the core gave with the player's latest connect token (Stage 1).
 const MAX_SDP = 64 * 1024;
 const TIMEOUT_MS = 10_000;
 
-/** The URL if it names an allowed world server, or undefined. */
-export function signalTarget(text: unknown): URL | undefined {
-  if (typeof text !== 'string' || text.length > 200) return undefined;
+/** The URL if it names an allowed world server, or undefined. `fromCore` is the address the core
+ *  gave with the latest connect token: that one exact URL is allowed too. */
+export function signalTarget(text: unknown, fromCore?: string): URL | undefined {
+  if (typeof text !== 'string' || text.length > 300) return undefined;
   let url: URL;
   try {
     url = new URL(text);
   } catch {
     return undefined;
   }
+  if (fromCore !== undefined && text === fromCore && (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password) return url;
   if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.pathname !== '/rtc' || url.search || url.username || url.password) return undefined;
   const parts = url.hostname.split('.').map(Number);
   if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return undefined;
@@ -30,8 +32,8 @@ export interface Description {
   sdp: string;
 }
 
-export async function signal(urlText: unknown, offer: unknown): Promise<Description> {
-  const url = signalTarget(urlText);
+export async function signal(urlText: unknown, offer: unknown, fromCore?: string): Promise<Description> {
+  const url = signalTarget(urlText, fromCore);
   if (!url) throw new Error('signaling is allowed only to a world server on this machine or the local network, at /rtc');
   const o = offer as Partial<Description> | null;
   if (!o || o.type !== 'offer' || typeof o.sdp !== 'string' || o.sdp.length > MAX_SDP) throw new Error('not an offer');

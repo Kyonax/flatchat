@@ -44,11 +44,12 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 
 | Path | What |
 |---|---|
-| `apps/client` | The Electron client: `src/main` (window, flags, the bridge's handlers, the avatar protocol), `src/preload`, `src/renderer` (the scene, `net/`, `voice/`, `lounge/`, `crowd/`); `scripts/` (the notices file, the voice sample) |
+| `apps/client` | The Electron client: `src/main` (window, flags, sign-in through the browser, the settings file, the bridge's handlers, the avatar protocol), `src/preload`, `src/shared` (settings and key bindings), `src/renderer` (`ui/` the app's screens, `world/` the world view, `i18n/`, `net/`, `voice/`, and the spikes' `lounge/` and `crowd/`); `scripts/` (the notices file, the voice sample) |
 | `apps/world-server` | The world server: `src/main.ts` (the program), `src/server.ts` (joins, ticks, voice, chat), `src/world/` (cells, interest, snapshots, voice routing), `src/net/` (raw UDP and WebRTC transports) |
 | `packages/protocol` | The wire protocol: codecs, messages, connect tokens, the version handshake, golden packets ([docs/protocol.md](docs/protocol.md)) |
 | `apps/core` | The central service: `src/app.ts` (the routes), `src/main.ts` (the program), `src/admin.ts` (the admin command line), accounts, the age rule, sign-in and sessions, worlds and connect tokens, `src/migrations/` (PostgreSQL) |
-| `packages/*` | The other shared libraries: sim, content, plugin-sdk (not started) |
+| `packages/sim` | Movement rules shared by client and server: the controller, the move checks, the greybox plaza |
+| `packages/*` | The other shared libraries: content, plugin-sdk (not started) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |
 | `tools/bots` | Headless bots on the real protocol and the load-test runner (`npm run bots`) |

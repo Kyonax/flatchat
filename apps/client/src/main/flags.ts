@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// The client's command-line flags for its two measuring modes, and the exit code of a finished
-// run. Free of Electron, so the unit tests run in plain Node.
+// The client's command-line flags: where the core is, and the measuring modes; and the exit code
+// of a finished run. Free of Electron, so the unit tests run in plain Node. With no mode flag the
+// client opens normally: sign-in, the world list, the worlds.
 //
+//   --core=URL                                       the core to sign in to (https, or http on this
+//                                                    machine); else the settings' core, else the
+//                                                    built-in one (core-url.ts)
 //   --smoke [--smoke-out=FILE]                       draw for a few seconds, report once, quit
 //           [--join=http://ADDRESS:PORT/rtc --join-token=HEX]
 //                                                    and join that world server over WebRTC (on
@@ -26,6 +30,7 @@
 //                                                    on the low preset, no frame-rate cap; reports
 //                                                    frame times, loads, memory and the pass lines
 
+import { coreBase } from './core-api';
 import { signalTarget } from './signal';
 
 export interface Size {
@@ -34,6 +39,8 @@ export interface Size {
 }
 
 export interface ClientFlags {
+  /** The core's address, checked: https, or http on this machine. */
+  core?: string;
   smoke: boolean;
   smokeOut?: string;
   /** The smoke test's network check: a loopback world server's signaling URL and a sealed token. */
@@ -100,6 +107,12 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
   const flags: ClientFlags = { smoke: argv.includes('--smoke'), benchSize: DEFAULT_BENCH_SIZE };
   const smokeOut = value(argv, 'smoke-out');
   if (smokeOut) flags.smokeOut = smokeOut;
+  const core = value(argv, 'core');
+  if (core !== undefined) {
+    const base = coreBase(core);
+    if (base) flags.core = base.href;
+    else errors.push(`--core must be an https address, or http on this machine, got ${core}`);
+  }
 
   const bench = value(argv, 'bench');
   if (bench !== undefined) {

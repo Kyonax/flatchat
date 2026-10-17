@@ -18,4 +18,14 @@ export default defineConfig(
   {
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
+  // TypeScript already reports undefined names, global declaration files included.
+  {
+    files: ['**/*.ts', '**/*.vue'],
+    rules: { 'no-undef': 'off' },
+  },
+  // The app's screens say every word through vue-i18n (Q-H2): no bare text in their templates.
+  {
+    files: ['apps/client/src/renderer/src/ui/**/*.vue'],
+    rules: { 'vue/no-bare-strings-in-template': ['error', { allowlist: ['·', '—', '…', ':', '(', ')', '%', '/', '|', '-', '+', '×', '?', '!'] }] },
+  },
 );

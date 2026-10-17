@@ -6,6 +6,7 @@ import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
 import { runCrowd } from './crowd/crowd';
 import LoungeView from './lounge/LoungeView.vue';
+import ClientApp from './ui/ClientApp.vue';
 import { runVoiceLoad } from './voice/load-test';
 import { runVoiceTest } from './voice/voice-test';
 
@@ -62,8 +63,11 @@ const num = (name: string, fallback: number): number => {
 const loungeUrl = params.get('lounge');
 const loungeToken = params.get('token');
 
+// No measuring mode in the query: the app itself (sign-in, the worlds).
+const appMode = !smoke && !(benchSeconds > 0) && !(crowdSeconds > 0) && !loungeUrl && !(voiceSeconds > 0) && !(loadSeconds > 0);
+
 onMounted(async () => {
-  if (loungeUrl) return;
+  if (loungeUrl || appMode) return;
   if (!canvas.value) return;
   if (crowdSeconds > 0) {
     const report = await runCrowd(canvas.value, {
@@ -108,18 +112,19 @@ onBeforeUnmount(() => stop?.());
 </script>
 
 <template>
+  <ClientApp v-if="appMode" />
   <LoungeView
-    v-if="loungeUrl && loungeToken"
+    v-else-if="loungeUrl && loungeToken"
     :url="loungeUrl"
     :token="loungeToken"
   />
   <canvas
-    v-if="!loungeUrl"
+    v-if="!loungeUrl && !appMode"
     ref="canvas"
     class="view"
   />
   <div
-    v-if="!loungeUrl"
+    v-if="!loungeUrl && !appMode"
     class="hud"
   >
     <div><strong>FlatChat</strong> · {{ crowdSeconds > 0 ? 'spike S0.09: the crowd bench' : 'Stage 0 blank client' }}</div>

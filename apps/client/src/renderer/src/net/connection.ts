@@ -39,9 +39,12 @@ export interface ConnectionStats {
 
 export class JoinRefused extends Error {
   readonly reason: string;
+  /** The world's own words, for a rule's refusal; shown as text. */
+  readonly detail: string;
   constructor(reason: string, detail: string) {
     super(`refused: ${reason}${detail ? ` (${detail})` : ''}`);
     this.reason = reason;
+    this.detail = detail;
   }
 }
 
@@ -69,6 +72,8 @@ export class WorldConnection {
   welcome: MessageOf<'welcome'> | undefined;
   /** Where the server placed this client at the join. */
   spawn: Spawn | undefined;
+  private readonly closeHandlers = new Set<(reason: string) => void>();
+  private ended = false;
 
   private constructor(pc: RTCPeerConnection, reliable: RTCDataChannel, unreliable: RTCDataChannel) {
     this.pc = pc;
@@ -77,6 +82,22 @@ export class WorldConnection {
       dc.binaryType = 'arraybuffer';
       dc.onmessage = (ev: MessageEvent<ArrayBuffer>) => this.receive(new Uint8Array(ev.data));
     }
+    reliable.addEventListener('close', () => this.end('closed'));
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.end(pc.connectionState);
+    });
+  }
+
+  /** Called once when the connection ends: the server left, the network failed, or close() was called. */
+  onClose(handler: (reason: string) => void): () => void {
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
+  }
+
+  private end(reason: string): void {
+    if (this.ended) return;
+    this.ended = true;
+    for (const h of [...this.closeHandlers]) h(reason);
   }
 
   /** Signals, opens both channels and joins; resolves once welcomed and placed (`spawn`), rejects with JoinRefused or a timeout. */

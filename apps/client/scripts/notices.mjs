@@ -17,6 +17,10 @@ const BUNDLED = [
   { package: 'libopus-wasm', note: 'the voice codec wrapper' },
   { package: '@pixiv/three-vrm', note: 'VRM avatars, with its @pixiv/three-vrm-* packages under the same licence (spike S0.09)' },
   { package: 'meshoptimizer', note: 'mesh simplification for levels of detail (spike S0.09)' },
+  { package: 'vue-i18n', note: 'the English and Spanish interface' },
+  { package: '@intlify/core-base', note: 'inside vue-i18n' },
+  { package: '@intlify/message-compiler', note: 'inside vue-i18n: compiles messages without eval' },
+  { package: '@intlify/shared', note: 'inside vue-i18n' },
   { name: 'libopus', version: '1.6.1', licence: 'BSD-3-Clause', text: 'third_party/opus/COPYING', note: 'compiled to WebAssembly inside libopus-wasm' },
 ];
 

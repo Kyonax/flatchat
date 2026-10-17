@@ -121,6 +121,11 @@ export class VoiceChain {
     return capture;
   }
 
+  /** Whether the microphone's frames are going out right now: not muted, and the voice gate open. */
+  get sending(): boolean {
+    return !this.muted && this.hangover > 0;
+  }
+
   /** A voiceBundle from the world server. */
   receive(bundle: MessageOf<'voiceBundle'>): void {
     const now = performance.now();
