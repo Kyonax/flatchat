@@ -63,7 +63,9 @@ export interface PluginHooks {
   on_zone_enter?(player: PluginPlayer, zone: { index: number; kind: string }): void;
   on_zone_exit?(player: PluginPlayer, zone: { index: number; kind: string }): void;
   on_tick?(tick: number): void;
-  /** A player's voice range and gain; a minor's stay within the defaults whatever this says. */
+  /** A player's voice: `range` in metres (1 to 200), `gain` a multiplier (1 as spoken, up to 4).
+   *  Asked at the join and whenever the player's zones change; a minor's stay within the world's
+   *  defaults whatever this says (S3.10). */
   on_voice_settings?(player: PluginPlayer): { range?: number; gain?: number } | void;
 }
 

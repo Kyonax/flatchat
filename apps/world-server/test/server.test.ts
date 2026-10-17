@@ -162,7 +162,7 @@ describe('a joined player', () => {
 
     a.send({ type: 'voice', seq: 5, start: true, mouth, opus: new Uint8Array(60).fill(7) });
     const bundle = await b.next('voiceBundle');
-    expect(bundle.frames).toEqual([{ from: wa.entity, seq: 5, start: true, mouth, gain: 8, opus: new Uint8Array(60).fill(7) }]);
+    expect(bundle.frames).toEqual([{ from: wa.entity, seq: 5, start: true, mouth, gain: 64, range: 0, opus: new Uint8Array(60).fill(7) }]);
 
     b.send({ type: 'say', text: 'hola' });
     expect(await a.next('chat')).toMatchObject({ from: wb.entity, text: 'hola' });

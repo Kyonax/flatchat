@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "whisper"
+version = "1.0.0"
+api = 1
+description = "Voice settings from a plugin: a player named Whisper carries 5 m, one named Shout 80 m and twice as loud."
+permissions = ["voice"]
+hooks = ["on_voice_settings"]

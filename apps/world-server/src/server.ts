@@ -63,7 +63,7 @@ import type { WalkableSurface } from './world/navigation.ts';
 import { STORE_LIMITS } from './world/store-limits.ts';
 import type { WorldStore } from './world/store.ts';
 import { type BuildUploads, UploadError } from './world/uploads.ts';
-import { GAIN_UNITY, VoiceRouter, type VoiceConfig } from './world/voice.ts';
+import { GAIN_UNITY, MAX_RANGE_M, VoiceRouter, type VoiceConfig, type VoiceRules } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
 
 export type LogFn = (event: string, fields?: Record<string, unknown>) => void;
@@ -196,6 +196,12 @@ interface Conn {
   forceMuted: boolean;
   /** The player's role here (S3.06): the owner from the token, the others from the world. */
   role: Role;
+  /** The player's voice as the world carries it (S3.08): range in metres, gain in 64ths, whether
+   *  a quiet zone silences it, and the private zone it shares (-1: none). */
+  voiceRange: number;
+  voiceGain: number;
+  quiet: boolean;
+  privateZone: number;
   /** The zones (their indices) the player stands in. */
   zones: Set<number>;
 }
@@ -398,6 +404,10 @@ export class WorldServer implements PluginWorld {
       appearanceAt: -Infinity,
       forceMuted: false,
       role: 'visitor',
+      voiceRange: this.voice.config.rangeM,
+      voiceGain: GAIN_UNITY,
+      quiet: false,
+      privateZone: -1,
       zones: new Set(),
     };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
@@ -591,6 +601,9 @@ export class WorldServer implements PluginWorld {
     this.events.add('join', 0);
     const joined = this.pluginPlayer(conn);
     if (joined) this.plugins?.notify('on_join', joined);
+    // The zones it arrives in count from the first step, not from its first pose (S3.08).
+    if (this.options.zones?.length) this.zoneCheck(conn);
+    this.updateVoice(conn);
   }
 
   /** A chosen height in centimetres (0: the platform's default) fitted into the world's range. */
@@ -928,9 +941,57 @@ export class WorldServer implements PluginWorld {
     zones.forEach((z, i) => {
       if (insideBox(z, p)) now.add(i);
     });
+    const changed = now.size !== conn.zones.size || [...now].some((i) => !conn.zones.has(i));
     for (const i of now) if (!conn.zones.has(i)) this.plugins?.notify('on_zone_enter', player, { index: i, kind: zones[i]!.kind });
     for (const i of conn.zones) if (!now.has(i)) this.plugins?.notify('on_zone_exit', player, { index: i, kind: zones[i]!.kind });
     conn.zones = now;
+    if (changed) this.updateVoice(conn);
+  }
+
+  /** Who hears whom, how far and how loud (S3.08): each speaker's range and gain, and quiet and
+   *  private zones (S3.10's minors and S3.11's blocks join here). */
+  private readonly voiceRules: VoiceRules = {
+    rangeOf: (entity) => this.byEntity.get(entity)?.voiceRange ?? this.voice.config.rangeM,
+    gainOf: (entity) => this.byEntity.get(entity)?.voiceGain ?? GAIN_UNITY,
+    canHear: (listener, speaker) => {
+      const l = this.byEntity.get(listener);
+      const s = this.byEntity.get(speaker);
+      if (!l || !s || l.quiet || s.quiet) return false;
+      return l.privateZone === s.privateZone;
+    },
+  };
+
+  /** A player's voice from the zones it stands in (a voice zone's range and gain; quiet; private),
+   *  then the plugins' `on_voice_settings`; a minor's carries no farther and no louder than the
+   *  world's default, whatever a zone or a plugin says (S3.10). */
+  private updateVoice(conn: Conn): void {
+    const zones = this.options.zones ?? [];
+    let range = this.voice.config.rangeM;
+    let gain = 1;
+    let quiet = false;
+    let privateZone = -1;
+    for (const i of [...conn.zones].sort((a, b) => a - b)) {
+      const z = zones[i];
+      if (!z) continue;
+      if (z.kind === 'quiet') quiet = true;
+      else if (z.kind === 'private') privateZone = privateZone === -1 ? i : privateZone;
+      else {
+        if (z.range !== undefined) range = z.range;
+        if (z.gain !== undefined) gain = z.gain;
+      }
+    }
+    const player = this.pluginPlayer(conn);
+    const set = player && this.plugins ? this.plugins.voiceSettings(player) : {};
+    if (typeof set.range === 'number' && Number.isFinite(set.range)) range = set.range;
+    if (typeof set.gain === 'number' && Number.isFinite(set.gain)) gain = set.gain;
+    if (conn.claims?.under18) {
+      range = Math.min(range, this.voice.config.rangeM);
+      gain = Math.min(gain, 1);
+    }
+    conn.voiceRange = Math.min(MAX_RANGE_M, Math.max(1, range));
+    conn.voiceGain = Math.min(255, Math.max(0, Math.round(gain * GAIN_UNITY)));
+    conn.quiet = quiet;
+    conn.privateZone = privateZone;
   }
 
   /** The spawn points a join may use: the named group's when it has any, else the main ones. */
@@ -1048,7 +1109,7 @@ export class WorldServer implements PluginWorld {
         this.contentBusy = false;
       });
     }
-    const { bundles } = this.voice.step(this.world);
+    const { bundles } = this.voice.step(this.world, this.voiceRules);
     for (const [entity, bytes] of bundles) {
       const conn = this.byEntity.get(entity);
       if (conn) this.send(conn, 'voiceBundle', bytes);
@@ -1070,7 +1131,7 @@ export class WorldServer implements PluginWorld {
       this.events.add('voice:muted', 0);
       return;
     }
-    this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, gain: GAIN_UNITY, opus: message.opus });
+    this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, opus: message.opus });
   }
 
   /** World-wide: everyone here reads it (S1.10). */
