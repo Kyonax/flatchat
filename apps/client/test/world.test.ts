@@ -13,6 +13,7 @@ import { Downloader } from '../src/renderer/src/world/download';
 import { loadPhysics, Physics } from '../src/renderer/src/world/physics';
 import * as THREE from 'three/webgpu';
 import { checkGlb, levelsOfDetail, lodDistances, SceneError } from '../src/renderer/src/world/scene-loader';
+import { buildParts, partGeometry } from '../src/renderer/src/world/parts';
 import { mapColliders } from '../src/renderer/src/world/session';
 import { MAX_EMITTERS, planEmitters, type SoundContext, Strides, WorldSounds } from '../src/renderer/src/world/sounds';
 
@@ -324,5 +325,33 @@ describe('world sounds (S2.14)', () => {
     for (let k = 0; k <= 70; k++) if (s.step(k * 0.05, 5, false, false)) air += 1;
     expect(air).toBe(0);
     expect(s.step(50, 50, true, false)).toBe(false);
+  });
+});
+
+describe('the base library on screen (S2.05)', () => {
+  it('draws each kind of part as one instanced mesh, every placement where the world put it', () => {
+    const turn = [0, Math.SQRT1_2, 0, Math.SQRT1_2] as [number, number, number, number];
+    const group = buildParts([
+      { id: 'flatchat:tree', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+      { id: 'flatchat:tree', position: [5, 0, 6], rotation: turn, scale: [2, 2, 2] },
+      { id: 'flatchat:bench', position: [3, 0, 3], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+      { id: 'acme:unknown', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+    ]);
+    const meshes = group.children as THREE.InstancedMesh[];
+    expect(meshes.map((m) => [m.name, m.count])).toEqual([
+      ['flatchat:tree', 2],
+      ['flatchat:bench', 1],
+    ]);
+    const m = new THREE.Matrix4();
+    meshes[0]!.getMatrixAt(1, m);
+    const at = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    m.decompose(at, new THREE.Quaternion(), size);
+    expect([at.x, at.y, at.z]).toEqual([5, 0, 6]);
+    expect(size.x).toBeCloseTo(2);
+    // The tree's three boxes are one geometry, with a colour for every vertex.
+    const g = partGeometry('flatchat:tree');
+    expect(g.getAttribute('color').count).toBe(g.getAttribute('position').count);
+    expect(g.getAttribute('position').count).toBe(3 * 24);
   });
 });

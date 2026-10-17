@@ -22,6 +22,7 @@ import { Controls } from './controls';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
 import { Navigation } from './navigation';
+import { buildParts } from './parts';
 import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
@@ -70,6 +71,8 @@ export interface WorldState {
   flying: boolean;
   /** How many of the world's sound emitters play (S2.14). */
   sounds: number;
+  /** How many base library parts the world placed (S2.05). */
+  parts: number;
   /** A short notice the page words in its language ('' for none). */
   notice: '' | 'noFlying' | 'noSeat' | 'teleportRefused' | 'nothingThere';
 }
@@ -177,6 +180,7 @@ export class WorldSession {
       world: '',
       flying: false,
       sounds: 0,
+      parts: 0,
       notice: '',
     });
   }
@@ -587,6 +591,14 @@ export class WorldSession {
       const group = await loadScene(this.renderer!, files.get(scene.glb)!);
       this.scene?.add(group);
       this.pickables.push(group);
+    }
+    // The base library's parts, drawn from the client's own definitions (S2.05).
+    const parts = world.scenes.flatMap((sc) => sc.parts);
+    if (parts.length > 0) {
+      const group = buildParts(parts);
+      this.scene?.add(group);
+      this.pickables.push(group);
+      this.state.parts = parts.length;
     }
     this.canFly = world.manifest.flying;
     this.seats = world.scenes.flatMap((sc) => sc.seats.map((seat) => ({ x: seat.position[0], y: seat.position[1], z: seat.position[2], yaw: seat.yaw })));

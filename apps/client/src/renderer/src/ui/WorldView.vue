@@ -165,6 +165,7 @@ onBeforeUnmount(() => {
       hidden
       data-test="sounds"
       :data-playing="state.sounds"
+      :data-parts="state.parts"
     />
     <div
       v-if="state?.notice"
