@@ -38,6 +38,9 @@ jobs:
       # S2.09: bots fill a world until it leaves the public list (the core on PostgreSQL, a real world server).
       - name: The world browser, with bots filling a world
         run: node tools/bots/src/browse.ts
+      # S2.11: 20 bots hop between two worlds through their portals, 5 times round.
+      - name: Travel, bots hopping between two worlds
+        run: node tools/bots/src/hop.ts --bots 20 --loops 5
 
   host-tool:
     name: Host tool
