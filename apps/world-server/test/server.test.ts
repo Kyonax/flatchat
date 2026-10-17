@@ -17,7 +17,8 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Link } from '../src/net/types.ts';
 import { connectUdp, UdpServer } from '../src/net/udp.ts';
-import { DEFAULT_SERVER, WorldServer } from '../src/server.ts';
+import { PLAZA } from '@flatchat/sim';
+import { cleanChat, DEFAULT_SERVER, type EntryRule, mapOptions, WorldServer } from '../src/server.ts';
 
 const KEY = newWorldKey();
 const WORLD = randomUUID();
@@ -77,9 +78,9 @@ class Client {
   }
 }
 
-async function token(options: { world?: string; expiresAt?: number; nonce?: Uint8Array; name?: string } = {}): Promise<Uint8Array> {
+async function token(options: { world?: string; expiresAt?: number; nonce?: Uint8Array; name?: string; account?: string; trust?: number } = {}): Promise<Uint8Array> {
   return sealToken(
-    { account: randomUUID(), name: options.name ?? 'bot', trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 3 },
+    { account: options.account ?? randomUUID(), name: options.name ?? 'bot', trust: options.trust ?? 1, tester: true, emailVerified: true, under18: false, ageDays: 3 },
     { key: KEY, world: options.world ?? WORLD, expiresAt: options.expiresAt ?? NOW + 60, ...(options.nonce ? { nonce: options.nonce } : {}) },
   );
 }
@@ -189,5 +190,77 @@ describe('a joined player', () => {
     const change = await b.next('roster', (r) => !r.full && r.left.includes(wa.entity));
     expect(change.left).toEqual([wa.entity]);
     expect(running?.server.players).toBe(1);
+  });
+});
+
+describe('Stage 1: entry rules, one session per account, world-wide chat, the plaza', () => {
+  it('refuses a player an entry rule turns away, with its reason', async () => {
+    const trusted: EntryRule = (claims) => (claims.trust >= 2 ? { admit: true } : { admit: false, detail: 'testers only' });
+    const udp = await start({ entryRules: [trusted] });
+    const low = await connect(udp, { token: await token({ trust: 1 }) });
+    expect(await low.next('refuse')).toMatchObject({ reason: 'rule', detail: 'testers only' });
+    const high = await connect(udp, { token: await token({ trust: 2 }) });
+    await high.next('welcome');
+  });
+
+  it('ends the older connection when an account joins again', async () => {
+    const udp = await start();
+    const account = randomUUID();
+    const first = await connect(udp, { token: await token({ account, name: 'ana' }) });
+    const firstWelcome = await first.next('welcome');
+    const second = await connect(udp, { token: await token({ account, name: 'ana' }) });
+    const secondWelcome = await second.next('welcome');
+    expect(await first.next('leave')).toMatchObject({ reason: 'kicked' });
+    expect(running?.server.players).toBe(1);
+    // The new entity is never the one just freed, so no roster names two players with one id.
+    expect(secondWelcome.entity).not.toBe(firstWelcome.entity);
+  });
+
+  it('lets 50 players join and leave in a loop, and frees their places', async () => {
+    const udp = await start({ capacity: 10 });
+    for (let round = 0; round < 5; round++) {
+      const batch = await Promise.all(Array.from({ length: 10 }, () => connect(udp)));
+      await Promise.all(batch.map((c) => c.next('welcome', () => true, 4000)));
+      expect(running?.server.players).toBe(10);
+      for (const c of batch) c.send({ type: 'leave', reason: 'quit', detail: '' });
+      for (let i = 0; i < 100 && (running?.server.players ?? 0) > 0; i++) await new Promise((r) => setTimeout(r, 20));
+      expect(running?.server.players).toBe(0);
+      // Let the roster announce the leaves before the next batch takes their ids.
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  });
+
+  it('sends chat to everyone in the world, cleaned and limited', async () => {
+    const udp = await start({ world: { size: 1024 } });
+    const a = await connect(udp, { token: await token({ name: 'ana' }) });
+    const b = await connect(udp, { token: await token({ name: 'bea' }) });
+    const aw = await a.next('welcome');
+    await b.next('welcome');
+    // Far apart: chat is not by distance.
+    a.send({ type: 'pose', seq: 1, position: { x: 10, y: 0, z: 10 }, yaw: 0, look: 0, stance: 'standing' });
+    a.send({ type: 'say', text: 'hola\u202e  a todos\u0007' });
+    const line = await b.next('chat');
+    expect(line).toEqual({ type: 'chat', from: aw.entity, text: 'hola a todos' });
+    for (let i = 0; i < 10; i++) a.send({ type: 'say', text: `line ${i}` });
+    await new Promise((r) => setTimeout(r, 300));
+    // The burst of 5, the first included.
+    expect(b.got.filter((m) => m.type === 'chat').length).toBe(5);
+    expect(cleanChat('x'.repeat(400))).toHaveLength(280);
+    expect(cleanChat('   ')).toBe('');
+  });
+
+  it('serves the plaza: its spawn, its size, and corrects a player rising beyond a jump', async () => {
+    const udp = await start(mapOptions(PLAZA));
+    const a = await connect(udp);
+    const spawn = (await a.next('snapshot', (s) => s.correction?.seq === 0)).correction!;
+    expect(Math.hypot(spawn.position.x - PLAZA.spawn.x, spawn.position.z - PLAZA.spawn.z)).toBeLessThanOrEqual(PLAZA.spawn.radius + 0.01);
+    expect(spawn.position.y).toBeCloseTo(PLAZA.spawn.y, 1);
+    expect(spawn.yaw).toBeCloseTo(0, 2);
+    // A jump is fine; floating 5 m up is not.
+    a.send({ type: 'pose', seq: 1, position: { ...spawn.position, y: spawn.position.y + 0.8 }, yaw: 0, look: 0, stance: 'jumping' });
+    await new Promise((r) => setTimeout(r, 120));
+    a.send({ type: 'pose', seq: 2, position: { ...spawn.position, y: spawn.position.y + 5 }, yaw: 0, look: 0, stance: 'jumping' });
+    const fixed = await a.next('snapshot', (s) => s.correction?.seq === 2);
+    expect(fixed.correction!.position.y).toBeCloseTo(spawn.position.y + 0.8, 1);
   });
 });

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@flatchat/protocol": "*",
+    "@flatchat/sim": "*",
     "node-datachannel": "0.33.4"
   },
   "scripts": {

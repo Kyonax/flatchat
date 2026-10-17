@@ -7,6 +7,7 @@
 // per form (full or coarse) per tick, and those bytes are copied into every snapshot that needs
 // them, so the encodings follow the busy cells, never the viewers.
 import { CELL_SIZE, encodeCellBlock, encodeMessage, type MessageBody, type STANCES } from '@flatchat/protocol';
+import { type Box, checkMove, DEFAULT_LIMITS } from '@flatchat/sim';
 import { cellKey, cellOf, distanceToCell, keyCx, keyCz } from './grid.ts';
 import { DEFAULT_INTEREST, formFor, type InterestConfig, isDue, type Tier, tierFor } from './interest.ts';
 
@@ -48,10 +49,14 @@ export interface Player {
 export interface WorldConfig {
   /** The world is the square [0, size) in x and z, in metres. */
   size: number;
-  /** Fastest accepted ground speed, m/s. */
+  /** Fastest accepted ground speed, m/s (packages/sim: running plus a margin). */
   maxSpeed: number;
-  /** Metres of tolerance on each pose's distance check. */
+  /** Metres of tolerance on each pose's checks. */
   speedSlack: number;
+  /** The world's solid boxes, for the height check; none means flat ground at y = 0. */
+  solids: readonly Box[];
+  /** Whether players may fly; otherwise a pose rising above a jump's reach is corrected. */
+  flying: boolean;
   interest: InterestConfig;
   /** Target size of one snapshot message, so each fits one datagram. */
   maxSnapshotBytes: number;
@@ -62,8 +67,10 @@ export interface WorldConfig {
 
 export const DEFAULT_WORLD: WorldConfig = {
   size: 256,
-  maxSpeed: 8,
-  speedSlack: 0.75,
+  maxSpeed: DEFAULT_LIMITS.maxSpeed,
+  speedSlack: DEFAULT_LIMITS.slack,
+  solids: [],
+  flying: false,
   interest: DEFAULT_INTEREST,
   maxSnapshotBytes: 1100,
   maxFullPerBlock: 96,
@@ -152,10 +159,10 @@ export class World {
     const nx = this.clampGround(pose.position.x);
     const nz = this.clampGround(pose.position.z);
     const ny = Math.min(Y_MAX, Math.max(Y_MIN, pose.position.y));
-    const ground = Math.hypot(nx - player.x, nz - player.z);
     player.ack = pose.seq;
     player.lastPoseAt = now;
-    if (ground > this.config.maxSpeed * dt + this.config.speedSlack) {
+    const limits = { maxSpeed: this.config.maxSpeed, slack: this.config.speedSlack, flying: this.config.flying, reach: DEFAULT_LIMITS.reach };
+    if (checkMove(player, { x: nx, y: ny, z: nz }, dt, limits, this.config.solids) !== 'ok') {
       player.correction = { seq: pose.seq, position: { x: player.x, y: player.y, z: player.z }, yaw: player.yaw };
       return 'corrected';
     }

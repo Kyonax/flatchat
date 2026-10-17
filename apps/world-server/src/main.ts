@@ -8,8 +8,10 @@
 //   node src/main.ts [--port 7777] [--transport udp|rtc|both] [--rtc-port 7778] [--signal-port 7779]
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
 //                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
-//                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--stop-on-stdin]
+//                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
 //
+// --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
+// spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
 // world's key comes from the environment, FLATCHAT_WORLD_KEY (64 hexadecimal characters), never
 // from a flag a process listing would show; without it the world takes no joins. Its id comes from
@@ -18,10 +20,11 @@ import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { fingerprintHex, fromHex, PROTOCOL_VERSION, WORLD_KEY_BYTES } from '@flatchat/protocol';
+import { PLAZA } from '@flatchat/sim';
 import { RtcServer } from './net/rtc.ts';
 import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
-import { DEFAULT_SERVER, WorldServer } from './server.ts';
+import { DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
 
 const VERSION = '0.0.0';
 
@@ -53,13 +56,14 @@ const { values } = parseArgs({
     'voice-hz': { type: 'string', default: '50' },
     ticks: { type: 'string' },
     capacity: { type: 'string', default: '200' },
-    'world-size': { type: 'string', default: '256' },
+    'world-size': { type: 'string' },
     'metrics-every': { type: 'string', default: '5' },
     trace: { type: 'string' },
     'stop-on-stdin': { type: 'boolean', default: false },
     'world-id': { type: 'string' },
     seed: { type: 'string', default: '1' },
     spawn: { type: 'string' },
+    map: { type: 'string', default: 'flat' },
   },
   strict: true,
 });
@@ -71,7 +75,10 @@ const hz = intOption('tick-hz', values['tick-hz'], 1, 1000) ?? 20;
 const voiceHz = intOption('voice-hz', values['voice-hz'], 1, 1000) ?? 50;
 const maxTicks = intOption('ticks', values.ticks, 1, Number.MAX_SAFE_INTEGER);
 const capacity = intOption('capacity', values.capacity, 1, 65_535) ?? 200;
-const worldSize = intOption('world-size', values['world-size'], 32, 65_536) ?? 256;
+if (values.map !== 'flat' && values.map !== 'plaza') fail(`--map must be flat or plaza, got ${values.map}`);
+const plaza = values.map === 'plaza';
+if (plaza && (values['world-size'] !== undefined || values.spawn !== undefined)) fail('--map plaza has its own size and spawn: leave out --world-size and --spawn');
+const worldSize = plaza ? PLAZA.size : (intOption('world-size', values['world-size'], 32, 65_536) ?? 256);
 const metricsEvery = intOption('metrics-every', values['metrics-every'], 0, 3600) ?? 5;
 const seed = intOption('seed', values.seed, 0, 2 ** 32 - 1) ?? 1;
 let spawn: { x: number; z: number; r: number } | undefined;
@@ -130,6 +137,7 @@ const server = new WorldServer(
     metricsEverySec: metricsEvery,
     seed,
     ...(spawn ? { spawn } : {}),
+    ...(plaza ? mapOptions(PLAZA) : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),
   },
