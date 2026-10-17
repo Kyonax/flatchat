@@ -39,7 +39,7 @@ jobs:
   client-linux:
     name: Client on Linux
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -78,6 +78,16 @@ jobs:
           name: client-linux
           path: apps/client/release/linux-unpacked
           retention-days: 7
+      # S1.14: what testers download, an AppImage and a .tar.gz, kept for a month.
+      - name: Builds for testers
+        run: npm run dist:testers -w @flatchat/client
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatchat-linux
+          path: |
+            apps/client/release/FlatChat-*.AppImage
+            apps/client/release/FlatChat-*.tar.gz
+          retention-days: 30
 
   client-windows:
     name: Client on Windows
@@ -104,4 +114,4 @@ jobs:
         with:
           name: client-windows
           path: apps/client/release/*.zip
-          retention-days: 7
+          retention-days: 30
