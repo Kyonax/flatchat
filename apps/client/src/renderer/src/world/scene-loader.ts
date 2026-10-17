@@ -5,6 +5,8 @@
 // and textures are KTX2 (the converter's output): the decoders come with the bundle, the Basis
 // transcoder handed to KTX2Loader as data URLs because a packaged client's page cannot fetch
 // files (its worker starts from a blob URL: the page's policy allows workers from blob: only).
+// The converter's levels of detail (sibling nodes marked `extras.flatchatLod` 0, 1, 2; three.js
+// puts extras in userData) become THREE.LOD objects that switch by the camera's distance.
 import { inspectScene, readGltf } from '@flatchat/content';
 import * as THREE from 'three/webgpu';
 // trap-lint: allow T11 because it parses only built worlds' GLBs, named by their hash and checked by packages/content first
@@ -45,11 +47,53 @@ function loader(renderer: THREE.WebGPURenderer): GLTFLoader {
   return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(ktx2);
 }
 
+/** Where a mesh switches to its simpler levels: multiples of its radius, never closer than 12 m
+ *  and 30 m. */
+export function lodDistances(radius: number): [number, number] {
+  return [Math.max(12, radius * 8), Math.max(30, radius * 20)];
+}
+
+const lodLevel = (o: THREE.Object3D): number | undefined => {
+  const v = o.userData['flatchatLod'];
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 8 ? v : undefined;
+};
+
+/** Gathers each set of marked sibling levels into a THREE.LOD centred on the full level, keeping
+ *  every level where it was. Returns how many it made. */
+export function levelsOfDetail(root: THREE.Object3D): number {
+  root.updateMatrixWorld(true);
+  const parents = new Set<THREE.Object3D>();
+  root.traverse((o) => {
+    if (lodLevel(o) !== undefined && o.parent) parents.add(o.parent);
+  });
+  let made = 0;
+  for (const parent of parents) {
+    const levels = parent.children.filter((c) => lodLevel(c) !== undefined).sort((a, b) => lodLevel(a)! - lodLevel(b)!);
+    if (levels.length < 2 || lodLevel(levels[0]!) !== 0) continue;
+    const box = new THREE.Box3().setFromObject(levels[0]!);
+    const radius = box.getBoundingSphere(new THREE.Sphere()).radius;
+    const centre = parent.worldToLocal(box.getCenter(new THREE.Vector3()));
+    const lod = new THREE.LOD();
+    lod.name = `${parent.name}.levels`;
+    lod.position.copy(centre);
+    const [near, far] = lodDistances(radius);
+    for (const [k, level] of levels.entries()) {
+      level.position.sub(centre);
+      lod.addLevel(level, k === 0 ? 0 : k === 1 ? near : far * (k - 1), 0.1);
+    }
+    parent.add(lod);
+    made += 1;
+  }
+  root.updateMatrixWorld(true);
+  return made;
+}
+
 /** A scene's objects, ready to add; static, so their matrices are computed once. */
 export async function loadScene(renderer: THREE.WebGPURenderer, bytes: Uint8Array): Promise<THREE.Group> {
   checkGlb(bytes);
   const gltf = await loader(renderer).parseAsync(bytes.slice().buffer, '');
   const group = gltf.scene as unknown as THREE.Group;
+  levelsOfDetail(group);
   group.updateMatrixWorld(true);
   group.traverse((o) => {
     o.matrixAutoUpdate = false;

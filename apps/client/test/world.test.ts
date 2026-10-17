@@ -11,7 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ContentCache } from '../src/main/content-cache';
 import { Downloader } from '../src/renderer/src/world/download';
 import { loadPhysics, Physics } from '../src/renderer/src/world/physics';
-import { checkGlb, SceneError } from '../src/renderer/src/world/scene-loader';
+import * as THREE from 'three/webgpu';
+import { checkGlb, levelsOfDetail, lodDistances, SceneError } from '../src/renderer/src/world/scene-loader';
 import { mapColliders } from '../src/renderer/src/world/session';
 
 const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
@@ -190,5 +191,46 @@ describe('a downloaded scene', () => {
     v.setUint32(16, 0x4e4f534a, true);
     glb.set(json, 20);
     expect(() => checkGlb(glb)).toThrow(/inside its GLB/);
+  });
+});
+
+describe('levels of detail (S2.03)', () => {
+  it('gathers marked siblings into a THREE.LOD at the full level, leaving every level where it was', () => {
+    const root = new THREE.Group();
+    const parent = new THREE.Group();
+    parent.position.set(5, 0, 0);
+    root.add(parent);
+    const level = (k: number, size: number): THREE.Mesh => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size));
+      m.position.set(10, 1, -4);
+      m.userData['flatchatLod'] = k;
+      return m;
+    };
+    const other = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+    parent.add(level(2, 1), level(0, 1), level(1, 1), other);
+    root.updateMatrixWorld(true);
+    expect(levelsOfDetail(root)).toBe(1);
+    const lod = parent.children.find((c): c is THREE.LOD => (c as THREE.LOD).isLOD === true)!;
+    expect(parent.children).toContain(other);
+    expect(lod.position.toArray()).toEqual([10, 1, -4]);
+    expect(lod.levels.map((l) => [l.object.userData['flatchatLod'], l.distance])).toEqual([
+      [0, 0],
+      [1, 12],
+      [2, 30],
+    ]);
+    const at = lod.levels[2]!.object.getWorldPosition(new THREE.Vector3());
+    expect(at.toArray()).toEqual([15, 1, -4]);
+    expect(lodDistances(10)).toEqual([80, 200]);
+  });
+
+  it('leaves unmarked scenes, and a set without its full level, as they are', () => {
+    const root = new THREE.Group();
+    const a = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+    a.userData['flatchatLod'] = 1;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+    b.userData['flatchatLod'] = 2;
+    root.add(a, b, new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)));
+    expect(levelsOfDetail(root)).toBe(0);
+    expect(root.children).toHaveLength(3);
   });
 });
