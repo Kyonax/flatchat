@@ -46,6 +46,11 @@ jobs:
       # Linux client job covers offline mode and a player's trip.
       - name: Stage 2 acceptance, with bots
         run: node tools/bots/src/accept-stage2.ts --bots 50
+      # S3.13: Stage 3's acceptance lines with real accounts and the tokens the core issues them
+      # (entry rules, moderation and a platform ban, a block that follows the account, a quiet zone,
+      # a minor and its guardian, a report and its decision, the abuse path's drill).
+      - name: Stage 3 acceptance, with real accounts
+        run: node tools/bots/src/accept-stage3.ts
 
   host-tool:
     name: Host tool
