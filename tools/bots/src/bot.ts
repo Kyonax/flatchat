@@ -137,6 +137,9 @@ export class Bot {
   async join(): Promise<void> {
     const t = this.options.target;
     this.state = 'connecting';
+    // A retry starts clean: a first attempt's failure is not a loss once the bot is in.
+    this.lostReason = '';
+    this.refuseReason = '';
     const started = performance.now();
     try {
       this.link = t.transport === 'udp' ? await connectUdp({ host: t.host, port: t.udpPort }) : await connectRtc({ signalUrl: t.signalUrl, ...(t.iceBind ? { iceBind: t.iceBind } : {}) });
