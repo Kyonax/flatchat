@@ -6,3 +6,4 @@
 
 Licence: CC BY 4.0 ([LICENSE](LICENSE)).
 - [`hosting.md`](hosting.md): running the core and a world on a home PC so friends on other networks can join: the Cloudflare Tunnel, the core's signalling relay, port mapping and TURN.
+- [`world-format.md`](world-format.md): how a world is made: `world.toml`, glTF scenes and their markers (spawn points, seats, solids, sounds, portals, zones), the limits.
