@@ -31,6 +31,8 @@ This rule governs `tools/bots` (workspace `@flatchat/bots`, MPL-2.0): headless p
 | Rebuild a report | `npm run bots -- report tools/bots/out/<run>` |
 | The devlog clip | `npm run bots -- render tools/bots/out/<run> [--from 300] [--seconds 45]` |
 | The real client joins a world server over WebRTC (CI's smoke steps) | `npm run bots -- client-check -- <client> --smoke [--smoke-out=FILE]` (a WebRTC world server on loopback, a sealed token, `--join` and `--join-token` appended; exit 0 only when the client passed and the server saw one join) |
+| The world browser with every real program (S2.09, CI) | `node tools/bots/src/browse.ts [--recommended 4] [--capacity 6]`: a private PostgreSQL, the core, a world reporting over its host channel, bots joining one at a time; listed below the recommended count, off the list at it, the core and the world refusing once full |
+| Travel between worlds (S2.11, CI) | `node tools/bots/src/hop.ts [--bots 20] [--loops 5]`: two plazas whose portals lead to each other (`tools/converter/scripts/make-travel.ts`), bots that walk into the portal (`goal`), take `portal` (`onPortal`), leave with `stop('travel')` and join the other world with the portal's `spawn` group; every arrival must land on the arrival spawn, and each world counts its `portal` and `leave:travel` events |
 | The voice chain end to end (spike S0.08) | `npm run bots -- voice-check --seconds 20 -- <client>` (a world server with `--spawn 8,32,1` in a 64 m world and two tokens; the client's `--voice-test` joins twice and reports) |
 
 A run's folder (default `tools/bots/out/<time>-<transport>-<bots>`, ignored by git) holds `run.json`, `server.jsonl`, `swarm-N.jsonl`, `wire.jsonl`, `trace.jsonl` (with `--trace`), `report.json`, `report.md`, and after a render `devlog.mp4` and `devlog.png`.
@@ -66,7 +68,7 @@ A run's folder (default `tools/bots/out/<time>-<transport>-<bots>`, ignored by g
 
 ## The End-to-End Test
 
-`node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR]` runs Stage 1's path with the core, a plaza world server and the packaged client under Playwright; it lives here because, like `client-check`, it orchestrates real programs. Read `client-app` for what it checks.
+`node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR]` runs Stage 1's path with the core, two plaza world servers whose portals lead to each other and the packaged client under Playwright: the world browser, the join, walking, chat, and the walk back through the portal into the second world (S2.11); it lives here because, like `client-check`, it orchestrates real programs. Read `client-app` for what it checks. The checks that start programs share `src/procs.ts` (`start` waits for a JSON line, `stop` asks through standard input, `waitFor` polls); world servers they start get `--data` in their own folder, never the default under the home directory.
 
 ## Correct vs. Incorrect
 

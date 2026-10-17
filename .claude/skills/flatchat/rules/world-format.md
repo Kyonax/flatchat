@@ -12,7 +12,7 @@ The world format (version 1, `docs/world-format.md`) is how worlds are made: Fla
 | Piece | Rule |
 |---|---|
 | `world.toml` | `format = 1`, a name (3 to 48 characters of plain text), capacity (recommended at most maximum, 1 to 1000), persistence (`reset` or `persistent`), `movement.flying`, avatar height range, `voice.range`, and `[[scenes]]` (ids of lowercase letters, digits and dashes; files are `.glb`/`.gltf` relative paths inside the folder). Unknown keys are warnings and are never used. A key written after `[[scenes]]` belongs to that scene, as TOML says |
-| Markers | `OMI_spawn_point` (at least one in the first scene; faces the node's -z), `OMI_seat`, `OMI_physics_shape` with `OMI_physics_body` (collider or trigger), `KHR_audio_emitter`, and FlatChat's `FLATCHAT_world`: `portal` (a box leading to a world by id) and `zone` (`voice` with range and gain, `quiet`, `private`) |
+| Markers | `OMI_spawn_point` (at least one in the first scene, the world's own; any scene may add spawn points with a `group`, which a portal names; faces the node's -z), `OMI_seat`, `OMI_physics_shape` with `OMI_physics_body` (collider or trigger), `KHR_audio_emitter`, and FlatChat's `FLATCHAT_world`: `portal` (a box leading to a world by id and a spawn group there; the world server checks a player's position, their feet, so the box must reach below the floor) and `zone` (`voice` with range and gain, `quiet`, `private`) |
 | Transforms | Markers sit at their node's world transform (`localMatrix` from `matrix` or TRS, multiplied down from the scene's roots; a node with two parents is refused) |
 | Paths | Buffers and images are inside the GLB or relative paths inside the folder: `safePath` refuses absolute paths, `..`, backslashes and any scheme (`http:`, `file:`); `data:` URIs over 1 MB are refused |
 | Extensions | An unknown extension in `extensionsRequired` refuses the world; in `extensionsUsed` it is a warning (ignored) |
@@ -39,6 +39,7 @@ if (!report.ok) for (const p of report.problems) console.log(p.severity, p.code,
 | Solids | `collision.bin` (`packages/content/src/collision.ts`): boxes, spheres, capsules, cylinders and triangle meshes in world space, from `OMI_physics_body`; a world that marks none gets every mesh as a static triangle mesh, with a warning |
 | Navigation mesh | Recast through recast-navigation-js at 20 cm cells (15 cm runs its WebAssembly memory out on a 128 m world), the player's height, radius and step from `packages/sim` |
 | Output | `world.json` (`packages/content/src/built.ts`; `parseBuiltWorld` checks every field of one read from elsewhere) and `content/<sha256>`; deterministic, pinned by `test/golden/plaza.world.json` |
+| Test worlds | `scripts/make-plaza.ts` writes `kits/worlds/plaza`; `scripts/make-travel.ts OUT --worlds ID_A,ID_B` writes two plazas whose extra `travel` scene holds a portal to the other (an arch 6 m south of the spawn) and an `arrival` spawn group, and builds them (the hop test and the end-to-end use it) |
 | Typing | The converter's tsconfig uses Bundler resolution: recast-navigation's declaration files use extensionless imports that NodeNext cannot follow |
 
 ## Correct vs. Incorrect

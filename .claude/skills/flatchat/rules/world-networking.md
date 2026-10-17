@@ -75,7 +75,11 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 
 ## World Content (`src/world/content.ts`, S2.04)
 
-`--world BUILT_DIR` serves a built world (the converter's `world.json` and `content/<sha256>`): `loadBuiltWorld` checks world.json with `parseBuiltWorld` and every file's hash, and `builtOptions` takes the world's bounds, spawn points (each join picks one), solids (an axis-aligned box around each collider, for the height check), flying and maximum capacity. After `welcome` the server sends `content`; a player's `fetch` queues a file (64 at most), `unfetch` drops it, an unknown hash gets `notFound`. `ContentServer.step()` runs on the voice ticker (50 Hz): 16 KB chunks, at most 2 MB/s a player and 6 MB/s in total, so downloads never starve the game. The client downloads, checks and caches it (`client-app`).
+`--world BUILT_DIR` serves a built world (the converter's `world.json` and `content/<sha256>`): `loadBuiltWorld` checks world.json with `parseBuiltWorld` and every file's hash, and `builtOptions` takes the world's bounds, spawn points (from every scene, each with its group; a join picks among the first scene's, or among the group its `hello` names when the world has it, S2.11), portals (from every scene), solids (an axis-aligned box around each collider, for the height check), flying and maximum capacity. After `welcome` the server sends `content`; a player's `fetch` queues a file (64 at most), `unfetch` drops it, an unknown hash gets `notFound`. `ContentServer.step()` runs on the voice ticker (50 Hz): 16 KB chunks, at most 2 MB/s a player and 6 MB/s in total, so downloads never starve the game. The client downloads, checks and caches it (`client-app`).
+
+## Portals (`src/server.ts`, S2.11)
+
+After each applied `pose` the server checks the player's position against the portal boxes (`insideBox` from `packages/content`: a box turned about y). Entering one sends `portal` (the world id and the spawn group, cut to 32 bytes) once; the player must leave the box before the next. A player who spawns inside a portal starts as already in it, so arrivals are never bounced straight back. The world never hands out a connect token for the other world: the client asks the core (`client-app`). A player arriving with a spawn group skips a persistent world's remembered place. Events `portal` and `leave:travel` count it.
 
 ## Interest Management and Snapshots (`src/world/`)
 
