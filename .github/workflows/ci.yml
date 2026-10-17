@@ -60,6 +60,11 @@ jobs:
           mkdir fresh && tar -xzf release/host/flatchat-host-*-linux-x64.tar.gz -C fresh
           env -i HOME="$PWD/fresh" PATH=/usr/bin:/bin fresh/flatchat-host-*/bin/flatchat-host new fresh/w
           env -i HOME="$PWD/fresh" PATH=/usr/bin:/bin fresh/flatchat-host-*/bin/flatchat-host build fresh/w
+      # The world server inside the package serves the world it built, for 2 seconds.
+      - name: The package serves a world
+        run: |
+          env -i HOME="$PWD/fresh" PATH=/usr/bin:/bin fresh/flatchat-host-*/node/bin/node fresh/flatchat-host-*/app/apps/world-server/src/main.ts --world fresh/w/.built --transport udp --port 0 --ticks 40 --metrics-every 0 | tee served.jsonl
+          grep -q '"event":"world-loaded"' served.jsonl && grep -q '"reason":"tick-limit"' served.jsonl
       - run: node tools/host-tool/scripts/pack.ts --no-node --out release/image
       - run: docker build -t flatchat-host -f tools/host-tool/Dockerfile release/image/flatchat-host-*-linux-x64
       - run: docker run --rm flatchat-host check /flatchat/kits/worlds/plaza
