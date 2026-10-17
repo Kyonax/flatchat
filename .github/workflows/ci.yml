@@ -35,6 +35,9 @@ jobs:
       # S1.15: 10 bots for 2 minutes on each transport (the harness's own bot check runs 4 s).
       - name: Bots, 10 for 2 minutes on each transport
         run: npm run bots -- smoke --bots 10 --seconds 120
+      # S2.09: bots fill a world until it leaves the public list (the core on PostgreSQL, a real world server).
+      - name: The world browser, with bots filling a world
+        run: node tools/bots/src/browse.ts
 
   host-tool:
     name: Host tool
