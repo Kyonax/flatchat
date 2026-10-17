@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# A park made only of the base library's parts (S2.05), by tools/converter/scripts/make-park.ts.
+format = 1
+name = "The Park"
+description = "Paving, fences, trees, benches, a platform and an arch, all from the base library: nothing to download but the plan."
+
+[capacity]
+recommended = 30
+maximum = 40
+
+[persistence]
+mode = "reset"
+
+[movement]
+flying = false
+
+[voice]
+range = 25
+
+[[scenes]]
+id = "park"
+file = "scenes/park.glb"
