@@ -186,3 +186,18 @@ describe('keeping evidence', () => {
     expect((await row(abuse.receipt)).purged).toBe(true);
   });
 });
+
+describe('personal mutes', () => {
+  it('follow the account, and refuse oneself and unknown accounts', async () => {
+    const me = await account('muter@example.org');
+    const loud = await account('loud@example.org');
+    const put = (id: string) => app.inject({ method: 'PUT', url: `/api/v1/me/mutes/${id}`, headers: me.bearer });
+    expect((await put(loud.id)).statusCode).toBe(204);
+    expect((await put(loud.id)).statusCode).toBe(204);
+    expect((await put(me.id)).statusCode).toBe(400);
+    expect((await put('00000000-0000-4000-8000-000000000000')).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me/mutes', headers: me.bearer })).json()).toEqual({ accounts: [loud.id] });
+    expect((await app.inject({ method: 'DELETE', url: `/api/v1/me/mutes/${loud.id}`, headers: me.bearer })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/me/mutes', headers: me.bearer })).json()).toEqual({ accounts: [] });
+  });
+});

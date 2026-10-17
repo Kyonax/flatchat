@@ -28,6 +28,7 @@ import type { Db } from './db.ts';
 import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
 import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
+import { MAX_MUTES, mutesOf, setMute } from './mutes.ts';
 import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
 import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
@@ -653,6 +654,27 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       if (err instanceof ReportError) return sendProblem(reply, problem(400, 'bad-clip', err.message));
       throw err;
     }
+  });
+
+  // Personal mutes (S3.08): the accounts this player does not hear, in every world.
+  app.get('/api/v1/me/mutes', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return { accounts: await mutesOf(o.db, who.accountId) };
+  });
+
+  app.put('/api/v1/me/mutes/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await setMute(o.db, who.accountId, (req.params as { account: string }).account, true, now()))) return sendProblem(reply, problem(400, 'bad-mute', `an account other than yours; ${MAX_MUTES} at most`));
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/v1/me/mutes/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    await setMute(o.db, who.accountId, (req.params as { account: string }).account, false, now());
+    return reply.code(204).send();
   });
 
   app.get('/api/v1/reports', async (req, reply) => {
