@@ -55,8 +55,10 @@ Spike scope: the server's key is not authenticated. Production would carry sessi
 | 3. Version | `checkVersion(hello, versionPolicy(coreMinimum))`: a refusal is sent as is |
 | 4. Token | `openToken(token, { key, world, now })`: `expired` → `token-expired`, `wrong-world` → `wrong-world`, anything else → `token-invalid`; no world key → refused (`error`) |
 | 5. Replay | Each accepted token's nonce is kept until it expires; seen again → `token-replayed` |
-| 6. Capacity | At `capacity` players → `full` |
-| 7. Accepted | `welcome`, then the full `roster`; the next tick's snapshot carries every busy cell (the join snapshot) and a `correction` with sequence 0: the spawn the server chose, repeated in every snapshot until the player's first pose arrives (snapshots can be lost; a client ignores a sequence-0 correction once placed) |
+| 6. Capacity | At `capacity` players → `full` (an account already in the world makes room for itself) |
+| 7. Entry rules | `options.entryRules` in order (the built-in `OPEN_RULE` admits everyone; Stage 3 moves rules into plugins): the first `{ admit: false, detail }` refuses with reason `rule` and the detail (160 characters) |
+| 8. One session per account | The same account joining again ends the older connection with `leave` `kicked` ("joined again from somewhere else") |
+| 9. Accepted | `welcome`, then the full `roster`; the next tick's snapshot carries every busy cell (the join snapshot) and a `correction` with sequence 0: the spawn the server chose, repeated in every snapshot until the player's first pose arrives (snapshots can be lost; a client ignores a sequence-0 correction once placed) |
 | Refusing | Send `refuse`, wait 100 ms, then close the link |
 
 The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connection.ts`): `join()` resolves once welcomed and placed (`conn.spawn`), so no caller waits for the one-time spawn after the fact; pass `onMessage` to `join()` to see every message from the welcome on (the join's roster and first snapshot arrive while it runs); `next()` sees only messages that arrive after it is called.
@@ -70,7 +72,8 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 | Encoding once | `World.tick()` encodes each busy cell at most once per form per tick (full, coarse) and copies the bytes into every snapshot that needs them: encodings follow busy cells, never viewers |
 | Crowded cells | More than 96 full (or 160 coarse) avatars split into several blocks with the same `cx`, `cz`; a client merges blocks |
 | Packing | A viewer's blocks go out in near → ring → far order in snapshot messages of about 1,100 bytes, so each fits one datagram; the first message of a tick carries `ack` and any `correction` |
-| Poses | Newer sequence only (16-bit wrap); ground speed at most 8 m/s plus 0.75 m per pose, otherwise a `correction` puts the player back; positions clamp to the world square |
+| Poses | Newer sequence only (16-bit wrap); `checkMove` from `packages/sim` (running plus 15 % with 0.75 m of slack; no rising above a jump's reach where flying is off), otherwise a `correction` puts the player back; positions clamp to the world square. Read `movement-sim` |
+| Entity ids | An id freed this tick is reused only after the roster has announced its leave, so no roster names two players with one id |
 
 ## Voice and Chat
 
@@ -78,7 +81,7 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 |---|---|
 | Voice in | At most 60 frames per second per player (more are counted and dropped); frames queue per speaker, at most 3 |
 | Voice out | Every 20 ms (a second ticker at 50 Hz): one frame from each of up to 16 speakers within 25 m of each listener, nearest first, in one `voiceBundle`; never decoded |
-| Chat | `say` at most once a second per player; relayed as `chat` to every player within 50 m, the speaker included |
+| Chat (S1.10) | World-wide: relayed as `chat` to every player, the speaker included. `cleanChat`: control characters and direction marks (C0, C1, U+200E/F, U+202A–U+202E, U+2066–U+2069) become spaces, whitespace collapses, at most 280 characters, empty lines dropped. A token bucket per player: a burst of 5, then one every 1.5 s; more are counted (`chat:throttled`) and dropped |
 | Ping | `pong` echoes `id` and `time` at once |
 
 ## Correct vs. Incorrect

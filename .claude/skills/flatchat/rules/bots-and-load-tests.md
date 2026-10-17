@@ -64,6 +64,10 @@ A run's folder (default `tools/bots/out/<time>-<transport>-<bots>`, ignored by g
 
 `smoke` fails when a bot did not join, lost its link, got no snapshot or no pong, nobody heard any voice, or a correction or malformed message appeared.
 
+## The End-to-End Test
+
+`node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR]` runs Stage 1's path with the core, a plaza world server and the packaged client under Playwright; it lives here because, like `client-check`, it orchestrates real programs. Read `client-app` for what it checks.
+
 ## Correct vs. Incorrect
 
 **Incorrect:** bots and server on the same cores.

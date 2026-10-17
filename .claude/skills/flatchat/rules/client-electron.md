@@ -40,6 +40,9 @@ The preload exposes one object, `window.flatchat`, with one named function per c
 | `signal(url, offer)` | `flatchat:signal` | WebRTC signaling: the main process checks the URL (`signalTarget`), posts the offer and returns the answer |
 | `smokeReport(report)` | `flatchat:smoke-report` | The smoke mode's single report |
 | `benchReport(report)` | `flatchat:bench-report` | The bench mode's report with every frame time |
+| `locale()`, `settings()`, `updateSettings(patch)` | `flatchat:locale`, `flatchat:settings`, `flatchat:settings-set` | The system language; the settings, cleaned by `src/shared/settings.ts` in the main process |
+| `authState()`, `signIn()`, `cancelSignIn()`, `signOut()`, `onAuth(listener)` | `flatchat:auth-state`, `flatchat:sign-in`, `flatchat:sign-in-cancel`, `flatchat:sign-out`; events on `flatchat:auth` | The account's state, never its tokens (read `client-app`) |
+| `worlds()`, `joinWorld(id)` | `flatchat:worlds`, `flatchat:join` | The approved worlds; a connect token and the world's address, which `signal` then also allows |
 
 Rules: channel names are string literals of the form `flatchat:<noun>-<verb or noun>`; the renderer's typing lives in `src/renderer/src/env.d.ts` (`interface FlatchatBridge`); the main process validates anything it acts on (reports are only written to a file). Never expose `ipcRenderer` itself or a function that takes the channel name (T09). The renderer never imports `electron` or a Node.js built-in (T08); type-only imports are fine.
 

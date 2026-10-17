@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, PostgreSQL); the world server, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds and the crowd bench; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T19); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   verified: "2026-10-17"
 ---
 
@@ -68,6 +68,8 @@ Reference these guidelines when:
 | Avatars: VRM loading, merged materials, texture budgets, levels of detail, proxies, crowds, the S0.09 bench | `rules/avatars-and-crowds.md` + `rules/rendering-three-webgpu.md` + `rules/security-untrusted-input.md` |
 | The protocol: messages, codecs, connect tokens, the version handshake, golden packets | `rules/protocol-and-codecs.md` + `rules/security-untrusted-input.md` |
 | The core: accounts, invitations, the age rule, sign-in, sessions, worlds and their keys, connect tokens, SQL, its pages, the admin command line | `rules/core-service.md` + `rules/security-untrusted-input.md` |
+| The client app: signing in through the browser, settings and key bindings, the two languages, the world view, chat, voice in the world, the end-to-end test | `rules/client-app.md` + `rules/client-electron.md` |
+| Movement: the character controller, the server's move checks, the plaza and maps | `rules/movement-sim.md` + `rules/world-networking.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -90,6 +92,8 @@ A trap-linter finding names its rule; read that rule.
 | `voice-chain` | The client's voice: Opus as WebAssembly (why not WebCodecs), the capture and playout worklets, the playout buffer's rules, distance and HRTF, mouth shapes, the voice and load tests. |
 | `avatars-and-crowds` | VRM on the WebGPU renderer (MToon node materials, shared textures, VRM 0.x poses), what the converter must do (merge materials, texture budgets), paced swaps, the crowd bench and S0.09's pass lines, the test-avatar sets. |
 | `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
+| `client-app` | The app mode: sign-in in the main process (core-api, loopback, auth, safeStorage), settings and bindings, vue-i18n with the bare-strings rule, the world view (session, controls, remotes, camera, instanced avatars), chat and voice limits, the end-to-end test with Playwright. |
+| `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
 | `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
 | `security-untrusted-input` | Never run, render as HTML or load raw what strangers made: eval, innerHTML/v-html, raw loaders, node:vm, exec (T05, T06, T11–T13). |
