@@ -1,9 +1,9 @@
 ---
 name: flatchat
-description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T19); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
+description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T20); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.14.0"
+  version: "1.15.0"
   verified: "2026-10-17"
 ---
 
@@ -76,6 +76,7 @@ Reference these guidelines when:
 | World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
 | Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
 | Roles in a world, giving them, the People panel, builds sent by others (`host push`), moderation | `rules/roles-and-moderation.md` + `rules/world-networking.md` |
+| Reports, the voice clip, the public form, the triage queue, under-age reports, keeping and purging evidence | `rules/reports-and-safety.md` + `rules/core-service.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -102,13 +103,14 @@ A trap-linter finding names its rule; read that rule.
 | `host-tool` | `tools/host-tool`: sign-in from a terminal, request, approve on `/admin` (CSRF, session cookie), key, run; the capacity advisor; the package and container image; the world's SQLite database. |
 | `plugins` | World plugins (S3.01, S3.05): plugin.toml checks, the in-process model and the narrow `HostApi` (T-04), permissions and `HOOK_NEEDS`, refusals, `guard` with promise handling, fail-closed entry rules, the three entry rules, `host plugins`. |
 | `roles-and-moderation` | Roles per world (S3.06): `RIGHTS` and `can`, the owner from the token, roles in the world's database, `giveRole`'s rules, the People panel, builds by others (`put`/`got`/`publish`, staging, `loadBuiltWorld`, the swap, exit 75, the client's rejoin). |
+| `reports-and-safety` | Reports (S3.02): the clip recorder and the one place that takes it (T20), evidence, the report form, the core's reports, the public form, the triage queue's order, under-age reports, keeping and purging evidence. |
 | `world-format` | `packages/content`: world.toml's fields, the OMI and FLATCHAT_world markers at world transforms, safe paths, limits, `validateWorld`. |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
 | `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
 | `security-untrusted-input` | Never run, render as HTML or load raw what strangers made: eval, innerHTML/v-html, raw loaders, node:vm, exec (T05, T06, T11–T13). |
 | `offline-testing` | Pure modules, scene-graph and recorder tests, inline sources, process tests, test conventions. |
-| `harness-and-trap-linter` | The harness's checks and options, the skill check, the linter's inputs and 17 traps, allow comments, adding traps and checks. |
+| `harness-and-trap-linter` | The harness's checks and options, the skill check, the linter's inputs and its traps, allow comments, adding traps and checks. |
 | `ci-github-actions` | The three jobs, AppArmor and SwiftShader steps, time limits, runner renderers, reading red runs, green/red proof (T14, T15). |
 | `packaging-windows-linux` | electron-builder settings, Linux folder and Windows zip from Linux, checking a Windows build without a GPU or desktop. |
 | `weak-laptop-stand-in` | Imitating Iris Xe or 680M: clock locks, CPU and memory caps, profile derivation and format, commands, verdicts, tuning. |
