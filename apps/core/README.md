@@ -75,8 +75,11 @@ Players report players and worlds from the client, with the chat excerpt, the wo
 | `POST /api/v1/sessions` | — | `{ request, code, verifier }` → `{ access, refresh, accessExpiresAt, refreshExpiresAt, account }` |
 | `POST /api/v1/sessions/refresh` | — | `{ refresh }` → new tokens (a refresh token works once) |
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
-| `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created |
+| `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created, and whether it is under 18 (its client keeps a minor's defaults too) |
 | `POST /api/v1/worlds` | Bearer | `{ name, address, capacity?, listed?, agreement }` → a pending world; `agreement` is the host agreement's version the host accepts (1), else `agreement-required` |
+| `GET /api/v1/me/mutes`, `PUT`/`DELETE /api/v1/me/mutes/:account` | Bearer | Personal mutes (S3.08): the accounts this player does not hear, in every world |
+| `GET /api/v1/me/friends`, `POST`/`DELETE /api/v1/me/friends/:account` | Bearer | Friends (S3.10): `{ friends, incoming, outgoing }`; a POST asks, or accepts the other's request; refused across a block (`friend-blocked`) and to a minor that did not ask first (`friend-minor`) |
+| `GET /api/v1/me/blocks`, `PUT`/`DELETE /api/v1/me/blocks/:account` | Bearer | Blocks (S3.11): two-way, in every world; a block ends any friendship or request between the two |
 | `POST /api/v1/reports` | Bearer | A report (S3.02): `{ category, target: { kind, account?, world?, ref }, text, evidence, clip? }` (the clip a base64 WAV of 700 KB at most) → `{ receipt }`; ten, then one every six minutes |
 | `GET /api/v1/reports` | Bearer | The account's reports: receipt, category, status (`open`, `actioned`, `dismissed`) and the decision |
 | `POST /api/v1/worlds/:id/appeals`, `GET /api/v1/worlds/:id/appeal` | Bearer | A player's appeal against that world's ban, `{ reason, text }`, and where it stands (S3.07) |

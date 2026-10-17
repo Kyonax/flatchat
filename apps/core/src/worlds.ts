@@ -10,6 +10,7 @@ import { isMinor } from './age.ts';
 import type { Db, Sql } from './db.ts';
 import { openWorldKey, sealWorldKey } from './secrets.ts';
 import { DEFAULT_TRUST, type TrustRule, trustOf } from './trust.ts';
+import { tokenLists } from './social.ts';
 
 export const TOKEN_SECONDS = 60;
 /** The most players a world may hold in the MVP (Q-L19): its host sets less. */
@@ -165,7 +166,7 @@ export async function worldEvents(db: Sql, id: string): Promise<Array<{ kind: st
 /** What a world learns about a player: never the birth date or the email (S3.10, dp-006); the
  *  trust level it earned or was given (S3.09); whether it owns the world (S3.06); who may reach
  *  it (a minor: friends until a guardian changes it, S3.10). */
-export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST, world?: { ownerId: string }): TokenClaims {
+export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST, world?: { ownerId: string }, social: { friends: string[]; blocks: string[] } = { friends: [], blocks: [] }): TokenClaims {
   const ageDays = Math.max(0, Math.floor((now.getTime() - account.createdAt.getTime()) / 86_400_000));
   const under18 = isMinor(account.birthYear, account.birthMonth, now);
   return {
@@ -178,8 +179,9 @@ export function claimsFor(account: Account, now: Date, rules: readonly TrustRule
     ageDays: Math.min(ageDays, 65_535),
     owner: world?.ownerId === account.id,
     contact: under18 ? 'friends' : 'everyone',
-    friends: [],
-    blocks: [],
+    // A minor's friends (S3.10) and the accounts kept apart by a block either way (S3.11).
+    friends: under18 ? social.friends.slice(0, 100) : [],
+    blocks: social.blocks.slice(0, 100),
   };
 }
 
@@ -206,6 +208,7 @@ export async function connectToken(
     'update accounts set active_days = active_days + 1, last_active_day = $2::date where id = $1 and (last_active_day is null or last_active_day < $2::date) returning active_days',
     [account.id, today],
   );
-  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }), { key, world: row.id, expiresAt });
+  const social = await tokenLists(db, account.id, isMinor(account.birthYear, account.birthMonth, now));
+  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }, social), { key, world: row.id, expiresAt });
   return { ok: true, token, address: row.address, expiresAt };
 }

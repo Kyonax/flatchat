@@ -29,6 +29,8 @@ import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
 import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
 import { MAX_MUTES, mutesOf, setMute } from './mutes.ts';
+import { befriend, blocksOf, friendsOf, MAX_BLOCKS, setBlock, unfriend } from './social.ts';
+import { isMinor } from './age.ts';
 import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
 import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
@@ -549,6 +551,9 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       emailVerified: a.emailVerified,
       trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST),
       tester: a.tester,
+      // The client keeps a minor's defaults itself too (S3.10): its microphone starts muted, and
+      // it drops strangers' voices and chat.
+      under18: isMinor(a.birthYear, a.birthMonth, now()),
       createdAt: a.createdAt.toISOString(),
     };
   });
@@ -654,6 +659,50 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       if (err instanceof ReportError) return sendProblem(reply, problem(400, 'bad-clip', err.message));
       throw err;
     }
+  });
+
+  // Friends (S3.10): asked and accepted; a minor takes no request from someone it did not ask.
+  app.get('/api/v1/me/friends', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return friendsOf(o.db, who.accountId);
+  });
+
+  app.post('/api/v1/me/friends/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (limited(limits.joinByAccount, who.accountId, reply)) return reply;
+    const r = await befriend(o.db, who.accountId, (req.params as { account: string }).account, now());
+    if (r === 'requested' || r === 'accepted' || r === 'already') return reply.code(r === 'requested' ? 201 : 200).send({ status: r });
+    return sendProblem(reply, problem(r === 'no-account' ? 404 : 403, `friend-${r}`, r === 'minor' ? 'this player takes friend requests only from people it asked' : 'not possible'));
+  });
+
+  app.delete('/api/v1/me/friends/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    await unfriend(o.db, who.accountId, (req.params as { account: string }).account);
+    return reply.code(204).send();
+  });
+
+  // Blocks (S3.11): two-way, in every world; the worlds learn them from the connect token.
+  app.get('/api/v1/me/blocks', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return { accounts: await blocksOf(o.db, who.accountId) };
+  });
+
+  app.put('/api/v1/me/blocks/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await setBlock(o.db, who.accountId, (req.params as { account: string }).account, true, now()))) return sendProblem(reply, problem(400, 'bad-block', `an account other than yours; ${MAX_BLOCKS} at most`));
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/v1/me/blocks/:account', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    await setBlock(o.db, who.accountId, (req.params as { account: string }).account, false, now());
+    return reply.code(204).send();
   });
 
   // Personal mutes (S3.08): the accounts this player does not hear, in every world.
