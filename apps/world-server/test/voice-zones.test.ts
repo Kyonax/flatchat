@@ -69,10 +69,10 @@ class Client {
   }
 }
 
-async function enter(udp: UdpServer, spawn: string, o: { name?: string; under18?: boolean } = {}): Promise<Client> {
+async function enter(udp: UdpServer, spawn: string, o: { name?: string; under18?: boolean; account?: string; friends?: string[] } = {}): Promise<Client> {
   const c = new Client(await connectUdp({ host: '127.0.0.1', port: udp.port }));
   const token = await sealToken(
-    { account: randomUUID(), name: o.name ?? spawn, trust: 1, tester: false, emailVerified: true, under18: o.under18 ?? false, ageDays: 9, owner: false, contact: o.under18 ? 'friends' : 'everyone', friends: [], blocks: [] },
+    { account: o.account ?? randomUUID(), name: o.name ?? spawn, trust: 1, tester: false, emailVerified: true, under18: o.under18 ?? false, ageDays: 9, owner: false, contact: o.under18 ? 'friends' : 'everyone', friends: o.friends ?? [], blocks: [] },
     { key: KEY, world: WORLD, expiresAt: Math.floor(Date.now() / 1000) + 60 },
   );
   c.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn, height: 0 });
@@ -127,8 +127,10 @@ describe('the world’s voice rules', () => {
     const udp = await start(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'plugins-voice'));
     const whisper = await enter(udp, 'floor', { name: 'Whisper' });
     const shout = await enter(udp, 'floor', { name: 'Shout' });
-    const listener = await enter(udp, 'stage', { name: 'Listener' });
-    const young = await enter(udp, 'stage', { name: 'Young', under18: true });
+    const listenerAccount = randomUUID();
+    const listener = await enter(udp, 'stage', { name: 'Listener', account: listenerAccount });
+    // A minor is heard by its friends only (S3.10): the listener is one, the shouter is not.
+    const young = await enter(udp, 'stage', { name: 'Young', under18: true, friends: [listenerAccount] });
     await talk(whisper, shout, young);
     // The stage is 30 m from the floor: a whisper does not reach it, a shout does.
     expect(listener.heard(whisper.entity)).toEqual([]);

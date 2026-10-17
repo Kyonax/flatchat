@@ -202,6 +202,11 @@ interface Conn {
   voiceGain: number;
   quiet: boolean;
   privateZone: number;
+  /** Accounts kept apart from this player by a block either way (S3.11): the token's, and any
+   *  block made during the visit. */
+  blocks: Set<string>;
+  /** The entities this player and the world keep apart, as last sent (`hidden`). */
+  hidden: number[];
   /** The zones (their indices) the player stands in. */
   zones: Set<number>;
 }
@@ -408,6 +413,8 @@ export class WorldServer implements PluginWorld {
       voiceGain: GAIN_UNITY,
       quiet: false,
       privateZone: -1,
+      blocks: new Set(),
+      hidden: [],
       zones: new Set(),
     };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
@@ -496,6 +503,13 @@ export class WorldServer implements PluginWorld {
       case 'moderate':
         this.events.add(`moderate:${this.moderate(conn, message) ? message.action : 'refused'}`, 0);
         break;
+      case 'block':
+        // The player blocked or unblocked someone here; the core keeps it for every other world.
+        if (message.on) conn.blocks.add(message.account);
+        else conn.blocks.delete(message.account);
+        this.events.add(`block:${message.on ? 'on' : 'off'}`, 0);
+        this.updateHidden();
+        break;
       case 'put':
         this.put(conn, message);
         break;
@@ -562,6 +576,7 @@ export class WorldServer implements PluginWorld {
     conn.name = opened.claims.name;
     conn.claims = opened.claims;
     conn.role = role;
+    conn.blocks = new Set(opened.claims.blocks);
     conn.joinedAt = performance.now();
     const size = this.world.config.size;
     const sp = this.options.spawn;
@@ -604,6 +619,7 @@ export class WorldServer implements PluginWorld {
     // The zones it arrives in count from the first step, not from its first pose (S3.08).
     if (this.options.zones?.length) this.zoneCheck(conn);
     this.updateVoice(conn);
+    this.updateHidden();
   }
 
   /** A chosen height in centimetres (0: the platform's default) fitted into the world's range. */
@@ -957,7 +973,7 @@ export class WorldServer implements PluginWorld {
       const l = this.byEntity.get(listener);
       const s = this.byEntity.get(speaker);
       if (!l || !s || l.quiet || s.quiet) return false;
-      return l.privateZone === s.privateZone;
+      return l.privateZone === s.privateZone && !this.apart(l, s) && this.mayReach(l, s);
     },
   };
 
@@ -1053,6 +1069,8 @@ export class WorldServer implements PluginWorld {
     this.voice.forget(entity);
     this.freedThisTick.push(entity);
     this.leftThisTick.push(entity);
+    // An entity number comes back for someone else: nobody keeps it hidden.
+    this.updateHidden();
     this.events.add(`leave:${reason.startsWith('leave: ') ? reason.slice(7) : reason}`, 0);
   }
 
@@ -1134,11 +1152,45 @@ export class WorldServer implements PluginWorld {
     this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, opus: message.opus });
   }
 
-  /** World-wide: everyone here reads it (S1.10). */
+  /** World-wide (S1.10): everyone here reads it, except across a block (S3.11) and a minor's
+   *  strangers (S3.10), both ways. */
   private chat(from: number, text: string): void {
     const bytes = encodeMessage({ type: 'chat', from, text });
-    for (const conn of this.byEntity.values()) this.send(conn, 'chat', bytes);
+    const speaker = this.byEntity.get(from);
+    for (const conn of this.byEntity.values()) {
+      if (speaker && conn !== speaker && (this.apart(speaker, conn) || !this.mayReach(speaker, conn))) continue;
+      this.send(conn, 'chat', bytes);
+    }
     this.events.add('chat', bytes.length);
+  }
+
+  /** Two players kept apart by a block, made by either (S3.11). */
+  private apart(a: Conn, b: Conn): boolean {
+    return (b.account !== undefined && a.blocks.has(b.account)) || (a.account !== undefined && b.blocks.has(a.account));
+  }
+
+  /** Whether two players may reach each other by voice and text (S3.10): a player aged 13 to 17
+   *  only with its accepted friends, unless its guardian widened it (or narrowed it to nobody). */
+  private mayReach(a: Conn, b: Conn): boolean {
+    const allows = (x: Conn, y: Conn): boolean => {
+      const c = x.claims;
+      if (!c?.under18) return true;
+      if (c.contact === 'everyone') return true;
+      if (c.contact === 'none') return false;
+      return y.account !== undefined && c.friends.includes(y.account);
+    };
+    return allows(a, b) && allows(b, a);
+  }
+
+  /** Tells every player whose list changed which entities it is kept apart from (S3.11). */
+  private updateHidden(): void {
+    const all = [...this.byEntity.values()];
+    for (const conn of all) {
+      const hidden = all.filter((o) => o !== conn && o.entity !== undefined && this.apart(conn, o)).map((o) => o.entity!).sort((x, y) => x - y);
+      if (hidden.length === conn.hidden.length && hidden.every((e, i) => e === conn.hidden[i])) continue;
+      conn.hidden = hidden;
+      this.send(conn, 'hidden', encodeMessage({ type: 'hidden', entities: hidden.slice(0, 256) }));
+    }
   }
 
   private traceFrame(): void {
