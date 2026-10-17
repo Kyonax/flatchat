@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: MPL-2.0
+// Writes out/THIRD_PARTY_NOTICES.txt: the licence of each third-party package bundled into the
+// client, which their licences (MIT, BSD) ask to travel with every copy. `npm run build` runs it
+// and electron-builder.yml puts the file next to the executable. Electron's and Chromium's own
+// notices come from electron-builder (LICENSE.electron.txt, LICENSES.chromium.html). A package
+// added to the bundle needs a row here and in CREDITS.md.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const client = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** Packages bundled into out/: their own LICENSE, or a licence text kept in third_party/. */
+const BUNDLED = [
+  { package: 'three', note: 'the 3D renderer' },
+  { package: 'vue', note: 'the interface, with its @vue/* runtime packages under the same licence' },
+  { package: 'libopus-wasm', note: 'the voice codec wrapper' },
+  { package: '@pixiv/three-vrm', note: 'VRM avatars, with its @pixiv/three-vrm-* packages under the same licence (spike S0.09)' },
+  { package: 'meshoptimizer', note: 'mesh simplification for levels of detail (spike S0.09)' },
+  { name: 'libopus', version: '1.6.1', licence: 'BSD-3-Clause', text: 'third_party/opus/COPYING', note: 'compiled to WebAssembly inside libopus-wasm' },
+];
+
+function packageDir(name) {
+  for (let dir = client; ; dir = dirname(dir)) {
+    const candidate = join(dir, 'node_modules', name);
+    if (existsSync(join(candidate, 'package.json'))) return candidate;
+    if (dirname(dir) === dir) throw new Error(`notices: ${name} is not installed`);
+  }
+}
+
+const own = JSON.parse(readFileSync(join(client, 'package.json'), 'utf8'));
+const parts = [`Third-party notices for FlatChat ${own.version}\n\nThe FlatChat client bundles the following third-party code. Each keeps its own licence, given in full below.`];
+for (const item of BUNDLED) {
+  let heading;
+  let text;
+  if (item.package) {
+    const dir = packageDir(item.package);
+    const meta = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    const file = ['LICENSE', 'LICENSE.md', 'LICENSE.txt'].map((f) => join(dir, f)).find((f) => existsSync(f));
+    if (!file) throw new Error(`notices: ${item.package} has no LICENSE file`);
+    heading = `${item.package} ${meta.version} (${meta.license}): ${item.note}`;
+    text = readFileSync(file, 'utf8');
+  } else {
+    heading = `${item.name} ${item.version} (${item.licence}): ${item.note}`;
+    text = readFileSync(join(client, item.text), 'utf8');
+  }
+  parts.push(`${'='.repeat(72)}\n${heading}\n${'='.repeat(72)}\n\n${text.trim()}`);
+}
+mkdirSync(join(client, 'out'), { recursive: true });
+writeFileSync(join(client, 'out', 'THIRD_PARTY_NOTICES.txt'), `${parts.join('\n\n')}\n`);
+process.stdout.write(`notices: ${BUNDLED.length} entries → out/THIRD_PARTY_NOTICES.txt\n`);

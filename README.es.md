@@ -39,7 +39,7 @@ Después, el MVP etapa por etapa: el núcleo en greybox (cuentas, el mundo del c
 | `tools/repo` | Comprobaciones de este repositorio |
 | `tools/harness` | Todas las comprobaciones sin pantalla en un solo comando, el linter de trampas y el sustituto de portátil débil |
 | `kits` | Los tres kits de cuerpos y la biblioteca base |
-| `docs` | El formato de mundo, la API de plugins, los informes de las pruebas y las páginas de ayuda |
+| `docs` | El protocolo, el formato de mundo, la API de plugins, los informes de las pruebas y las páginas de ayuda |
 
 **Las herramientas son provisionales** hasta una comparación directa entre las dos finalistas en la etapa 0: TypeScript en todo, three.js dentro de Electron para el cliente, Node.js para los servidores. Si gana Godot con C#, cambian el cliente y el servidor de mundo, y todo lo demás se queda.
 
@@ -72,11 +72,13 @@ npm run lint           # ESLint con las reglas de TypeScript y Vue
 npm run typecheck      # TypeScript en todos los espacios de trabajo
 npm run check:layout   # la estructura de carpetas, los archivos de licencia y las cabeceras SPDX
 npm run client:smoke   # compila el cliente, dibuja 3 s, imprime su backend gráfico y sus cuadros por segundo, y sale
-npm run harness        # todo lo anterior que no necesita pantalla, más el linter de trampas, la revisión de la skill de agentes y un servidor de mundo sin interfaz
+npm run harness        # todo lo anterior que no necesita pantalla, más el linter de trampas, la revisión de la skill de agentes, un servidor de mundo sin interfaz y 12 bots en cada transporte
 npm run lint:traps     # solo el linter de trampas: los errores de seguridad y de configuración que este proyecto ya encontró
+npm run golden -w @flatchat/protocol   # comprueba que los paquetes de referencia del protocolo están al día
+npm run bots -- smoke  # un servidor de mundo y 12 bots en cada transporte (UDP puro, WebRTC) durante 4 s
 ```
 
-El servidor de mundo acepta `--port` (0 elige uno libre), `--tick-hz` y `--ticks` (se detiene tras ese número de ticks), por ejemplo `npm run server -- --port 0 --ticks 100`.
+El servidor de mundo acepta `--port` (0 elige uno libre), `--transport udp|rtc|both`, `--tick-hz` y `--ticks` (se detiene tras ese número de ticks), por ejemplo `npm run server -- --port 0 --ticks 100`; [apps/world-server](apps/world-server/README.md) enumera el resto. Para probarlo con carga, `npm run bots -- run --transport rtc --bots 200 --minutes 30` arranca un servidor y 200 bots en una red aislada y escribe un informe ([tools/bots](tools/bots/README.md)).
 
 Para empaquetar el cliente: `npm run dist:linux -w @flatchat/client` arma una carpeta sin empaquetar para Linux, y `npm run dist:win -w @flatchat/client` arma un zip para Windows desde Linux, sin Wine. Ambos quedan en `apps/client/release/`.
 

@@ -10,6 +10,10 @@ files:
   - out/**
   - package.json
 asar: true
+# The licences of the bundled third-party code (scripts/notices.mjs), next to the executable.
+extraFiles:
+  - from: out/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
 linux:
   target: dir
   executableName: flatchat

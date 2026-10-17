@@ -1,7 +1,13 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { checkJoin, type NetCheck } from './net-check';
+import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
+import { runCrowd } from './crowd/crowd';
+import LoungeView from './lounge/LoungeView.vue';
+import { runVoiceLoad } from './voice/load-test';
+import { runVoiceTest } from './voice/voice-test';
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const stats = ref<SceneStats | null>(null);
@@ -27,9 +33,59 @@ const bench: BenchOptions | undefined =
         },
       }
     : undefined;
+// The smoke test also runs the protocol's golden packets through this bundle, and with ?join and
+// ?token joins that world server over WebRTC data channels.
+const protocolCheck: Promise<ProtocolCheck> | undefined = smoke ? checkProtocol() : undefined;
+const joinUrl = params.get('join');
+const joinToken = params.get('token');
+const netCheck: Promise<NetCheck | undefined> = smoke && joinUrl && joinToken ? checkJoin(joinUrl, joinToken) : Promise.resolve(undefined);
+const checks = (): Promise<{ protocol: ProtocolCheck | undefined; net?: NetCheck }> =>
+  Promise.all([protocolCheck, netCheck]).then(([protocol, net]) => ({ protocol, ...(net ? { net } : {}) }));
+
+// Spike S0.08's voice test: ?voice=SECONDS with ?join, ?token (the speaker) and ?token2 (the listener).
+const voiceSeconds = Number(params.get('voice'));
+const loadSeconds = Number(params.get('voiceload'));
+if (loadSeconds > 0) void runVoiceLoad(loadSeconds).then((report) => window.flatchat?.voiceReport(report));
+if (voiceSeconds > 0 && joinUrl && joinToken && params.get('token2')) {
+  void runVoiceTest(joinUrl, joinToken, params.get('token2')!, voiceSeconds).then((report) => window.flatchat?.voiceReport(report));
+}
+
+// Spike S0.09's crowd bench: ?crowd=SECONDS with the crowd's make-up; it draws instead of the greybox.
+const crowdSeconds = Number(params.get('crowd'));
+const crowdLine = ref<string | null>(null);
+const num = (name: string, fallback: number): number => {
+  const n = Number(params.get(name));
+  return params.has(name) && Number.isFinite(n) ? n : fallback;
+};
+
+// Spike S0.08's voice lounge: ?lounge=URL&token=HEX shows the lounge instead of the scene.
+const loungeUrl = params.get('lounge');
+const loungeToken = params.get('token');
 
 onMounted(async () => {
+  if (loungeUrl) return;
   if (!canvas.value) return;
+  if (crowdSeconds > 0) {
+    const report = await runCrowd(canvas.value, {
+      seconds: crowdSeconds,
+      width: benchWidth,
+      height: benchHeight,
+      full: num('full', 12),
+      lod: num('lod', 20),
+      present: num('present', 55),
+      springs: num('springs', 6),
+      swapSeconds: num('swap', 15),
+      textureMB: num('texturemb', 16),
+      lodRatio: num('lodratio', 0.3),
+      merge: num('merge', 1) === 1,
+      onProgress: (line) => {
+        crowdLine.value = line;
+      },
+    });
+    crowdLine.value = report.error ? `Crowd failed: ${report.error}` : `Crowd done: p95 ${report.summary.p95Ms} ms`;
+    await window.flatchat?.crowdReport(report);
+    return;
+  }
   // The count is frames drawn; the screen still shows at most its refresh rate, unevenly paced.
   if (bench) benchLine.value = `Bench: ${bench.seconds} s at ${bench.width}×${bench.height}, no frame-rate cap (fps = frames drawn, not shown)`;
   try {
@@ -37,13 +93,14 @@ onMounted(async () => {
       onStats: (s) => {
         stats.value = s;
       },
-      ...(smoke ? { onSmoke: (report) => void window.flatchat?.smokeReport(report) } : {}),
+      ...(smoke ? { onSmoke: (report) => void checks().then((c) => window.flatchat?.smokeReport({ ...report, ...c })) } : {}),
       ...(bench ? { bench } : {}),
     });
   } catch (err) {
-    failure.value = err instanceof Error ? err.message : String(err);
-    if (smoke) void window.flatchat?.smokeReport({ backend: 'none', error: failure.value });
-    if (bench) void window.flatchat?.benchReport({ backend: 'none', error: failure.value });
+    const error = err instanceof Error ? err.message : String(err);
+    failure.value = error;
+    if (smoke) void checks().then((c) => window.flatchat?.smokeReport({ backend: 'none', error, ...c }));
+    if (bench) void window.flatchat?.benchReport({ backend: 'none', error });
   }
 });
 
@@ -51,14 +108,26 @@ onBeforeUnmount(() => stop?.());
 </script>
 
 <template>
+  <LoungeView
+    v-if="loungeUrl && loungeToken"
+    :url="loungeUrl"
+    :token="loungeToken"
+  />
   <canvas
+    v-if="!loungeUrl"
     ref="canvas"
     class="view"
   />
-  <div class="hud">
-    <div><strong>FlatChat</strong> · Stage 0 blank client</div>
+  <div
+    v-if="!loungeUrl"
+    class="hud"
+  >
+    <div><strong>FlatChat</strong> · {{ crowdSeconds > 0 ? 'spike S0.09: the crowd bench' : 'Stage 0 blank client' }}</div>
     <div v-if="stats">
       {{ stats.backend }} · {{ stats.fps.toFixed(0) }} fps<span v-if="stats.adapter"> · {{ stats.adapter }}</span>
+    </div>
+    <div v-if="crowdLine">
+      {{ crowdLine }}
     </div>
     <div v-if="benchLine">
       {{ benchLine }}

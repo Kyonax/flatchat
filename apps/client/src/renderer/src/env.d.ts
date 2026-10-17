@@ -10,8 +10,12 @@ declare module '*.vue' {
 
 interface FlatchatBridge {
   versions: { electron: string; chrome: string; node: string };
+  signal(url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }>;
   smokeReport(report: unknown): Promise<void>;
   benchReport(report: unknown): Promise<void>;
+  voiceReport(report: unknown): Promise<void>;
+  crowdReport(report: unknown): Promise<void>;
+  crowdShot(): Promise<void>;
 }
 
 interface Window {

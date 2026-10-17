@@ -1,0 +1,218 @@
+# SPDX-License-Identifier: MPL-2.0
+# =============================================================================
+# shipwright contract — FlatChat
+# =============================================================================
+# The owner's commit and push tool reads this file before it touches the
+# repository. A repo with no valid contract cannot enter its queue.
+#
+# It is fingerprinted. Change any byte of this file and shipwright refuses to
+# run this repo until the change is re-approved:
+#
+#     shipwright approve flatchat
+#
+# FlatChat is written by the owner's agents and reviewed by the owner (OQ-1).
+# On 2026-10-16 he handed its commits and pushes to the agents through
+# shipwright: an agent publishes each finished step with `shipwright now
+# flatchat`, and the scheduled slots below save anything left in between.
+# Agents never run `git commit` or `git push` here themselves.
+# =============================================================================
+
+schema = 1
+
+# -----------------------------------------------------------------------------
+# [repo] — identity. Required.
+# -----------------------------------------------------------------------------
+[repo]
+# Short name, not owner/repo. Used in notifications, the ledger and `status`.
+name = "flatchat"
+
+# Read from the remote (github.com/Kyonax/flatchat, public): main.
+default_branch = "main"
+
+# Pull requests, when something forces one, target main as well.
+pr_base = ""
+
+# always: the owner's own repository, where a day with no commit is a day of
+# work lost. Direct push, no minimums; a transient deferral is retried inside
+# the slot.
+tier = "always"
+
+remote = "origin"
+
+# Ten quiet minutes before a SCHEDULED run commits. Left at the default rather
+# than the 30 seconds the owner's other repos use: agents write here in bursts
+# between long runs (builds, smoke tests, 30-minute bot soaks), and a slot that
+# lands inside one of those bursts should wait for the step to finish. A
+# deliberate `shipwright now flatchat` overrides this window.
+hot_window_min = 10
+hot_window_s = -1
+
+# -----------------------------------------------------------------------------
+# [commit] — what a generated commit is allowed to look like.
+# -----------------------------------------------------------------------------
+[commit]
+# The history held four commits when this was written (feat 3, fix 1), too few
+# to derive a list from, so these are the kinds the MVP plan's steps produce:
+# features, fixes, refactors, measured speed-ups, tests, docs, build and CI
+# changes, and chores.
+types = ["feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore"]
+
+# Every subject names the part of FlatChat it changes, as the history does.
+scope_required = true
+
+# One scope per licensed folder in tools/repo/layout.json (each matches its
+# folder's last path part), plus repo for tools/repo and the root files, skills
+# for the agent skill in .claude/skills/flatchat, spikes for the Stage 0
+# reports in docs/spikes and ci for .github/workflows/ci.yml (matched by its
+# name). Planned folders are listed ahead of their code so the list does not
+# need re-approving at every stage.
+scopes = [
+  "repo", "client", "world-server", "core",
+  "protocol", "sim", "content", "plugin-sdk",
+  "converter", "host-tool", "bots", "harness", "blender",
+  "kits", "docs", "spikes", "skills", "ci",
+]
+
+# Files matching no scope: the root files.
+default_scope = "repo"
+
+# One commit per part of FlatChat a publication touches, as the owner's other
+# repositories do: a step's protocol, server, bots, client, skill and docs
+# changes each get a commit with their own message. They go out in one push and
+# CI tests the result. It also keeps the first publication small per commit:
+# it carries the Stage 0 steps built while the owner was away (S0.06 onward).
+split_by_scope = true
+
+# The cap on one commit (one scope's files). 200 still defers anything runaway.
+max_files = 200
+max_files_run = 0
+
+# List every file, as the history does.
+body_max_files = 0
+
+# The Shipwright-Run trailer, so `git log --grep` and the ledger find each
+# automated commit.
+trailer = true
+
+# -----------------------------------------------------------------------------
+# [flow] — push directly, or open a pull request.
+# -----------------------------------------------------------------------------
+[flow]
+# Direct: the owner's repository, written by his agents on main with no other
+# committers, and main is not protected (checked 2026-10-16). A pull request
+# would wait for a merge nobody is around to make. A protected branch, a
+# require_pr path or a resolved conflict would still force one.
+mode = "direct"
+
+branch_prefix = "auto/"
+branch_template = ""
+unbranded = false
+pr_draft = false
+pr_reviewers = []
+pr_repo = ""
+pr_sticky = false
+pr_brand = ""
+restore_branch = true
+
+# -----------------------------------------------------------------------------
+# [gates] — commands that must exit 0. This is the real safety net.
+# -----------------------------------------------------------------------------
+# The harness is CI's first job: the lock file, layout and SPDX headers, the
+# agent skill, the trap linter, ESLint, TypeScript, every test (the golden
+# packets included) and a headless world server. About 10 s.
+#
+# The client build is the first half of CI's client jobs: it proves the
+# renderer bundle still builds (the protocol package is bundled into it). The
+# packaged smoke test needs a display and a GPU, so it stays in CI, where the
+# agents read it after every push.
+[gates]
+pre_commit = ["npm run harness"]
+pre_push   = ["npm run build -w @flatchat/client"]
+timeout_s  = 900
+
+# -----------------------------------------------------------------------------
+# [tag] — release tagging. Off: FlatChat publishes no releases yet.
+# -----------------------------------------------------------------------------
+[tag]
+enabled = false
+when = "never"
+manifest = "package.json"
+pattern = "v{version}"
+push_tag = false
+
+# -----------------------------------------------------------------------------
+# [version] — deriving a bump. Off (empty allow).
+# -----------------------------------------------------------------------------
+[version]
+allow = []
+manifest = ""
+derive = true
+map = {}
+changelog = ""
+
+# -----------------------------------------------------------------------------
+# [paths] — per-directory risk dials.
+# -----------------------------------------------------------------------------
+[paths]
+# Beyond the mandatory floor (.env, keys, credentials): FlatChat's dependencies,
+# builds and packaged clients, which .gitignore already keeps out. A match means
+# the ignore rules broke, so the run stops. The stand-in's machine profile
+# lives outside the repository (~/.config/flatchat/standin.json). Each folder
+# is listed twice because `**/out/**` does not match the root's own out/.
+never_commit = [
+  "node_modules/**", "**/node_modules/**",
+  "out/**", "**/out/**",
+  "dist/**", "**/dist/**",
+  "build/**", "**/build/**",
+  "release/**", "**/release/**",
+  "coverage/**", "**/coverage/**",
+  "*.log",
+  "*.tsbuildinfo",
+]
+
+# Empty: nobody else commits here, and the owner reviews the pushed history and
+# CI rather than pull requests (OQ-1). Revisit before the core is deployed
+# (S0.10), when its deployment files should force a review.
+require_pr = []
+
+# -----------------------------------------------------------------------------
+# [secrets] — narrow exceptions to the credential scanner.
+# -----------------------------------------------------------------------------
+[secrets]
+# None needed: the golden connect tokens use a published test key, and the
+# scanner did not flag them (checked 2026-10-16).
+allow_paths = []
+
+# -----------------------------------------------------------------------------
+# [repair] — what shipwright may do when a step fails.
+# -----------------------------------------------------------------------------
+[repair]
+# Class A: the repo's own fixers. Touches no logic.
+process = true
+
+# Class B off: one writer works on main, so the remote moves only when this
+# machine pushes. A conflict means something unexpected happened, and a failed
+# run waiting for a person is the better outcome than a model's merge.
+conflicts = false
+
+max_attempts = 2
+
+# -----------------------------------------------------------------------------
+# [schedule] — which of the nine daily slots this repo participates in.
+# -----------------------------------------------------------------------------
+[schedule]
+# The template's five. Each finished step is published by hand; these only
+# save work left between steps, and an unchanged slot costs nothing.
+slots = ["03:00", "09:00", "13:00", "18:00", "23:00"]
+min_interval_min = 0
+persist = ""
+persist_max_wait_min = 25
+persist_max_attempts = 3
+
+# -----------------------------------------------------------------------------
+# [context] — which brain session node explains the work in this repository.
+# -----------------------------------------------------------------------------
+[context]
+# Session First Game — Social World Platform Definition and MVP Planning.
+session = "first-game-session"
+branches = {}

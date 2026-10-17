@@ -39,7 +39,7 @@ Then the MVP, stage by stage: the core greybox (accounts, the creator's world, j
 | `tools/repo` | Checks for this repository |
 | `tools/harness` | Every headless check in one command, the trap linter and the weak-laptop stand-in |
 | `kits` | The three body kits and the base library |
-| `docs` | The world format, the plugin API, spike reports and help pages |
+| `docs` | The protocol, the world format, the plugin API, spike reports and help pages |
 
 **The toolchain is provisional** until a Stage 0 bake-off: TypeScript throughout, three.js in Electron for the client, Node.js for the servers. If the bake-off picks Godot with C#, the client and the world server change and everything else stays.
 
@@ -72,11 +72,13 @@ npm run lint           # ESLint with the TypeScript and Vue rules
 npm run typecheck      # TypeScript in every workspace
 npm run check:layout   # the folder layout, licence files and SPDX headers
 npm run client:smoke   # builds the client, draws for 3 s, prints its graphics backend and frame rate, quits
-npm run harness        # every check above that needs no display, plus the trap linter, the agent-skill check and a headless world server
+npm run harness        # every check above that needs no display, plus the trap linter, the agent-skill check, a headless world server and 12 bots on each transport
 npm run lint:traps     # only the trap linter: the security and setup mistakes this project has met
+npm run golden -w @flatchat/protocol   # checks the protocol's golden packets are up to date
+npm run bots -- smoke  # a world server and 12 bots on each transport (raw UDP, WebRTC) for 4 s
 ```
 
-The world server takes `--port` (0 picks a free one), `--tick-hz` and `--ticks` (stop after that many ticks), for example `npm run server -- --port 0 --ticks 100`.
+The world server takes `--port` (0 picks a free one), `--transport udp|rtc|both`, `--tick-hz` and `--ticks` (stop after that many ticks), for example `npm run server -- --port 0 --ticks 100`; [apps/world-server](apps/world-server/README.md) lists the rest. To load-test it, `npm run bots -- run --transport rtc --bots 200 --minutes 30` starts a server and 200 bots in an isolated network and writes a report ([tools/bots](tools/bots/README.md)).
 
 To package the client: `npm run dist:linux -w @flatchat/client` builds an unpacked Linux folder, and `npm run dist:win -w @flatchat/client` builds a Windows zip on Linux, without Wine. Both land in `apps/client/release/`.
 

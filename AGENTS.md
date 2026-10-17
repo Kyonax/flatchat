@@ -19,6 +19,9 @@ npm run lint:traps                            # the trap linter alone
 npm run client                                # the client, with live reload
 npm run client:smoke                          # build the client, draw for 3 s, report, quit (needs a display)
 npm run server -- --port 0 --ticks 100        # a short headless world server run
+npm run bots -- smoke                         # 12 bots on each transport for 4 s (part of the harness)
+npm run bots -- run --transport rtc --bots 200 --minutes 30 --server-cpus 0-1 --bot-cpus 2-7   # a measured load test
+npm run golden -w @flatchat/protocol          # check the protocol's golden files; -- --write after a version bump
 npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's commands; changes nothing
 ```
 
@@ -29,22 +32,26 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 3. **The client stays locked down.** Never loosen its window settings (context isolation, sandbox, no Node.js in the page) or its content security policy, and never hand the page raw IPC.
 4. **Strangers' input stays inert.** Never run it (`eval`, `new Function`), render it as HTML (`innerHTML`, `v-html`), load it with a raw asset loader in the client, or sandbox it with `node:vm`. The trap linter enforces these; fix findings rather than silencing them.
 5. **Tests need no GPU, Electron, sudo or network.** Put decisions in pure modules and test them with Vitest; the hardware is for smoke and bench runs.
-6. **No system changes.** Do not run `sudo`, lock GPU clocks or edit system configuration yourself: prepare the command (the stand-in's `plan` prints them) and let the machine's owner run it.
-7. **Assets are CC0 or CC BY, credited in [CREDITS.md](CREDITS.md).** Nothing from other games: no models, textures, sounds, names or logos.
-8. **Version control belongs to the maintainer.** Do not commit, push, rewrite history or open pull requests unless the person you work for asks; when asked for a commit message, write it to a file.
-9. **Never quote software rendering as performance.** CI runners and VMs without a GPU draw with SwiftShader or WARP; performance comes from real hardware or the stand-in, with the backend and adapter named.
+6. **The protocol changes only with its version.** A change to a message or a codec raises `PROTOCOL_VERSION`, rewrites the golden files and updates [docs/protocol.md](docs/protocol.md); `packages/` use only APIs that Node.js and the browser share.
+7. **No system changes.** Do not run `sudo`, lock GPU clocks or edit system configuration yourself: prepare the command (the stand-in's `plan` prints them) and let the machine's owner run it.
+8. **Assets are CC0 or CC BY, credited in [CREDITS.md](CREDITS.md).** Nothing from other games: no models, textures, sounds, names or logos.
+9. **Version control belongs to the maintainer.** Do not commit, push, rewrite history or open pull requests unless the person you work for asks; when asked for a commit message, write it to a file. The maintainer publishes through shipwright, under the policy in [.shipwright/contract.toml](.shipwright/contract.toml): the harness passes before every commit, the push goes to `main`, and nothing is ever force-pushed. An agent the maintainer has asked to publish runs `shipwright now flatchat`, never `git commit` or `git push`.
+10. **Never quote software rendering as performance.** CI runners and VMs without a GPU draw with SwiftShader or WARP; performance comes from real hardware or the stand-in, with the backend and adapter named.
 
 ## Repository Map
 
 | Path | What |
 |---|---|
-| `apps/client` | The Electron client: `src/main`, `src/preload`, `src/renderer` |
-| `apps/world-server` | The world server: `src/main.ts`, `src/ticker.ts` |
+| `apps/client` | The Electron client: `src/main` (window, flags, the bridge's handlers, the avatar protocol), `src/preload`, `src/renderer` (the scene, `net/`, `voice/`, `lounge/`, `crowd/`); `scripts/` (the notices file, the voice sample) |
+| `apps/world-server` | The world server: `src/main.ts` (the program), `src/server.ts` (joins, ticks, voice, chat), `src/world/` (cells, interest, snapshots, voice routing), `src/net/` (raw UDP and WebRTC transports) |
+| `packages/protocol` | The wire protocol: codecs, messages, connect tokens, the version handshake, golden packets ([docs/protocol.md](docs/protocol.md)) |
 | `apps/core` | The central service (not started) |
-| `packages/*` | Shared libraries: protocol, sim, content, plugin-sdk (not started) |
+| `packages/*` | The other shared libraries: sim, content, plugin-sdk (not started) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |
-| `tools/*` | Converter, host tool, bots, Blender bridge (not started) |
+| `tools/bots` | Headless bots on the real protocol and the load-test runner (`npm run bots`) |
+| `tools/*` | Converter, host tool, Blender bridge (not started) |
 | `kits`, `docs` | Body kits and the base library; specs and Stage 0's spike reports |
 | `.github/workflows/ci.yml` | CI: the harness, then the client packaged and smoke-tested on Linux and Windows |
 | `.claude/skills/flatchat` | The agent skill |
+| `.shipwright/contract.toml` | The maintainer's commit and push policy: the harness before each commit, direct pushes to `main` |

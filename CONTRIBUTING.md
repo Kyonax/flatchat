@@ -16,6 +16,7 @@ Thanks for your interest in FlatChat. It is early: Stage 0 of the MVP is buildin
 3. New logic comes with tests that run without a GPU, Electron or network (see [tools/harness](tools/harness/README.md) for examples).
 4. Any third-party code, model, texture, sound or font you add has an entry in [CREDITS.md](CREDITS.md): who made it, where it came from, its licence and what you changed. Assets must be CC0 or CC BY. Credit the person who made a work, not the site where you found it.
 5. Nothing from other games: no models, textures, sounds, names or logos.
+6. A change to the network protocol raises its version and updates its golden packets and [docs/protocol.md](docs/protocol.md) (see "Changing the protocol" there).
 
 ## Licensing of contributions
 
