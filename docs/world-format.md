@@ -27,7 +27,7 @@ mode = "reset"                   # "reset": every start is fresh; "persistent": 
 flying = false                   # whether players may fly here (Q-F3)
 
 [avatars]
-min_height = 0.5                 # metres: avatars smaller or larger are scaled into the range (Q-M30)
+min_height = 0.5                 # metres: each player picks a height; the world fits it into this range (Q-M30)
 max_height = 3.0
 
 [voice]
