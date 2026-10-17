@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # Every push and pull request: the harness (the layout check, the agent-skill check, the trap linter,
-# lint, types, tests and a headless world server), then the client built, packaged and smoke-tested
-# on Linux and on Windows. GitHub's runners are free for public repositories.
+# lint, types, tests, a headless world server and bots on both transports), then the client built,
+# packaged and smoke-tested on Linux and on Windows, each smoke test also joining a world server over
+# WebRTC data channels. GitHub's runners are free for public repositories.
 # Each job has a time limit, so a hung smoke test fails in minutes instead of GitHub's six hours.
 name: CI
 
@@ -45,8 +46,9 @@ jobs:
       # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # The runner has no GPU, and Chromium no longer falls back to SwiftShader for WebGL by itself.
-      - name: Smoke test on a virtual display
-        run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --smoke --enable-unsafe-swiftshader --smoke-out=smoke-linux.json
+      # The client joins a world server on loopback over WebRTC (Chromium's own) as part of its smoke test.
+      - name: Smoke test on a virtual display, joining a world server
+        run: xvfb-run -a npm run bots -- client-check -- apps/client/release/linux-unpacked/flatchat --smoke --enable-unsafe-swiftshader --smoke-out=smoke-linux.json
       - run: cat smoke-linux.json
       # The same build with no way to draw must fail its smoke test, or a blank client could pass.
       - name: Smoke test fails when nothing can draw
@@ -73,13 +75,16 @@ jobs:
           node-version-file: .tool-versions
           cache: npm
       - run: npm ci
+      # node-datachannel's Windows binary on a server and its bots, both transports.
+      - run: node tools/bots/src/run.ts smoke
       - run: npm run dist:win -w @flatchat/client
-      - name: Smoke test
+      - name: Smoke test, joining a world server
         shell: pwsh
         run: |
-          $app = Start-Process apps/client/release/win-unpacked/FlatChat.exe -ArgumentList '--smoke', '--smoke-out=smoke-windows.json' -PassThru -Wait
+          node tools/bots/src/run.ts client-check -- apps/client/release/win-unpacked/FlatChat.exe --smoke --smoke-out=smoke-windows.json
+          $code = $LASTEXITCODE
           Get-Content smoke-windows.json
-          exit $app.ExitCode
+          exit $code
       - uses: actions/upload-artifact@v7
         with:
           name: client-windows
