@@ -29,6 +29,9 @@ import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
 import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
 import { MAX_MUTES, mutesOf, setMute } from './mutes.ts';
+import { MailError, type Mailer, noMailer } from './mail.ts';
+import { newVerification, verifyEmail } from './verify.ts';
+import { emailKey } from './accounts.ts';
 import { befriend, blocksOf, friendsOf, MAX_BLOCKS, setBlock, unfriend } from './social.ts';
 import { isMinor } from './age.ts';
 import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
@@ -86,6 +89,10 @@ export interface CoreOptions {
   ice?: IceConfig;
   /** Trust levels' thresholds (S3.09). */
   trust?: TrustRule[];
+  /** Sign-up by invitation only (the closed test, the default), or open with a verified email (S3.03). */
+  signup?: 'invite' | 'open';
+  /** How the core sends mail (S3.03): verification links, a guardian's invitation. */
+  mailer?: Mailer;
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -113,6 +120,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   const now = o.now ?? (() => new Date());
   const cost = o.cost ?? STANDARD_COST;
   const policy = o.policy ?? { minors: false };
+  const open = o.signup === 'open';
+  const mailer = o.mailer ?? noMailer;
   const sealing = sealingKey(o.secret);
   const decoy = makeDecoy(cost);
   const publicUrl = o.publicUrl.replace(/\/+$/, '');
@@ -324,9 +333,35 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const s = STRINGS[lang];
     if (req.headers.cookie?.includes('fc_signup=refused')) return htmlPage(reply.code(403), messagePage(lang, s.refusedTitle, s.refused, true));
     const invitation = str(q['invite'], 64);
+    // Open sign-up (S3.03) takes anyone without an invitation; the closed test needs one.
+    if (!invitation && open) return htmlPage(reply, signupPage(lang, ''));
     const state = invitation ? await checkInvitation(o.db, invitation, now()) : 'unknown';
     if (state !== 'ok') return htmlPage(reply.code(410), messagePage(lang, s.invitationTitle, signupProblem(lang, `invitation-${state}` as SignUpProblem), true));
     return htmlPage(reply, signupPage(lang, invitation));
+  });
+
+  /** Mails a verification link for an account's address (S3.03); false when no mail went out. */
+  async function sendVerification(lang: Lang, account: { id: string; email: string }): Promise<boolean> {
+    const token = await newVerification(o.db, account.id, emailKey(account.email), now());
+    if (!token) return false;
+    const s = STRINGS[lang];
+    try {
+      await mailer.send({ to: account.email, subject: s.verifySubject, text: s.verifyText.replace('{link}', `${publicUrl}/verify?token=${encodeURIComponent(token)}&lang=${lang}`) });
+      return true;
+    } catch (err) {
+      if (!(err instanceof MailError)) throw err;
+      o.log?.('mail-failed', { kind: mailer.kind, why: err.message });
+      return false;
+    }
+  }
+
+  app.get('/verify', async (req, reply) => {
+    const q = req.query as Record<string, unknown>;
+    const lang = pickLang(q['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    if (!limits.signinByAddress.take(req.ip, now().getTime())) return htmlPage(reply.code(429), messagePage(lang, s.verifiedTitle, s.tooMany, true));
+    const r = await verifyEmail(o.db, str(q['token'], 64), now());
+    return r === 'verified' ? htmlPage(reply, messagePage(lang, s.verifiedTitle, s.verified)) : htmlPage(reply.code(410), messagePage(lang, s.verifiedTitle, s.verifyExpired, true));
   });
 
   app.post('/signup', async (req, reply) => {
@@ -358,10 +393,15 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
         country: values.country ?? '',
         consent: b['consent'] === 'yes',
       },
-      { now: now(), cost, policy },
+      { now: now(), cost, policy, open },
     );
     if (result.ok) {
       o.log?.('signup', { account: result.account.id });
+      // An address no invitation vouched for is verified by mail (S3.03).
+      if (!result.account.emailVerified) {
+        const sent = await sendVerification(lang, result.account);
+        return htmlPage(reply.code(201), messagePage(lang, s.createdTitle, sent ? s.createdCheckMail : s.created));
+      }
       return htmlPage(reply.code(201), messagePage(lang, s.createdTitle, s.created));
     }
     if (result.problem === 'age') {
@@ -659,6 +699,18 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       if (err instanceof ReportError) return sendProblem(reply, problem(400, 'bad-clip', err.message));
       throw err;
     }
+  });
+
+  // A new verification link for the account's address (S3.03), one every ten minutes.
+  app.post('/api/v1/me/verify', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (a.emailVerified) return { status: 'verified' };
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    if (!(await sendVerification(lang, a))) return sendProblem(reply, problem(429, 'not-sent', 'a link went out in the last ten minutes, or this core sends no mail'));
+    return reply.code(202).send({ status: 'sent' });
   });
 
   // Friends (S3.10): asked and accepted; a minor takes no request from someone it did not ask.

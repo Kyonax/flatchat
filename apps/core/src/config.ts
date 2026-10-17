@@ -16,6 +16,7 @@
 
 import { DEFAULT_STUN, type IceConfig } from './ice.ts';
 import { parseTrust, TrustError, type TrustRule } from './trust.ts';
+import { folderMailer, type Mailer, noMailer, resendMailer } from './mail.ts';
 
 export interface CoreEnv {
   db: string;
@@ -26,6 +27,9 @@ export interface CoreEnv {
   behindTunnel: boolean;
   ice: IceConfig;
   trust: TrustRule[];
+  /** Sign-up by invitation only (the closed test), or open with a verified email (S3.03). */
+  signup: 'invite' | 'open';
+  mail: Mailer;
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -61,7 +65,35 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
       ...(env['FLATCHAT_CORE_CF_TURN_KEY'] && env['FLATCHAT_CORE_CF_TURN_TOKEN'] ? { cloudflare: { keyId: env['FLATCHAT_CORE_CF_TURN_KEY'], token: env['FLATCHAT_CORE_CF_TURN_TOKEN'] } } : {}),
     },
     trust: trusted(env['FLATCHAT_CORE_TRUST']),
+    signup: signupMode(env['FLATCHAT_CORE_SIGNUP']),
+    mail: mailer(env),
   };
+}
+
+function signupMode(v: string | undefined): 'invite' | 'open' {
+  if (v === undefined || v === '' || v === 'invite') return 'invite';
+  if (v === 'open') return 'open';
+  throw new ConfigError('FLATCHAT_CORE_SIGNUP is invite or open');
+}
+
+/** FLATCHAT_CORE_MAIL: resend (FLATCHAT_CORE_RESEND_KEY, FLATCHAT_CORE_MAIL_FROM), folder
+ *  (FLATCHAT_CORE_MAIL_FOLDER, for development), or none (the default). */
+function mailer(env: NodeJS.ProcessEnv): Mailer {
+  const kind = env['FLATCHAT_CORE_MAIL'] ?? 'none';
+  const from = env['FLATCHAT_CORE_MAIL_FROM'] ?? '';
+  if (kind === 'none') return noMailer;
+  if (!from) throw new ConfigError('FLATCHAT_CORE_MAIL_FROM is the sender, like FlatChat <noreply@example.org>');
+  if (kind === 'resend') {
+    const key = env['FLATCHAT_CORE_RESEND_KEY'] ?? '';
+    if (!key) throw new ConfigError('FLATCHAT_CORE_RESEND_KEY is the Resend API key');
+    return resendMailer({ key, from, ...(env['FLATCHAT_CORE_RESEND_URL'] ? { base: env['FLATCHAT_CORE_RESEND_URL'] } : {}) });
+  }
+  if (kind === 'folder') {
+    const dir = env['FLATCHAT_CORE_MAIL_FOLDER'] ?? '';
+    if (!dir) throw new ConfigError('FLATCHAT_CORE_MAIL_FOLDER is the folder the mails go to');
+    return folderMailer(dir, from);
+  }
+  throw new ConfigError('FLATCHAT_CORE_MAIL is resend, folder or none');
 }
 
 function trusted(text: string | undefined): TrustRule[] {

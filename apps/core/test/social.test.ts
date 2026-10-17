@@ -96,6 +96,11 @@ describe('blocks', () => {
     expect((await call('GET', '/api/v1/me/blocks', ana)).json()).toEqual({ accounts: [bo.id] });
     expect((await claims(ana)).blocks).toEqual([bo.id]);
     expect((await claims(bo)).blocks).toEqual([ana.id]);
+    // The block follows the accounts into another world too.
+    const other = await registerWorld(db, { name: 'Other Plaza', ownerId: owner.id, address: 'relay', agreement: 1 }, new Date());
+    const otherKey = await approveWorld(db, sealingKey(secret), other.id, 'admin:test', '', new Date());
+    const there = (await call('POST', `/api/v1/worlds/${other.id}/join`, bo)).json() as { token: string };
+    expect((await openToken(new Uint8Array(Buffer.from(there.token, 'base64url')), { key: otherKey, world: other.id, now: Math.floor(Date.now() / 1000) })).claims.blocks).toEqual([ana.id]);
     expect((await call('PUT', `/api/v1/me/blocks/${ana.id}`, ana)).statusCode).toBe(400);
 
     // A minor's friends ride in its token; an adult's never do.

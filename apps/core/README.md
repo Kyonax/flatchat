@@ -25,6 +25,8 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_OPERATOR` | Who runs it, shown in the privacy notice |
 | `FLATCHAT_CORE_CONTACT` | How to reach them about privacy |
 | `FLATCHAT_CORE_TUNNEL` | `1` when it sits behind a Cloudflare Tunnel |
+| `FLATCHAT_CORE_SIGNUP` | `invite` (the default: the closed test, by invitation) or `open` (anyone, through the age rule, with the email verified by a mailed link: S3.03) |
+| `FLATCHAT_CORE_MAIL` | `none` (the default), `resend` (Resend's API: `FLATCHAT_CORE_RESEND_KEY`, and `FLATCHAT_CORE_RESEND_URL` only for tests) or `folder` (each mail a `.eml` file in `FLATCHAT_CORE_MAIL_FOLDER`, for development); `FLATCHAT_CORE_MAIL_FROM` is the sender, like `FlatChat <noreply@example.org>` |
 | `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
 
 Then:
@@ -77,6 +79,7 @@ Players report players and worlds from the client, with the chat excerpt, the wo
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
 | `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created, and whether it is under 18 (its client keeps a minor's defaults too) |
 | `POST /api/v1/worlds` | Bearer | `{ name, address, capacity?, listed?, agreement }` → a pending world; `agreement` is the host agreement's version the host accepts (1), else `agreement-required` |
+| `POST /api/v1/me/verify` | Bearer | Mails a new verification link (S3.03), one every ten minutes; `GET /verify?token=…` (a page) confirms the address |
 | `GET /api/v1/me/mutes`, `PUT`/`DELETE /api/v1/me/mutes/:account` | Bearer | Personal mutes (S3.08): the accounts this player does not hear, in every world |
 | `GET /api/v1/me/friends`, `POST`/`DELETE /api/v1/me/friends/:account` | Bearer | Friends (S3.10): `{ friends, incoming, outgoing }`; a POST asks, or accepts the other's request; refused across a block (`friend-blocked`) and to a minor that did not ask first (`friend-minor`) |
 | `GET /api/v1/me/blocks`, `PUT`/`DELETE /api/v1/me/blocks/:account` | Bearer | Blocks (S3.11): two-way, in every world; a block ends any friendship or request between the two |

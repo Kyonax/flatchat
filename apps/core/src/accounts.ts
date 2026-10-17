@@ -175,10 +175,13 @@ export interface SignUpOptions {
   now: Date;
   cost: PasswordCost;
   policy: AgePolicy;
+  /** Open sign-up (S3.03): no invitation needed; the address is verified by mail. */
+  open?: boolean;
 }
 
-/** Creates an account from an invitation. The age rule's refusal spends the invitation and keeps
- *  nothing about the person; a mistake in a field leaves the invitation as it was. */
+/** Creates an account from an invitation, or without one when sign-up is open (S3.03). The age
+ *  rule's refusal spends the invitation and keeps nothing about the person; a mistake in a field
+ *  leaves the invitation as it was. */
 export async function signUp(db: Db, s: SignUp, o: SignUpOptions): Promise<SignUpResult> {
   const email = cleanEmail(s.email);
   const name = cleanDisplayName(s.displayName);
@@ -186,20 +189,23 @@ export async function signUp(db: Db, s: SignUp, o: SignUpOptions): Promise<SignU
   // Hashed before the transaction: Argon2id takes a tenth of a second and should not hold a lock.
   const hash = email && name && !pw ? await hashPassword(s.password, o.cost) : '';
   return db.tx(async (sql) => {
-    const [inv] = await sql.query<InvitationRow>('select email_key, expires_at, used_at, refused_at from invitations where code_hash = $1 for update', [
-      digest(s.invitation),
-    ]);
-    const state = invitationState(inv, o.now);
-    if (state !== 'ok') return { ok: false, problem: `invitation-${state}` as SignUpProblem };
+    const invited = s.invitation !== '' || !o.open;
+    const [inv] = invited
+      ? await sql.query<InvitationRow>('select email_key, expires_at, used_at, refused_at from invitations where code_hash = $1 for update', [digest(s.invitation)])
+      : [];
+    if (invited) {
+      const state = invitationState(inv, o.now);
+      if (state !== 'ok') return { ok: false, problem: `invitation-${state}` as SignUpProblem };
+    }
     if (!email) return { ok: false, problem: 'email' };
-    if (inv!.email_key && inv!.email_key !== emailKey(email)) return { ok: false, problem: 'invitation-email' };
+    if (inv?.email_key && inv.email_key !== emailKey(email)) return { ok: false, problem: 'invitation-email' };
     if (pw) return { ok: false, problem: `password-${pw}` as SignUpProblem };
     if (!name) return { ok: false, problem: 'display-name' };
     if (!COUNTRIES.has(s.country.toUpperCase())) return { ok: false, problem: 'country' };
     const verdict = ageRule({ year: s.birthYear, month: s.birthMonth, country: s.country }, o.now, o.policy);
     if (!verdict.ok && verdict.reason === 'invalid') return { ok: false, problem: 'birth' };
     if (!verdict.ok) {
-      await sql.query('update invitations set refused_at = $2 where code_hash = $1', [digest(s.invitation), o.now]);
+      if (invited) await sql.query('update invitations set refused_at = $2 where code_hash = $1', [digest(s.invitation), o.now]);
       return { ok: false, problem: 'age' };
     }
     if (!s.consent) return { ok: false, problem: 'consent' };
@@ -208,14 +214,14 @@ export async function signUp(db: Db, s: SignUp, o: SignUpOptions): Promise<SignU
     const [row] = await sql.query<AccountRow>(
       `insert into accounts (email, email_key, password_hash, display_name, birth_year, birth_month, country, email_verified, created_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning ${ACCOUNT_COLUMNS}`,
-      [email, emailKey(email), hash, name, s.birthYear, s.birthMonth, s.country.toUpperCase(), inv!.email_key === emailKey(email), o.now],
+      [email, emailKey(email), hash, name, s.birthYear, s.birthMonth, s.country.toUpperCase(), inv?.email_key === emailKey(email), o.now],
     );
     await sql.query("insert into consents (account_id, kind, notice_version, method, given_at) values ($1, 'data-processing', $2, 'sign-up page', $3)", [
       row!.id,
       NOTICE_VERSION,
       o.now,
     ]);
-    await sql.query('update invitations set used_at = $2, used_by = $3 where code_hash = $1', [digest(s.invitation), o.now, row!.id]);
+    if (invited) await sql.query('update invitations set used_at = $2, used_by = $3 where code_hash = $1', [digest(s.invitation), o.now, row!.id]);
     return { ok: true, account: toAccount(row!) };
   });
 }
