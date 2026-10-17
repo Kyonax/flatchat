@@ -116,11 +116,17 @@ export interface MyWorld {
   status: string;
   address: string;
   capacity: number;
+  listed: boolean;
+  online: boolean;
+  players: number;
 }
 
 export const api = {
   worlds: (f: Fetch, core: string, a: string): Promise<{ worlds: MyWorld[] }> => call(f, core, 'GET', '/api/v1/my/worlds', undefined, a),
-  request: (f: Fetch, core: string, a: string, name: string, capacity: number): Promise<{ id: string; status: string }> => call(f, core, 'POST', '/api/v1/worlds', { name, address: 'relay', capacity }, a),
+  request: (f: Fetch, core: string, a: string, name: string, capacity: number, listed = true): Promise<{ id: string; status: string }> =>
+    call(f, core, 'POST', '/api/v1/worlds', { name, address: 'relay', capacity, listed }, a),
+  update: (f: Fetch, core: string, a: string, id: string, change: { listed?: boolean; capacity?: number }): Promise<{ id: string; name: string; listed: boolean; capacity: number }> =>
+    call(f, core, 'POST', `/api/v1/my/worlds/${id}`, change, a),
   key: (f: Fetch, core: string, a: string, id: string): Promise<{ key: string }> => call(f, core, 'GET', `/api/v1/worlds/${id}/key`, undefined, a),
 };
 

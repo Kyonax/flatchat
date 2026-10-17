@@ -5,8 +5,10 @@
 //   host new DIR [--from plaza]     a new world folder (from the plaza, or an empty starter)
 //   host check DIR                  validate a world folder against the world format
 //   host build DIR [OUT]            convert it into what a world server serves (default OUT: DIR/.built)
-//   host request --name N [--capacity 50]   ask the core to approve a world hosted here (relayed)
-//   host worlds                     your worlds and their status
+//   host request --name N [--capacity 50] [--unlisted]   ask the core to approve a world hosted here
+//                                   (relayed; at most 200 players; --unlisted: reached by its ID only)
+//   host worlds                     your worlds: status, listed or not, online, players
+//   host listing WORLD_ID on|off    put a world on the public list, or take it off (S2.09)
 //   host key WORLD_ID               fetch an approved world's key (kept in ~/.config/flatchat/worlds)
 //   host run DIR --world-id ID [--map-port] [--ice-server URL]…   build if needed, then run it
 //   host advise [--mbps N]          measure the upload (Cloudflare's speed test) and suggest a capacity
@@ -32,6 +34,7 @@ const { values, positionals } = parseArgs({
     from: { type: 'string', default: 'plaza' },
     name: { type: 'string' },
     capacity: { type: 'string', default: '50' },
+    unlisted: { type: 'boolean', default: false },
     'world-id': { type: 'string' },
     'map-port': { type: 'boolean', default: false },
     'ice-server': { type: 'string', multiple: true },
@@ -82,13 +85,22 @@ async function main(): Promise<number> {
     case 'request': {
       if (!values.name) throw new HostError('host request --name "World name"');
       const { core, access: a } = await access();
-      const w = await api.request(fetch, core, a, values.name, Number(values.capacity));
-      say(`asked ${core} to approve "${values.name}": ${w.id} (${w.status}). Once approved: host key ${w.id}`);
+      const w = await api.request(fetch, core, a, values.name, Number(values.capacity), !values.unlisted);
+      say(`asked ${core} to approve "${values.name}": ${w.id} (${w.status}${values.unlisted ? ', unlisted' : ''}). Once approved: host key ${w.id}`);
       return 0;
     }
     case 'worlds': {
       const { core, access: a } = await access();
-      for (const w of (await api.worlds(fetch, core, a)).worlds) say(`${w.id}  ${w.status.padEnd(8)}  ${w.name}`);
+      for (const w of (await api.worlds(fetch, core, a)).worlds) {
+        say(`${w.id}  ${w.status.padEnd(8)}  ${w.listed ? 'listed  ' : 'unlisted'}  ${w.online ? `online, ${w.players} of ${w.capacity}` : 'offline'}  ${w.name}`);
+      }
+      return 0;
+    }
+    case 'listing': {
+      if (!a1 || (a2 !== 'on' && a2 !== 'off')) throw new HostError('host listing WORLD_ID on|off');
+      const { core, access: a } = await access();
+      const w = await api.update(fetch, core, a, a1, { listed: a2 === 'on' });
+      say(`${w.name} is ${w.listed ? 'on the public list (until it reaches its recommended count)' : 'off the public list: players reach it by its ID'}`);
       return 0;
     }
     case 'key': {
@@ -125,7 +137,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      process.stderr.write('usage: host signin|new|check|build|request|worlds|key|run|advise … (see the header of tools/host-tool/src/cli.ts)\n');
+      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|advise … (see the header of tools/host-tool/src/cli.ts)\n');
       return 2;
   }
 }

@@ -2,7 +2,7 @@
 title: The Host Tool and Hosting Others — Approvals, Keys, Packaging, the Container Image, the Capacity Advisor and the World's Database
 impact: HIGH
 impactDescription: A host tool that keeps a key where others can read it, an admin page without CSRF protection, a package that only runs with the repository's Node.js, or a world database that forgets a persistent world's state each restart breaks hosting for everyone but the owner.
-tags: host tool, tools/host-tool, flatchat-host, host signin, host request, host key, host run, host advise, capacity advisor, approvals, admin page, /admin, CSRF, admin_sessions, api/v1/my/worlds, api/v1/worlds/:id/key, pack.ts, tar.gz, Dockerfile, container image, persistence, WorldStore, node:sqlite, --data, reset, persistent, S2.02, S2.08, S2.10
+tags: host tool, tools/host-tool, flatchat-host, host signin, host request, host listing, host key, host run, host advise, --unlisted, capacity advisor, approvals, admin page, /admin, CSRF, admin_sessions, api/v1/my/worlds, api/v1/worlds/:id/key, pack.ts, tar.gz, Dockerfile, container image, persistence, WorldStore, node:sqlite, --data, reset, persistent, S2.02, S2.08, S2.10
 ---
 
 `tools/host-tool` (MPL-2.0) is what a host installs: the world server, the converter and a capacity advisor behind one command (`tools/host-tool/src/cli.ts`; `npm run host --` in the repository). The core's side of hosting by others (S2.10) is its admin page and two endpoints.
@@ -12,7 +12,8 @@ tags: host tool, tools/host-tool, flatchat-host, host signin, host request, host
 | Step | Who | How |
 |---|---|---|
 | Sign in | the host | `host signin --core URL`: the same browser sign-in as the client (loopback port, PKCE), in Node (`src/account.ts`); the refresh token in `~/.config/flatchat/host.json` (0600), rotated on every use |
-| Ask | the host | `host request --name N`: `POST /api/v1/worlds` with the address `relay` (S1.13), so the world needs no TCP port |
+| Ask | the host | `host request --name N [--capacity 50] [--unlisted]`: `POST /api/v1/worlds` with the address `relay` (S1.13), so the world needs no TCP port; at most 200 players (Q-L19); `--unlisted` keeps it off the public list, reached by its id |
+| List | the host | `host listing ID on\|off` (`POST /api/v1/my/worlds/:id`); `host worlds` shows each world's status, listing, and whether it is online with how many players (S2.09) |
 | Approve | the owner | The core's admin page `/admin` (`apps/core/src/admin-web.ts`): its own sign-in for accounts with `admin` (`admin account EMAIL --admin on`), a 12-hour session in an `HttpOnly; SameSite=Strict` cookie scoped to `/admin`, a CSRF token per session in every form (compared in constant time); approve or revoke, each written to `world_events` |
 | Key | the host | `host key ID`: `GET /api/v1/worlds/:id/key` answers only the world's own account, only while approved; kept in `~/.config/flatchat/worlds/ID.env` (0600). `GET /api/v1/my/worlds` lists the host's worlds |
 | Run | the host | `host run DIR --world-id ID [--map-port]`: rebuilds when `world.toml` is newer than the build, then starts the world server with `--world`, `--core`, `--relay` and Cloudflare's STUN |

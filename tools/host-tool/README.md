@@ -3,7 +3,7 @@
 Everything a host needs to put a world online from a home PC: make a world folder, check it, build it, ask the core to approve it, fetch its key, and run it. The world server, the converter and a capacity advisor in one download for Linux, and as a container image.
 
 - Licence: MPL-2.0 ([LICENSE](LICENSE))
-- Status: Stage 2 (S2.02, S2.10).
+- Status: Stage 2 (S2.02, S2.09, S2.10).
 
 | Command | What it does |
 |---|---|
@@ -11,8 +11,9 @@ Everything a host needs to put a world online from a home PC: make a world folde
 | `host new DIR` | A new world folder from the plaza template |
 | `host check DIR` | Checks it against the [world format](../../docs/world-format.md) |
 | `host build DIR [OUT]` | Converts it into what a world server serves (default `DIR/.built`) |
-| `host request --name N [--capacity 50]` | Asks the core to approve a world hosted here; the owner approves it on the core's admin page |
-| `host worlds` | Your worlds and their status |
+| `host request --name N [--capacity 50] [--unlisted]` | Asks the core to approve a world hosted here (at most 200 players); the owner approves it on the core's admin page. `--unlisted` keeps it off the public list: players reach it by its ID |
+| `host worlds` | Your worlds: status, listed or not, online, players |
+| `host listing WORLD_ID on\|off` | Puts a world on the public list, or takes it off |
 | `host key WORLD_ID` | Fetches an approved world's key into `~/.config/flatchat/worlds/WORLD_ID.env` |
 | `host run DIR --world-id ID [--map-port]` | Builds the world if it changed, then runs it: players' offers come through the core, so only the UDP port (7778) must be reachable (`--map-port` asks the router) |
 | `host advise [--mbps N]` | Measures your upload (Cloudflare's public speed test) and suggests a capacity |
