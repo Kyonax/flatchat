@@ -62,6 +62,7 @@ const clear = (a: Action, slot: 0 | 1): void => emit('change', { keys: unbind(pr
 const voice = (patch: Partial<Settings['voice']>): void => emit('change', { voice: { ...props.settings.voice, ...patch } });
 const view = (patch: Partial<Settings['view']>): void => emit('change', { view: { ...props.settings.view, ...patch } });
 const avatar = (patch: Partial<Settings['avatar']>): void => emit('change', { avatar: { ...props.settings.avatar, ...patch } });
+const sound = (patch: Partial<Settings['sound']>): void => emit('change', { sound: { ...props.settings.sound, ...patch } });
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -241,6 +242,30 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           step="0.05"
           :value="settings.voice.volume"
           @change="voice({ volume: num($event) })"
+        >
+      </label>
+      <h2>{{ t('settings.sound') }}</h2>
+      <label class="row">
+        <span class="grow">{{ t('settings.worldVolume') }}</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          :value="settings.sound.world"
+          data-test="world-volume"
+          @change="sound({ world: num($event) })"
+        >
+      </label>
+      <label class="row">
+        <span class="grow">{{ t('settings.uiVolume') }}</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          :value="settings.sound.ui"
+          @change="sound({ ui: num($event) })"
         >
       </label>
       <h2>{{ t('settings.server') }}</h2>

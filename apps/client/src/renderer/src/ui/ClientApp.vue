@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Settings } from '../../../shared/settings';
 import { type Locale, pickLocale } from '../i18n';
+import { setUiVolume, uiSound } from '../world/sounds';
 import HomeView from './HomeView.vue';
 import { loadLayout } from './keys';
 import SettingsView from './SettingsView.vue';
@@ -27,6 +28,12 @@ let offAuth: (() => void) | undefined;
 
 function applyLocale(): void {
   if (settings.value) locale.value = pickLocale(settings.value.language, systemLocale.value) satisfies Locale;
+  if (settings.value) setUiVolume(settings.value.sound.ui);
+}
+
+/** A soft click for every button the player presses (S2.14). */
+function onClick(e: MouseEvent): void {
+  if ((e.target as Element | null)?.closest?.('button')) uiSound('click');
 }
 
 async function change(patch: Partial<Settings>): Promise<void> {
@@ -80,6 +87,7 @@ async function goThrough(to: { world: string; spawn: string }): Promise<void> {
 
 onMounted(async () => {
   if (!bridge) return;
+  document.addEventListener('click', onClick);
   void loadLayout();
   [settings.value, systemLocale.value, auth.value] = await Promise.all([bridge.settings(), bridge.locale(), bridge.authState()]);
   applyLocale();
@@ -88,7 +96,10 @@ onMounted(async () => {
     if (s.status !== 'signed-in') world.value = undefined;
   });
 });
-onBeforeUnmount(() => offAuth?.());
+onBeforeUnmount(() => {
+  offAuth?.();
+  document.removeEventListener('click', onClick);
+});
 </script>
 
 <template>

@@ -26,6 +26,7 @@ import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
+import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
 import { PathWalker } from './walker';
 
 const CELL = 32;
@@ -67,6 +68,8 @@ export interface WorldState {
   /** The built world's name, once it has loaded. */
   world: string;
   flying: boolean;
+  /** How many of the world's sound emitters play (S2.14). */
+  sounds: number;
   /** A short notice the page words in its language ('' for none). */
   notice: '' | 'noFlying' | 'noSeat' | 'teleportRefused' | 'nothingThere';
 }
@@ -146,6 +149,10 @@ export class WorldSession {
   private readonly heights = new Map<number, number>();
   private readonly stances = new Map<number, string>();
   private noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  // Sounds (S2.14).
+  private sounds: WorldSounds | undefined;
+  private readonly myStrides = new Strides();
+  private readonly strides = new Map<number, Strides>();
 
   constructor(canvas: HTMLCanvasElement, map: WorldMap, settings: Settings, onChange: (state: WorldState) => WorldState = (s) => s) {
     this.canvas = canvas;
@@ -169,6 +176,7 @@ export class WorldSession {
       download: undefined,
       world: '',
       flying: false,
+      sounds: 0,
       notice: '',
     });
   }
@@ -201,6 +209,12 @@ export class WorldSession {
     this.lastFrame = performance.now();
     this.fpsAt = this.lastFrame;
     this.camera = view.camera;
+    try {
+      this.sounds = new WorldSounds(this.settings.sound.world);
+    } catch {
+      // No audio output: a silent world.
+    }
+    setUiVolume(this.settings.sound.ui);
     await renderer.setAnimationLoop(() => this.frame(view.scene, view.camera));
 
     try {
@@ -313,6 +327,8 @@ export class WorldSession {
     this.controls.invertY = s.view.invertY;
     this.state.person = s.view.person;
     if (this.volume) this.volume.gain.value = s.voice.volume;
+    if (this.sounds) this.sounds.volume = s.sound.world;
+    setUiVolume(s.sound.ui);
   }
 
   /** Sends a chat line; false when it would go over the limit (the server would drop it). */
@@ -405,6 +421,7 @@ export class WorldSession {
     const pose = cameraPose(this.state.person, this.me, this.controls.yaw, this.controls.pitch, this.cameraSolids, this.scaleOf(this.entity) * (this.sitting ? 0.7 : 1));
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
+    if (this.sounds && this.state.status === 'joined') this.footsteps(now, pose.position);
     this.crowd?.update(this.avatars(now), camera.position);
     this.renderer?.render(scene, camera);
     this.frames += 1;
@@ -476,6 +493,7 @@ export class WorldSession {
         break;
       case 'chat':
         this.chatLine({ from: m.from === undefined ? '' : (this.names.get(m.from) ?? '?'), text: m.text });
+        if (m.from !== this.entity) uiSound('blip');
         break;
       case 'voiceBundle':
         this.chain?.receive(m);
@@ -526,7 +544,10 @@ export class WorldSession {
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
       this.heights.set(p.entity, p.height / 100);
-      if (arriving && this.rosterSeen && p.entity !== this.entity) this.chatLine({ from: '', text: p.name, notice: 'joined' });
+      if (arriving && this.rosterSeen && p.entity !== this.entity) {
+        this.chatLine({ from: '', text: p.name, notice: 'joined' });
+        uiSound('chime');
+      }
     }
     for (const id of r.left) {
       const name = this.names.get(id);
@@ -534,6 +555,7 @@ export class WorldSession {
       this.names.delete(id);
       this.heights.delete(id);
       this.stances.delete(id);
+      this.strides.delete(id);
       this.remotes.forget(id);
     }
     this.rosterSeen = true;
@@ -568,6 +590,7 @@ export class WorldSession {
     }
     this.canFly = world.manifest.flying;
     this.seats = world.scenes.flatMap((sc) => sc.seats.map((seat) => ({ x: seat.position[0], y: seat.position[1], z: seat.position[2], yaw: seat.yaw })));
+    if (this.sounds) this.state.sounds = await this.sounds.start(world, files);
     const mesh = world.navmesh ? files.get(world.navmesh) : undefined;
     if (mesh) {
       try {
@@ -582,6 +605,23 @@ export class WorldSession {
     }));
     this.state.world = world.manifest.name;
     this.state.download = undefined;
+  }
+
+  /** The ears at the camera; a footstep for each stride of the player and of anyone within 12 m. */
+  private footsteps(now: number, ears: { x: number; y: number; z: number }): void {
+    const sounds = this.sounds!;
+    sounds.listen(ears, this.controls.yaw, this.controls.pitch);
+    const flying = this.physics?.flying ?? false;
+    if (this.myStrides.step(this.me.x, this.me.z, this.me.grounded && !flying && !this.sitting, this.controls.held('run'))) sounds.footstep();
+    for (const entity of this.remotes.entities()) {
+      const p = this.remotes.at(entity, now);
+      if (!p) continue;
+      let s = this.strides.get(entity);
+      if (!s) this.strides.set(entity, (s = new Strides()));
+      const stance = this.stances.get(entity) ?? 'standing';
+      const near = Math.hypot(p.x - this.me.x, p.z - this.me.z) <= 12;
+      if (s.step(p.x, p.z, stance === 'standing', false) && near) sounds.footstep({ x: p.x, y: p.y, z: p.z }, 0.18);
+    }
   }
 
   /** A player's drawn size: the world's fitted height over the standard body's. */
@@ -664,6 +704,7 @@ export class WorldSession {
     this.conn?.close(reason === 'travel' ? 'went through a portal' : 'left the world', reason);
     this.physics?.dispose();
     this.navigation?.dispose();
+    this.sounds?.close();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();

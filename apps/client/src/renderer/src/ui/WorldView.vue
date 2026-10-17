@@ -161,6 +161,12 @@ onBeforeUnmount(() => {
       <span class="muted small"> · {{ t('world.frames', { backend: state?.backend ?? '', n: state?.fps ?? 0 }) }}</span>
     </div>
     <div
+      v-if="state?.status === 'joined'"
+      hidden
+      data-test="sounds"
+      :data-playing="state.sounds"
+    />
+    <div
       v-if="state?.notice"
       class="whud toast"
       role="status"

@@ -69,6 +69,12 @@ export interface AvatarSettings {
   height: number;
 }
 
+/** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes. */
+export interface SoundSettings {
+  world: number;
+  ui: number;
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -78,6 +84,7 @@ export interface Settings {
   voice: VoiceSettings;
   view: ViewSettings;
   avatar: AvatarSettings;
+  sound: SoundSettings;
 }
 
 export function defaultSettings(): Settings {
@@ -89,6 +96,7 @@ export function defaultSettings(): Settings {
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1 },
     view: { person: 'third', sensitivity: 12, invertY: false },
     avatar: { height: HEIGHT_RANGE.default },
+    sound: { world: 0.8, ui: 0.5 },
   };
 }
 
@@ -122,6 +130,7 @@ export function cleanSettings(raw: unknown): Settings {
   const voice = obj(r['voice']);
   const view = obj(r['view']);
   const avatar = obj(r['avatar']);
+  const sound = obj(r['sound']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -144,6 +153,7 @@ export function cleanSettings(raw: unknown): Settings {
       // Centimetre steps, as the protocol carries it.
       height: Math.round(num(avatar['height'], HEIGHT_RANGE.min, HEIGHT_RANGE.max, d.avatar.height) * 100) / 100,
     },
+    sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui) },
   };
 }
 
@@ -156,6 +166,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     voice: { ...current.voice, ...obj(p['voice']) },
     view: { ...current.view, ...obj(p['view']) },
     avatar: { ...current.avatar, ...obj(p['avatar']) },
+    sound: { ...current.sound, ...obj(p['sound']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

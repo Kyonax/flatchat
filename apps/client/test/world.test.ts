@@ -14,6 +14,7 @@ import { loadPhysics, Physics } from '../src/renderer/src/world/physics';
 import * as THREE from 'three/webgpu';
 import { checkGlb, levelsOfDetail, lodDistances, SceneError } from '../src/renderer/src/world/scene-loader';
 import { mapColliders } from '../src/renderer/src/world/session';
+import { MAX_EMITTERS, planEmitters, type SoundContext, Strides, WorldSounds } from '../src/renderer/src/world/sounds';
 
 const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 const dirs: string[] = [];
@@ -232,5 +233,96 @@ describe('levels of detail (S2.03)', () => {
     root.add(a, b, new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1)));
     expect(levelsOfDetail(root)).toBe(0);
     expect(root.children).toHaveLength(3);
+  });
+});
+
+describe('world sounds (S2.14)', () => {
+  const emitter = (k: number, extra: Record<string, unknown> = {}) => ({
+    position: [k, 1, -k] as [number, number, number],
+    audio: `a${k}`,
+    positional: true,
+    gain: 0.8,
+    loop: true,
+    autoPlay: true,
+    refDistance: 2,
+    maxDistance: 30,
+    ...extra,
+  });
+  const world = (emitters: unknown[]) => ({ scenes: [{ emitters }] }) as unknown as Parameters<typeof planEmitters>[0];
+
+  it('plans the emitters that play by themselves, at their places, within the limits', () => {
+    const plan = planEmitters(world([emitter(1), emitter(2, { autoPlay: false }), emitter(3, { gain: 9, refDistance: 5, maxDistance: 1 })]));
+    expect(plan.map((p) => p.audio)).toEqual(['a1', 'a3']);
+    expect(plan[0]).toEqual({ audio: 'a1', position: [1, 1, -1], positional: true, gain: 0.8, loop: true, refDistance: 2, maxDistance: 30 });
+    expect(plan[1]).toMatchObject({ gain: 4, refDistance: 5, maxDistance: 5 });
+    expect(planEmitters(world(Array.from({ length: 80 }, (_, k) => emitter(k))))).toHaveLength(MAX_EMITTERS);
+  });
+
+  it('puts each positional sound where its emitter stands, and the ears at the camera', async () => {
+    const panners: Array<Record<string, unknown>> = [];
+    const param = (): { value: number; setValueAtTime: () => void; linearRampToValueAtTime: () => void; exponentialRampToValueAtTime: () => void } => ({
+      value: 0,
+      setValueAtTime: () => undefined,
+      linearRampToValueAtTime: () => undefined,
+      exponentialRampToValueAtTime: () => undefined,
+    });
+    const node = (): Record<string, unknown> => {
+      const n: Record<string, unknown> = { connect: (to: unknown) => to, gain: param(), frequency: param(), Q: param() };
+      return n;
+    };
+    const listener = Object.fromEntries(['positionX', 'positionY', 'positionZ', 'forwardX', 'forwardY', 'forwardZ', 'upX', 'upY', 'upZ'].map((k) => [k, param()]));
+    let started = 0;
+    const fake = {
+      createGain: node,
+      createBiquadFilter: node,
+      createPanner: () => {
+        const p = { ...node(), positionX: param(), positionY: param(), positionZ: param() };
+        panners.push(p);
+        return p;
+      },
+      createBufferSource: () => ({ ...node(), start: () => (started += 1), stop: () => undefined }),
+      createBuffer: () => ({ getChannelData: () => new Float32Array(8) }),
+      decodeAudioData: async (b: ArrayBuffer) => {
+        if (b.byteLength === 1) throw new Error('not audio');
+        return {};
+      },
+      destination: {},
+      listener,
+      currentTime: 0,
+      sampleRate: 48_000,
+      close: async () => undefined,
+      resume: async () => undefined,
+    } as unknown as SoundContext;
+    const sounds = new WorldSounds(0.8, fake);
+    const files = new Map([
+      ['a1', new Uint8Array([1, 2, 3])],
+      ['a4', new Uint8Array([1])],
+      ['a5', new Uint8Array([1, 2])],
+    ]);
+    const playing = await sounds.start(world([emitter(1), emitter(4), emitter(5, { positional: false }), emitter(6)]), files);
+    // a4 cannot be decoded and a6 never arrived: two play, one of them placed.
+    expect(playing).toBe(2);
+    expect(started).toBe(2);
+    const at = (p: Record<string, unknown>) => ['positionX', 'positionY', 'positionZ'].map((k) => (p[k] as { value: number }).value);
+    expect(panners.map(at)).toEqual([[1, 1, -1]]);
+    expect(panners[0]).toMatchObject({ refDistance: 2, maxDistance: 30, distanceModel: 'inverse' });
+    sounds.listen({ x: 3, y: 2, z: 1 }, Math.PI / 2, 0);
+    expect([listener['positionX']!.value, listener['positionY']!.value, listener['positionZ']!.value]).toEqual([3, 2, 1]);
+    expect(listener['forwardX']!.value).toBeCloseTo(-1);
+    expect(listener['forwardZ']!.value).toBeCloseTo(0);
+    // A footstep elsewhere gets its own panner there.
+    sounds.footstep({ x: 9, y: 0, z: 9 });
+    expect(at(panners.at(-1)!)).toEqual([9, 0, 9]);
+  });
+
+  it('counts a stride every 0.7 m on the ground, never in the air or across a teleport', () => {
+    const s = new Strides();
+    let steps = 0;
+    for (let k = 0; k <= 70; k++) if (s.step(k * 0.05, 0, true, false)) steps += 1;
+    expect(steps).toBe(5);
+    let air = 0;
+    for (let k = 0; k <= 70; k++) if (s.step(k * 0.05, 5, false, false)) air += 1;
+    expect(air).toBe(0);
+    expect(s.step(50, 50, true, false)).toBe(false);
   });
 });
