@@ -4,6 +4,7 @@
 // files, each named by its SHA-256 (the visual GLB, the collision file, the navigation mesh, the
 // sounds). Clients download it from strangers' servers, so `parseBuiltWorld` checks every field.
 import { plainText, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
+import { isPart, MAX_PARTS } from './parts.ts';
 
 export const BUILT_FORMAT = 1;
 
@@ -60,6 +61,15 @@ export interface BuiltEmitter {
   maxDistance: number;
 }
 
+/** A base library part where a scene places it (S2.05): drawn by the client from its own library. */
+export interface BuiltPart {
+  id: string;
+  position: V3;
+  /** A quaternion (x, y, z, w). */
+  rotation: [number, number, number, number];
+  scale: V3;
+}
+
 export interface BuiltScene {
   id: string;
   /** The scene's visual GLB. */
@@ -69,6 +79,8 @@ export interface BuiltScene {
   portals: BuiltPortal[];
   zones: BuiltZone[];
   emitters: BuiltEmitter[];
+  /** Base library parts (S2.05); none in a world built before them. */
+  parts: BuiltPart[];
   triangles: number;
 }
 
@@ -174,6 +186,19 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
               }
             : fail(a, 'an object'),
         ),
+        parts:
+          s['parts'] === undefined
+            ? []
+            : list(s['parts'], `${at}.parts`, MAX_PARTS, (p, a) => {
+                if (!isObj(p)) return fail(a, 'an object');
+                const r = Array.isArray(p['rotation']) && p['rotation'].length === 4 ? p['rotation'] : fail(`${a}.rotation`, 'four numbers');
+                return {
+                  id: isPart(p['id']) ? p['id'] : fail(`${a}.id`, "one of the base library's parts"),
+                  position: v3(p['position'], `${a}.position`),
+                  rotation: [num(r[0], `${a}.rotation`, -1, 1), num(r[1], `${a}.rotation`, -1, 1), num(r[2], `${a}.rotation`, -1, 1), num(r[3], `${a}.rotation`, -1, 1)] as [number, number, number, number],
+                  scale: v3(p['scale'], `${a}.scale`, 0.01, 100),
+                };
+              }),
         triangles: num(s['triangles'], `${at}.triangles`, 0, 4_000_000),
       };
     });

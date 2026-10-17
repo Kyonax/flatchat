@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// FlatChat's content formats: the world format (docs/world-format.md) and its validator.
+// FlatChat's content formats: the world format (docs/world-format.md), its validator, the built
+// world, the solids' binary format and the base library's parts.
 export { type Problem, parseManifest, plainText, safePath, type SceneEntry, type Severity, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
 export {
   type Body,
@@ -11,6 +12,7 @@ export {
   localMatrix,
   type Mat4,
   multiply,
+  type PartPlacement,
   type Portal,
   type Pose,
   poseOf,
@@ -32,6 +34,7 @@ export {
   type BuiltEmitter,
   type BuiltFile,
   type BuiltKind,
+  type BuiltPart,
   type BuiltPortal,
   type BuiltScene,
   type BuiltSeat,
@@ -43,3 +46,4 @@ export {
   type V3,
 } from './built.ts';
 export { type Collider, COLLISION_LIMITS, CollisionError, decodeColliders, encodeColliders, type P3, type Quat } from './collision.ts';
+export { BASE_PARTS, isPart, MAX_PARTS, PART_COLOURS, type PartBox, type PartColour, type PartDef } from './parts.ts';

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The world format's validator (S2.01) on good and broken worlds, built here byte by byte.
 import { describe, expect, it } from 'vitest';
-import { imageSize, parseManifest, poseOf, readGltf, validateWorld } from '../src/index.ts';
+import { BASE_PARTS, imageSize, parseManifest, poseOf, readGltf, validateWorld } from '../src/index.ts';
 
 const enc = new TextEncoder();
 
@@ -194,5 +194,22 @@ describe('image sizes', () => {
     webp.set([0x7f, 0x02, 0x00, 0xdf, 0x01, 0x00], 24);
     expect(imageSize(webp)).toEqual({ width: 640, height: 480 });
     expect(imageSize(enc.encode('GIF89a'))).toBeUndefined();
+  });
+});
+
+describe('base library parts (S2.05)', () => {
+  it('reads a part a node places, and refuses an id the library does not have', () => {
+    const json = sceneJson();
+    const nodes = json['nodes'] as Array<Record<string, unknown>>;
+    nodes.push({ name: 'bench', translation: [5, 0, 5], extensions: { FLATCHAT_world: { part: { id: 'flatchat:bench' } } } });
+    (json['scenes'] as Array<{ nodes: number[] }>)[0]!.nodes.push(nodes.length - 1);
+    const good = validateWorld(world(glb(json)));
+    expect(codes(good)).toEqual([]);
+    expect(good.scenes[0]!.parts.map((p) => p.id)).toEqual(['flatchat:bench']);
+    nodes.at(-1)!['extensions'] = { FLATCHAT_world: { part: { id: 'acme:spaceship' } } };
+    const bad = validateWorld(world(glb(json)));
+    expect(codes(bad)).toContain('marker-invalid');
+    expect(BASE_PARTS['flatchat:bench']!.seats).toHaveLength(2);
+    for (const def of Object.values(BASE_PARTS)) for (const b of def.boxes) for (const k of [0, 1, 2]) expect(b.max[k]!).toBeGreaterThan(b.min[k]!);
   });
 });

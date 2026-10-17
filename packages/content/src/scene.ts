@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // A world's glTF scene, read without an engine: the JSON (from a .gltf, or a GLB's first chunk),
 // every node's world transform, and the markers of docs/world-format.md (spawn points, seats,
-// solids, sounds, portals, zones), with the limits that keep a world drawable on a weak laptop.
+// solids, sounds, portals, zones, base library parts), with the limits that keep a world drawable on a weak laptop.
 // Web APIs only (DataView, TextDecoder), so it runs in the world server, the client and the tools.
 import type { Problem, Severity } from './manifest.ts';
 import { plainText, safePath } from './manifest.ts';
+import { isPart, MAX_PARTS } from './parts.ts';
 
 export type Vec3 = [number, number, number];
 export type Mat4 = number[];
@@ -73,6 +74,13 @@ export interface Zone {
   gain?: number;
 }
 
+/** A base library part placed by a node (S2.05). */
+export interface PartPlacement {
+  node: number;
+  matrix: Mat4;
+  id: string;
+}
+
 export interface SceneInfo {
   file: string;
   spawns: SpawnPoint[];
@@ -82,6 +90,7 @@ export interface SceneInfo {
   emitters: Emitter[];
   portals: Portal[];
   zones: Zone[];
+  parts: PartPlacement[];
   triangles: number;
   textures: number;
   /** Files the scene needs from the world folder (buffers and images), relative to the folder. */
@@ -99,6 +108,7 @@ export const LIMITS = {
   portals: 256,
   zones: 256,
   emitters: 256,
+  parts: MAX_PARTS,
   name: 128,
   dataUri: 1024 * 1024,
 } as const;
@@ -314,7 +324,7 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
     shapes.push(shape);
   });
 
-  const info: SceneInfo = { file, spawns: [], seats: [], shapes, bodies: [], emitters: [], portals: [], zones: [], triangles, textures: json.images?.length ?? 0, needs };
+  const info: SceneInfo = { file, spawns: [], seats: [], shapes, bodies: [], emitters: [], portals: [], zones: [], parts: [], triangles, textures: json.images?.length ?? 0, needs };
   const emitterCount = Array.isArray((json.extensions?.['KHR_audio_emitter'] as Record<string, unknown> | undefined)?.['emitters'])
     ? ((json.extensions!['KHR_audio_emitter'] as Record<string, unknown>)['emitters'] as unknown[]).length
     : 0;
@@ -368,6 +378,11 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
         else if (!positive(size)) add('marker-invalid', at('FLATCHAT_world.portal'), 'a portal has a positive size');
         else info.portals.push({ node: index, matrix, world: target, spawn: text(p['spawn'], at('FLATCHAT_world.portal')), size });
       }
+      if (isObj(f['part'])) {
+        const id = f['part']['id'];
+        if (!isPart(id)) add('marker-invalid', at('FLATCHAT_world.part'), `a part names one of the base library's ids (${String(id).slice(0, 64)} is not one)`);
+        else info.parts.push({ node: index, matrix, id });
+      }
       if (isObj(f['zone'])) {
         const z = f['zone'];
         const size = vec3(z['size']);
@@ -388,6 +403,7 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
     ['portals', LIMITS.portals],
     ['zones', LIMITS.zones],
     ['emitters', LIMITS.emitters],
+    ['parts', LIMITS.parts],
   ] as const) {
     if (info[key].length > limit) add('too-big', key, `more than ${limit} ${key}`);
   }

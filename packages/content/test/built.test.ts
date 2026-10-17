@@ -36,6 +36,20 @@ describe('world.json', () => {
     expect(parseBuiltWorld('not even an object')).toEqual({ error: 'world.json: an object' });
   });
 
+  it('reads base library parts, and refuses one the library does not have (S2.05)', () => {
+    const w = plaza();
+    const scene = (w['scenes'] as Array<Record<string, unknown>>)[0]!;
+    scene['parts'] = [{ id: 'flatchat:tree', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }];
+    const r = parseBuiltWorld(w);
+    expect('world' in r && r.world.scenes[0]!.parts).toEqual([{ id: 'flatchat:tree', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }]);
+    scene['parts'] = [{ id: 'acme:spaceship', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }];
+    const bad = parseBuiltWorld(w);
+    expect('error' in bad ? bad.error : 'accepted').toMatch(/base library/);
+    delete scene['parts'];
+    const older = parseBuiltWorld(w);
+    expect('world' in older && older.world.scenes[0]!.parts).toEqual([]);
+  });
+
   it('places a point in a box turned about y', () => {
     const b = { center: [10, 1, 10] as [number, number, number], half: [2, 1, 0.5] as [number, number, number], yaw: Math.PI / 2 };
     expect(insideBox(b, { x: 10.4, y: 1, z: 11.5 })).toBe(true);
