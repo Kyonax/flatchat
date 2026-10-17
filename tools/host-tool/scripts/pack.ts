@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-// Packages the host tool for Linux (S2.02, DR-15): the tool, the world server, the converter, the
-// shared packages and the world templates, with their production dependencies and, unless
+// Packages the host tool for Linux (S2.02, DR-15): the tool, the world server with its entry-rule
+// plugins (S3.05), the converter, the shared packages and the world templates, with their production dependencies and, unless
 // --no-node, Node.js itself, in one folder and one .tar.gz:
 //
 //   node tools/host-tool/scripts/pack.ts [--no-node] [--out release/host]
@@ -30,7 +30,7 @@ const WORKSPACES = ['packages/protocol', 'packages/sim', 'packages/content', 'ap
 rmSync(out, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
 for (const ws of WORKSPACES) {
-  for (const part of ['package.json', 'LICENSE', 'README.md', 'src']) {
+  for (const part of ['package.json', 'LICENSE', 'README.md', 'src', 'plugins']) {
     const from = join(ROOT, ws, part);
     if (existsSync(from)) cpSync(from, join(app, ws, part), { recursive: true });
   }

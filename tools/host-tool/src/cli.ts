@@ -11,6 +11,9 @@
 //   host listing WORLD_ID on|off    put a world on the public list, or take it off (S2.09)
 //   host key WORLD_ID               fetch an approved world's key (kept in ~/.config/flatchat/worlds)
 //   host run DIR --world-id ID [--map-port] [--ice-server URL]…   build if needed, then run it
+//   host plugins DIR                the world's plugins: version, hooks, what each asks to do, settings
+//   host plugins DIR add NAME|FOLDER   install a plugin into DIR/plugins, showing what it asks for
+//                                   (NAME: entry-open, entry-verified or entry-trust, S3.05)
 //   host advise [--mbps N]          measure the upload (Cloudflare's speed test) and suggest a capacity
 import { spawn } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, statSync } from 'node:fs';
@@ -21,11 +24,13 @@ import { validateWorld } from '@flatchat/content';
 import { ConvertError, convertWorld, readFolder, writeBuilt } from '@flatchat/converter';
 import { access, api, coreUrl, HostError, loadSession, saveSession, saveWorldKey, signIn, worldEnvFile } from './account.ts';
 import { advise, measureUpload } from './advisor.ts';
+import { addPlugin, describePlugin, listPlugins } from './plugins.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
 const PLAZA = join(ROOT, 'kits', 'worlds', 'plaza');
+const BUILT_IN_PLUGINS = join(ROOT, 'apps', 'world-server', 'plugins');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -42,7 +47,7 @@ const { values, positionals } = parseArgs({
     'rtc-port': { type: 'string', default: '7778' },
   },
 });
-const [command, a1, a2] = positionals;
+const [command, a1, a2, a3] = positionals;
 const say = (line: string): void => void process.stdout.write(`${line}\n`);
 
 async function build(dir: string, out: string): Promise<void> {
@@ -124,10 +129,33 @@ async function main(): Promise<number> {
         const m = /^([A-Z_]+)=(.*)$/.exec(line.trim());
         if (m) env[m[1]!] = m[2]!;
       }
-      const args = [SERVER_MAIN, '--transport', 'rtc', '--world', out, '--core', session.core, '--relay', '--rtc-port', values['rtc-port'], ...(values['map-port'] ? ['--map-port'] : []), ...(values['ice-server'] ?? ['stun:stun.cloudflare.com:3478']).flatMap((u) => ['--ice-server', u])];
+      // A world folder's plugins/ (S3.01) run on this server only; players never download them.
+      const plugins = join(dir, 'plugins');
+      const args = [
+        SERVER_MAIN, '--transport', 'rtc', '--world', out, '--core', session.core, '--relay', '--rtc-port', values['rtc-port'],
+        ...(values['map-port'] ? ['--map-port'] : []),
+        ...(existsSync(plugins) ? ['--plugins', plugins] : []),
+        ...(values['ice-server'] ?? ['stun:stun.cloudflare.com:3478']).flatMap((u) => ['--ice-server', u]),
+      ];
       say(`running ${id} from ${out}: Ctrl+C stops it`);
       const child = spawn(process.execPath, ['--min-semi-space-size=16', '--max-semi-space-size=16', ...args], { env, stdio: 'inherit' });
       return new Promise((r) => child.on('exit', (code) => r(code ?? 1)));
+    }
+    case 'plugins': {
+      const dir = resolve(a1 ?? '.');
+      if (!existsSync(join(dir, 'world.toml'))) throw new HostError(`${dir} is not a world folder (no world.toml)`);
+      if (a2 === 'add') {
+        if (!a3) throw new HostError('host plugins DIR add NAME|FOLDER');
+        const m = addPlugin(dir, a3, BUILT_IN_PLUGINS);
+        for (const line of describePlugin(m)) say(line);
+        say(`added to ${join(dir, 'plugins', m.name)}: it runs with the world from the next host run; edit its settings in its plugin.toml`);
+        return 0;
+      }
+      if (a2 !== undefined) throw new HostError('host plugins DIR [add NAME|FOLDER]');
+      const found = listPlugins(dir);
+      if (found.length === 0) say('no plugins: the world is open to everyone the core lets in (host plugins DIR add entry-trust, for example)');
+      for (const p of found) for (const line of p.manifest ? describePlugin(p.manifest) : [`${p.folder}: refused: ${p.problem}`]) say(line);
+      return found.every((p) => p.manifest) ? 0 : 1;
     }
     case 'advise': {
       const mbps = values.mbps !== undefined ? Number(values.mbps) : await measureUpload();
@@ -137,7 +165,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|advise … (see the header of tools/host-tool/src/cli.ts)\n');
+      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|plugins|advise … (see the header of tools/host-tool/src/cli.ts)\n');
       return 2;
   }
 }

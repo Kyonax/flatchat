@@ -3,7 +3,7 @@
 Everything a host needs to put a world online from a home PC: make a world folder, check it, build it, ask the core to approve it, fetch its key, and run it. The world server, the converter and a capacity advisor in one download for Linux, and as a container image.
 
 - Licence: MPL-2.0 ([LICENSE](LICENSE))
-- Status: Stage 2 (S2.02, S2.09, S2.10).
+- Status: Stage 2 (S2.02, S2.09, S2.10), plugins from Stage 3 (S3.01, S3.05).
 
 | Command | What it does |
 |---|---|
@@ -16,6 +16,7 @@ Everything a host needs to put a world online from a home PC: make a world folde
 | `host listing WORLD_ID on\|off` | Puts a world on the public list, or takes it off |
 | `host key WORLD_ID` | Fetches an approved world's key into `~/.config/flatchat/worlds/WORLD_ID.env` |
 | `host run DIR --world-id ID [--map-port]` | Builds the world if it changed, then runs it: players' offers come through the core, so only the UDP port (7778) must be reachable (`--map-port` asks the router) |
+| `host plugins DIR [add NAME\|FOLDER]` | Lists the world's plugins (version, hooks, what each asks to do, its settings), or installs one into `DIR/plugins`, showing what it asks for first. NAME is one of the entry rules that come with the world server: `entry-open`, `entry-verified`, `entry-trust` ([plugins.md](../../docs/plugins.md)) |
 | `host advise [--mbps N]` | Measures your upload (Cloudflare's public speed test) and suggests a capacity |
 
 From the repository: `npm run host -- COMMAND`. As a download: `node tools/host-tool/scripts/pack.ts` makes `release/host/flatchat-host-VERSION-linux-x64.tar.gz` (with Node.js; `bin/flatchat-host` is the command), and `--no-node` the folder the container image is built from (`tools/host-tool/Dockerfile`). CI builds both and keeps the package 30 days (`flatchat-host-linux`).
