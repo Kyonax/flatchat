@@ -181,6 +181,7 @@ const es: Shape<typeof en> = {
     updateFailed: 'El mundo no volvió después de actualizarse. Inténtalo más tarde.',
     kicked: 'La moderación de este mundo te sacó.',
     bannedHere: 'La moderación de este mundo te bloqueó.',
+    revoked: 'FlatChat retiró este mundo.',
     reason: 'El motivo: {reason}',
     heldMute: 'La moderación te silenció',
     earmuffs: 'Orejeras',

@@ -69,6 +69,8 @@ const refusedText = computed(() => {
   if (s.status === 'lost' && s.reason === 'kicked') return t('world.kicked');
   if (s.status === 'lost' && s.reason === 'banned') return t('world.bannedHere');
   if (s.status === 'lost' && s.reason === 'download') return t('world.downloadFailed', { reason: s.detail });
+  // The platform took the world down (S3.12).
+  if (s.status === 'lost' && s.reason === 'closing' && s.detail === 'revoked') return t('world.revoked');
   if (s.status === 'lost') return t('world.lost', { reason: s.detail || s.reason });
   return '';
 });

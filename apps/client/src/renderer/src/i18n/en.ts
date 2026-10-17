@@ -177,6 +177,7 @@ export default {
     updateFailed: 'The world did not come back after its update. Try again later.',
     kicked: 'A moderator removed you from this world.',
     bannedHere: 'A moderator banned you from this world.',
+    revoked: 'FlatChat took this world down.',
     reason: 'The reason: {reason}',
     heldMute: 'A moderator muted you',
     earmuffs: 'Earmuffs',
