@@ -192,6 +192,13 @@ export class HostRegistry {
     }
   }
 
+  /** A world whose approval was revoked (S3.12): it ends its sessions and the channel closes. */
+  revoke(worldId: string): boolean {
+    const sent = this.send(worldId, { type: 'revoked' });
+    this.hosts.get(worldId)?.socket.close(4010, 'revoked');
+    return sent;
+  }
+
   /** Sends a message to every connected world (fresh ICE servers). */
   each(fn: (worldId: string, send: (m: Record<string, unknown>) => void) => void): void {
     for (const [id, host] of this.hosts) fn(id, (m) => host.socket.send(JSON.stringify(m)));

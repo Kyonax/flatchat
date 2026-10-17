@@ -77,6 +77,26 @@ export function sealingKey(coreSecret: Uint8Array): Buffer {
   return Buffer.from(hkdfSync('sha256', coreSecret, Buffer.alloc(0), 'flatchat core: world keys v1', 32));
 }
 
+/** The key preserved evidence is sealed with (S3.12): apart from the world keys' key. */
+export function evidenceKey(coreSecret: Uint8Array): Buffer {
+  return Buffer.from(hkdfSync('sha256', coreSecret, Buffer.alloc(0), 'flatchat core: preserved evidence v1', 32));
+}
+
+/** Seals bytes under a key, bound to `label` (AES-256-GCM; the nonce first, the tag last). */
+export function sealBytes(key: Buffer, label: string, bytes: Uint8Array): Buffer {
+  const nonce = randomBytes(SEAL_NONCE);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce, { authTagLength: SEAL_TAG });
+  cipher.setAAD(Buffer.from(label, 'utf8'));
+  return Buffer.concat([nonce, cipher.update(bytes), cipher.final(), cipher.getAuthTag()]);
+}
+
+export function openBytes(key: Buffer, label: string, sealed: Buffer): Buffer {
+  const decipher = createDecipheriv('aes-256-gcm', key, sealed.subarray(0, SEAL_NONCE), { authTagLength: SEAL_TAG });
+  decipher.setAAD(Buffer.from(label, 'utf8'));
+  decipher.setAuthTag(sealed.subarray(sealed.length - SEAL_TAG));
+  return Buffer.concat([decipher.update(sealed.subarray(SEAL_NONCE, sealed.length - SEAL_TAG)), decipher.final()]);
+}
+
 /** Seals a world key under the core's key, bound to the world's id (AES-256-GCM). */
 export function sealWorldKey(sealing: Buffer, worldId: string, worldKey: Uint8Array): Buffer {
   const nonce = randomBytes(SEAL_NONCE);

@@ -4,6 +4,7 @@
 // appeals against those decisions. It signs in with an admin account's email and password on its own form, and keeps a
 // session in an HttpOnly, SameSite=Strict cookie; every form carries the session's CSRF token.
 // Sessions last 12 hours and are stored as digests.
+import { type CaseRow, DESTINATIONS } from './abuse.ts';
 import type { Db, Sql } from './db.ts';
 import type { QueuedReport } from './reports.ts';
 import { html, raw } from './pages.ts';
@@ -83,8 +84,33 @@ const ago = (d: Date, now: Date): string => {
   return h < 48 ? `${h} h ago` : `${Math.floor(h / 24)} days ago`;
 };
 
-export function adminWorldsPage(admin: { email: string; csrf: string }, worlds: readonly AdminWorld[], notice?: string, appeals: readonly AdminAppeal[] = [], reports: readonly QueuedReport[] = [], now = new Date()): string {
+export function adminWorldsPage(
+  admin: { email: string; csrf: string },
+  worlds: readonly AdminWorld[],
+  notice?: string,
+  appeals: readonly AdminAppeal[] = [],
+  reports: readonly QueuedReport[] = [],
+  now = new Date(),
+  cases: readonly CaseRow[] = [],
+): string {
   const csrf = html`<input type="hidden" name="csrf" value="${admin.csrf}">`;
+  // The abuse path (S3.12): open on reports of abuse material or intimate images, folded on others.
+  const abusePath = (r: QueuedReport): ReturnType<typeof html> => html`<details${r.category === 'csam' || r.category === 'intimate' ? raw(' open') : ''}><summary>Abuse path</summary>
+<form method="post" action="/admin/reports/${r.id}/abuse">${csrf}<select name="kind" aria-label="What it is"><option value="csam">Child sexual abuse material</option><option value="intimate"${r.category === 'intimate' ? raw(' selected') : ''}>Intimate images shared without consent</option></select>
+<label class="check"><input type="checkbox" name="uk" value="yes"> Linked to the United Kingdom</label><button type="submit">Take down, preserve, draft the reports</button></form></details>`;
+  const abuseCase = (c: CaseRow): ReturnType<typeof html> => html`<tr>
+<td><strong>${c.drill ? 'DRILL · ' : ''}${c.kind === 'csam' ? 'Abuse material' : 'Intimate images'}</strong><br><span class="muted">${c.id} · ${ago(c.openedAt, now)}</span></td>
+<td>${c.target}<br><span class="muted">${c.removal}</span>${c.clock ? html`<br><strong>${c.clock}</strong>` : ''}
+${c.removedAt ? '' : html`<form method="post" action="/admin/abuse/${c.id}/removed">${csrf}<input name="how" aria-label="How it was removed" placeholder="How it was removed" required maxlength="300"><button type="submit">Removed by hand</button></form>`}</td>
+<td>${c.preserved ? html`Sealed until ${c.preserveUntil.toISOString().slice(0, 10)}<br><span class="muted">SHA-256 ${c.sha256.slice(0, 16)}…</span>` : 'Purged after its year'}</td>
+<td>${
+    c.forms.length === 0
+      ? raw('<span class="muted">No forms for this kind.</span>')
+      : c.forms.map(
+          (f) => html`<details><summary>${DESTINATIONS[f.destination].name}: ${f.sentAt ? `filed ${f.sentAt.toISOString().slice(0, 10)}${f.reference ? `, ${f.reference}` : ''}` : 'to file'}</summary><pre class="draft">${f.draft}</pre>
+${f.sentAt ? '' : html`<form method="post" action="/admin/abuse/${c.id}/sent">${csrf}<input type="hidden" name="destination" value="${f.destination}"><input name="reference" aria-label="The reference it gave" placeholder="The reference it gave" required maxlength="200"><button type="submit">Filed</button></form>`}</details>`,
+        )
+  }</td></tr>`;
   // The triage queue (S3.07): abuse material, grooming and threats first, within hours.
   const report = (r: QueuedReport): ReturnType<typeof html> => html`<tr>
 <td><strong>${r.urgent ? 'URGENT · ' : ''}${r.category}</strong><br><span class="muted">${r.receipt} · ${ago(r.createdAt, now)}</span></td>
@@ -98,7 +124,7 @@ ${
   r.category === 'underage' && r.targetAccount
     ? html`<button type="submit" name="decision" value="underage-confirmed">Under age: delete the account</button><button type="submit" name="decision" value="underage-cleared" class="secondary">Old enough: lift</button>`
     : html`<button type="submit" name="decision" value="actioned">Acted on it</button><button type="submit" name="decision" value="dismissed" class="secondary">No action</button>`
-}</form></td></tr>`;
+}</form>${abusePath(r)}</td></tr>`;
   const row = (w: AdminWorld): ReturnType<typeof html> => html`<tr>
 <td><strong>${w.name}</strong><br><span class="muted">${w.id}</span></td>
 <td>${w.status}${w.agreement ? '' : html`<br><span class="muted">no host agreement</span>`}</td><td>${w.owner}</td><td>${w.address}</td><td>${w.capacity}</td>
@@ -118,6 +144,9 @@ ${notice ? html`<p role="status">${notice}</p>` : ''}
 ${worlds.length === 0 ? raw('<p class="muted">No worlds yet.</p>') : ''}
 <h2>Reports</h2>
 ${reports.length === 0 ? raw('<p class="muted">No open reports.</p>') : html`<table class="list"><thead><tr><th>Report</th><th>About</th><th>Evidence</th><th></th></tr></thead><tbody>${reports.map(report)}</tbody></table>`}
+<h2>The abuse path</h2>
+<p class="muted">Abuse material and intimate images come down at once and are preserved, sealed, for a year. Nothing is sent from here: file each draft on its official site, then record the reference it gave. The drill (admin command line: abuse drill) runs it all with a harmless stand-in.</p>
+${cases.length === 0 ? raw('<p class="muted">No cases.</p>') : html`<table class="list"><thead><tr><th>Case</th><th>Removed</th><th>Preserved</th><th>Forms</th></tr></thead><tbody>${cases.map(abuseCase)}</tbody></table>`}
 <h2>Appeals</h2>
 ${appeals.length === 0 ? raw('<p class="muted">No appeals wait for a decision.</p>') : html`<table class="list"><thead><tr><th>Account</th><th>Decision</th><th>Appeal</th><th>Sent</th><th></th></tr></thead><tbody>${appeals.map(appeal)}</tbody></table>`}
 <h2>Suspend, ban or lift an account</h2>

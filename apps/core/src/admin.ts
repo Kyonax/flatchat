@@ -15,9 +15,16 @@
 //   node --env-file=PATH src/admin.ts world approve ID [--note N]  prints the world's key, once
 //   node --env-file=PATH src/admin.ts world revoke ID [--note N]
 //   node --env-file=PATH src/admin.ts world events ID
+//   node --env-file=PATH src/admin.ts abuse drill                  the abuse path end to end with a harmless stand-in (S3.12); sends nothing
+//   node --env-file=PATH src/admin.ts abuse cases                  every case, its removal, its clock and its forms
+//   node --env-file=PATH src/admin.ts abuse export ID --out FILE   the sealed package, opened for a lawful request (written 0600)
+//   node --env-file=PATH src/admin.ts abuse sent ID DESTINATION --reference R
+//   node --env-file=PATH src/admin.ts abuse removed ID --how H     something the core could not remove, removed by hand
 import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { toHex } from '@flatchat/protocol';
+import { abuseCases, exportCase, markRemoved, markSent, runDrill } from './abuse.ts';
 import { accountByEmail, createInvitation } from './accounts.ts';
 import { ConfigError, readEnv } from './config.ts';
 import { Db, migrate } from './db.ts';
@@ -41,6 +48,9 @@ const { values, positionals } = parseArgs({
     address: { type: 'string' },
     capacity: { type: 'string', default: '50' },
     unlisted: { type: 'boolean', default: false },
+    out: { type: 'string' },
+    reference: { type: 'string' },
+    how: { type: 'string' },
   },
 });
 
@@ -60,7 +70,7 @@ if (command === 'secret') {
 
 let env;
 try {
-  env = readEnv(process.env, command === 'world' && sub === 'approve');
+  env = readEnv(process.env, (command === 'world' && sub === 'approve') || command === 'abuse');
 } catch (err) {
   fail(err instanceof ConfigError ? err.message : String(err));
 }
@@ -161,8 +171,40 @@ try {
       }
       break;
     }
+    case 'abuse': {
+      if (sub === 'drill') {
+        const r = await runDrill(db, env.secret, { actor, operator: env.operator, contact: env.contact }, now);
+        say(JSON.stringify({ event: 'abuse-drill', ...r }, null, 2));
+        if (!r.ok) process.exitCode = 1;
+      } else if (sub === 'cases') {
+        for (const c of await abuseCases(db, 500)) {
+          say(`${c.id}  ${c.drill ? 'DRILL ' : ''}${c.kind}  opened ${when(c.openedAt)}  removed ${when(c.removedAt)}  ${c.target}`);
+          if (c.clock) say(`    clock: ${c.clock}`);
+          for (const f of c.forms) say(`    ${f.destination.padEnd(12)} ${f.sentAt ? `filed ${when(f.sentAt)} ${f.reference}` : 'to file'}`);
+        }
+      } else if (sub === 'export') {
+        const id = arg ?? fail('abuse export ID --out FILE');
+        const out = values.out ?? fail('--out FILE: the package holds the evidence, so it never goes to the terminal');
+        const opened = (await exportCase(db, env.secret, id)) ?? fail(`no preserved package for case ${id}`);
+        writeFileSync(out, JSON.stringify(opened.pack, null, 2), { mode: 0o600, flag: 'wx' });
+        say(`wrote ${out} (0600). The package ${opened.intact ? 'matches' : 'DOES NOT MATCH'} its recorded SHA-256.`);
+      } else if (sub === 'sent') {
+        const [, , id, destination] = positionals;
+        if (!id || !destination || !values.reference) fail('abuse sent ID DESTINATION --reference R');
+        if (!(await markSent(db, id, destination, values.reference, now))) fail(`no unfiled ${destination} form on case ${id}`);
+        say(`recorded: ${destination} filed, reference ${values.reference}`);
+      } else if (sub === 'removed') {
+        const id = arg ?? fail('abuse removed ID --how H');
+        if (!values.how) fail('--how: how it was removed');
+        if (!(await markRemoved(db, id, values.how, now))) fail(`case ${id} has no removal waiting`);
+        say(`recorded: case ${id} removed by hand`);
+      } else {
+        fail('abuse drill|cases|export|sent|removed');
+      }
+      break;
+    }
     default:
-      fail('usage: admin.ts secret|migrate|invite|invites|accounts|account|worlds|world … (see the header of src/admin.ts)');
+      fail('usage: admin.ts secret|migrate|invite|invites|accounts|account|worlds|world|abuse … (see the header of src/admin.ts)');
   }
 } finally {
   await db.close();

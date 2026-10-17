@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
+import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import {
   APPEAL_MAX,
@@ -173,10 +174,14 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
 
   await app.register(websocket, { options: { maxPayload: 256 * 1024 } });
   app.addHook('onClose', async () => hosts.closeAll());
-  // Reports' evidence is kept for its time, then purged (S3.02): at start and every six hours.
+  // Reports' evidence is kept for its time, then purged (S3.02), and so are the abuse path's sealed
+  // packages after their year (S3.12): at start and every six hours.
   const purge = (): void => {
     void purgeReports(o.db, now())
       .then((n) => n > 0 && o.log?.('reports-purged', { reports: n }))
+      .catch(() => undefined);
+    void purgeCases(o.db, now())
+      .then((n) => n > 0 && o.log?.('abuse-packages-purged', { cases: n }))
       .catch(() => undefined);
   };
   purge();
@@ -459,13 +464,16 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     dismissed: 'Report closed: no action. The reporter reads your answer.',
     'underage-confirmed': 'The account was deleted, with its worlds.',
     'underage-cleared': 'The account’s suspension was lifted.',
+    abuse: 'Taken down and preserved. File each draft on its official site, then record the reference it gave.',
+    sent: 'Recorded as sent.',
+    removed: 'Recorded as removed by hand.',
   };
 
   app.get('/admin', async (req, reply) => {
     const admin = await adminFromCookie(o.db, req.headers.cookie, now());
     if (!admin) return reply.code(303).header('location', '/admin/signin').send();
     const done = str((req.query as Record<string, unknown>)['done'], 24);
-    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db), await reportQueue(o.db), now()));
+    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db), await reportQueue(o.db), now(), await abuseCases(o.db)));
   });
 
   app.get('/admin/signin', async (_req, reply) => htmlPage(reply, adminSigninPage()));
@@ -506,6 +514,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       // A revocation says why (S3.07): for a host that broke the host agreement, which rule.
       const note = str(((req.body ?? {}) as Record<string, unknown>)['note'], 500).trim() || 'revoked on the admin page';
       await revokeWorld(o.db, id, `admin:${admin.accountId}`, note, now());
+      // A world connected to the core ends its sessions at once (S3.12).
+      hosts.revoke(id);
     }
     o.log?.(`world-${action}d`, { world: id });
     return reply.code(303).header('location', `/admin?done=${action}d`).send();
@@ -523,6 +533,47 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!(await decideReport(o.db, id, decision as 'actioned', str(b['note'], 1000).trim(), `admin:${admin.accountId}`, now()))) return reply.code(404).send();
     o.log?.('report-decided', { decision });
     return reply.code(303).header('location', `/admin?done=${decision}`).send();
+  });
+
+  // The abuse path (S3.12): from a report, take it down, preserve it and draft the authorities'
+  // forms; then record each form filed by hand, and anything removed by hand.
+  app.post('/admin/reports/:id/abuse', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const kind = str(b['kind'], 12) as AbuseKind;
+    if (!ABUSE_KINDS.includes(kind)) return reply.code(400).send();
+    try {
+      const c = await openAbuseCase(
+        o.db,
+        o.secret,
+        { kind, reportId: (req.params as { id: string }).id, ukLinked: b['uk'] === 'yes', actor: `admin:${admin.accountId}`, operator: o.operator, contact: o.contact },
+        now(),
+      );
+      if (c.revokedWorld) hosts.revoke(c.revokedWorld);
+      o.log?.('abuse-case-opened', { kind, forms: c.destinations.length });
+    } catch (err) {
+      if (err instanceof AbuseError) return reply.code(404).send();
+      throw err;
+    }
+    return reply.code(303).header('location', '/admin?done=abuse').send();
+  });
+
+  app.post('/admin/abuse/:id/:what', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const { id, what } = req.params as { id: string; what: string };
+    const done =
+      what === 'sent'
+        ? (await markSent(o.db, id, str(b['destination'], 16), str(b['reference'], 200), now())) && 'sent'
+        : what === 'removed'
+          ? (await markRemoved(o.db, id, str(b['how'], 300), now())) && 'removed'
+          : false;
+    if (!done) return reply.code(404).send();
+    return reply.code(303).header('location', `/admin?done=${done}`).send();
   });
 
   app.get('/admin/reports/:id/clip', async (req, reply) => {

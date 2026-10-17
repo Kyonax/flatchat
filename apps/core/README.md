@@ -52,6 +52,10 @@ Run with the same environment: `node --env-file=FILE apps/core/src/admin.ts COMM
 | `world register --name N --owner EMAIL --address URL [--capacity 50]` | Registers a world for an account (the operator's own: the host agreement counts as accepted) |
 | `world approve ID [--note N]` | Approves it and prints `FLATCHAT_WORLD_KEY` and `FLATCHAT_WORLD_ID` for the world server's environment, once |
 | `world revoke ID [--note N]`, `world events ID` | Revokes it; shows its approval record |
+| `abuse drill` | Runs the abuse path end to end with a harmless stand-in world, account and file, sending nothing; prints the result as JSON and fails if a step did not happen (S3.12) |
+| `abuse cases` | Every case: what came down and when, the 48-hour clock, each form and whether it was filed |
+| `abuse export ID --out FILE` | Opens a case's sealed package for a lawful request, into a new file only you can read (never to the terminal) |
+| `abuse sent ID DESTINATION --reference R`, `abuse removed ID --how H` | Records a form filed by hand on its official site; records a removal done by hand |
 
 ## How a player gets in
 
@@ -72,6 +76,10 @@ With `FLATCHAT_CORE_MINORS=on`, a player aged 13 to 17 (not in Brazil, and 16 an
 ## Reports (S3.02)
 
 Players report players and worlds from the client, with the chat excerpt, the world, who was near, the times and, if they keep the box ticked, the last 15 seconds of what they heard (a WAV their client cut; it leaves their computer only in a report). People without an account use the public form at `/report` (English and Spanish). Every report gets a receipt; the admin page's queue puts child sexual abuse material, grooming and threats first, and the decision goes back to the reporter (the client's home screen lists it). A report that an account is under the minimum age suspends it until the owner deletes it (age confirmed) or lifts it. Evidence is purged after about six months, a year for abuse material and grooming.
+
+## The Abuse Path (S3.12)
+
+A report of child sexual abuse material or of intimate images shared without consent opens a case from the admin page's queue (Abuse path). The target comes down at once: a reported world loses its approval and, if it is connected, ends every session and stops; a reported player's account is banned. The target is told a neutral reason. The core seals what it holds (the report, its chat lines and voice clip, the target's records, and from Stage 4 the uploaded files) under a key derived from `FLATCHAT_CORE_SECRET`, keeps it for a year, and opens it only through `admin abuse export`. For abuse material it drafts the reports for Te Protejo and the police's CAI Virtual (Colombia), NCMEC's CyberTipline (filed by a registered provider: the owner registers first) and, for UK-linked cases, the National Crime Agency's CEOP. Nothing is sent from the core: the owner files each draft on its official site and records the reference. Intimate images carry the 48-hour clock of the US TAKE IT DOWN Act, logged with the case. Run `admin abuse drill` after every change to this path, and once before opening sign-up. Until Microsoft's PhotoDNA accepts the platform, uploaded textures (Stage 4) are reviewed by hand.
 
 ## The API
 

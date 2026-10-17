@@ -49,7 +49,7 @@ input,select,textarea{width:100%;font:inherit;padding:.5rem;border:1px solid var
 button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:#121214;cursor:pointer}
 .error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}
 main.wide{max-width:72rem}table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}table.list th,table.list td{text-align:left;padding:8px;border-top:1px solid var(--line);vertical-align:top}
-table.list form,form.inline{background:none;border:0;padding:0;display:inline}form.inline button{width:auto;margin:0 0 0 6px;padding:.2rem .6rem}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}`;
+table.list form,form.inline{background:none;border:0;padding:0;display:inline}form.inline button{width:auto;margin:0 0 0 6px;padding:.2rem .6rem}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}pre.draft{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);padding:8px;font-size:.85rem}`;
 
 function page(lang: Lang, title: string, body: Raw): string {
   const s = STRINGS[lang];
