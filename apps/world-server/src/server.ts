@@ -38,6 +38,7 @@ import { memory, Samples, seededRandom, Tally } from './metrics.ts';
 import type { Link, ServerTransport, TransportName } from './net/types.ts';
 import { startTicker, type Ticker } from './ticker.ts';
 import { boundsOf, type ContentServer, type ContentSink, type LoadedWorld } from './world/content.ts';
+import type { WorldStore } from './world/store.ts';
 import { VoiceRouter, type VoiceConfig } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
 
@@ -77,6 +78,8 @@ export interface WorldServerOptions {
   entryRules: readonly EntryRule[];
   /** The built world players download (S2.04); none for a world made in code (flat, plaza). */
   content?: ContentServer;
+  /** The world's database (S2.08): a persistent world puts a returning account where it left. */
+  store?: WorldStore;
   /** Spawn points of a built world: each join picks one (overrides `spawn`). */
   spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number }>;
   log: LogFn;
@@ -383,7 +386,8 @@ export class WorldServer {
     const angle = this.random() * Math.PI * 2;
     const radius = sp ? Math.sqrt(this.random()) * sp.r : 0;
     const points = this.options.spawnPoints;
-    const point = points && points.length > 0 ? points[Math.floor(this.random() * points.length)] : undefined;
+    const returning = this.options.store?.place(opened.claims.account);
+    const point = returning ?? (points && points.length > 0 ? points[Math.floor(this.random() * points.length)] : undefined);
     const at = point
       ? { x: point.x, y: point.y, z: point.z }
       : sp
@@ -433,6 +437,8 @@ export class WorldServer {
     this.byEntity.delete(entity);
     this.roster.delete(entity);
     if (conn.sink) this.options.content?.forget(conn.sink);
+    const p = this.world.players.get(entity);
+    if (p && conn.account) this.options.store?.savePlace(conn.account, { x: p.x, y: p.y, z: p.z, yaw: p.yaw });
     this.world.remove(entity);
     this.voice.forget(entity);
     this.freedThisTick.push(entity);

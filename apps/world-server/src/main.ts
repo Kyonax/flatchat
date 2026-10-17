@@ -9,7 +9,7 @@
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
 //                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
 //                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
-//                    [--core URL --relay] [--ice-server URL]… [--map-port] [--world BUILT_DIR]
+//                    [--core URL --relay] [--ice-server URL]… [--map-port] [--world BUILT_DIR] [--data FILE]
 //
 // Hosting from home (S1.13): --relay takes players' WebRTC offers through the core at --core (an
 // outbound WebSocket, so no TCP port is opened; the world proves it holds its key), --ice-server adds
@@ -18,6 +18,8 @@
 // --world serves a built world (the converter's output: world.json and content/), which players
 // download over their connection (S2.04): its bounds, spawn points, solids, flying and maximum
 // capacity come from it (--capacity still overrides; --map, --world-size and --spawn do not apply).
+// --data is the world's database (S2.08; default ~/.local/share/flatchat/worlds/WORLD_ID.db for a
+// built world, none otherwise): a persistent world keeps its state and where each player left.
 // --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
 // spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
@@ -25,7 +27,9 @@
 // from a flag a process listing would show; without it the world takes no joins. Its id comes from
 // --world-id or FLATCHAT_WORLD_ID (both printed by the core when it approves the world).
 import { randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fingerprintHex, fromHex, PROTOCOL_VERSION, WORLD_KEY_BYTES } from '@flatchat/protocol';
 import { PLAZA } from '@flatchat/sim';
@@ -36,6 +40,7 @@ import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
 import { builtOptions, DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
 import { ContentServer, loadBuiltWorld } from './world/content.ts';
+import { WorldStore } from './world/store.ts';
 
 const VERSION = '0.0.0';
 
@@ -76,6 +81,7 @@ const { values } = parseArgs({
     spawn: { type: 'string' },
     map: { type: 'string', default: 'flat' },
     world: { type: 'string' },
+    data: { type: 'string' },
     core: { type: 'string' },
     relay: { type: 'boolean', default: false },
     'ice-server': { type: 'string', multiple: true },
@@ -156,6 +162,17 @@ if (values.world !== undefined) {
   }
 }
 
+let store: WorldStore | undefined;
+const dataPath = values.data ?? (built ? join(process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share'), 'flatchat', 'worlds', `${worldId}.db`) : undefined);
+if (dataPath) {
+  try {
+    mkdirSync(dirname(dataPath), { recursive: true });
+    store = WorldStore.open(dataPath, built?.content?.loaded.world.manifest.persistence ?? 'reset');
+  } catch (err) {
+    fail(`--data: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 const traceOut = values.trace ? createWriteStream(values.trace, { flags: 'w' }) : undefined;
 const server = new WorldServer(
   {
@@ -172,6 +189,7 @@ const server = new WorldServer(
     ...(spawn ? { spawn } : {}),
     ...(plaza ? mapOptions(PLAZA) : {}),
     ...(built ? { ...built, capacity: values.capacity !== undefined ? capacity : built.capacity } : {}),
+    ...(store ? { store } : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),
   },
@@ -213,6 +231,7 @@ const shutdown = async (reason: string): Promise<void> => {
   relay?.stop();
   await mapper?.stop();
   const summary = await server.stop(reason);
+  store?.close();
   traceOut?.end();
   const tickMs = summary['tickMs'] as { max: number } | undefined;
   log('stopped', { reason, ticks: summary['ticks'], uptimeMs: Math.round(performance.now() - started), slowestTickMs: tickMs?.max ?? 0, summary });
