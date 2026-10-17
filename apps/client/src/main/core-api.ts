@@ -237,6 +237,17 @@ export class CoreApi {
     return answer.receipt.slice(0, 32);
   }
 
+  /** The accounts this player muted, in every world (S3.08). */
+  async mutes(access: string): Promise<string[]> {
+    const r = await this.call<{ accounts?: unknown }>('GET', '/api/v1/me/mutes', undefined, access);
+    return (Array.isArray(r.accounts) ? r.accounts : []).filter((a): a is string => typeof a === 'string' && /^[0-9a-f-]{36}$/i.test(a)).slice(0, 1000);
+  }
+
+  async setMute(access: string, account: string, on: boolean): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(account)) throw new CoreError(400, 'bad-account', 'not an account id');
+    await this.call(on ? 'PUT' : 'DELETE', `/api/v1/me/mutes/${account}`, undefined, access);
+  }
+
   /** The reports this account filed, with their decisions. */
   async reports(access: string): Promise<MyReport[]> {
     const r = await this.call<{ reports?: unknown }>('GET', '/api/v1/reports', undefined, access);

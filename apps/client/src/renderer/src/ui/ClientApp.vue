@@ -41,7 +41,9 @@ function onClick(e: MouseEvent): void {
 
 async function change(patch: Partial<Settings>): Promise<void> {
   if (!bridge) return;
-  settings.value = await bridge.updateSettings(patch);
+  // A patch built from the reactive settings holds Vue proxies (voice.volumes), which IPC cannot
+  // clone: send a plain copy (settings are plain JSON).
+  settings.value = await bridge.updateSettings(JSON.parse(JSON.stringify(patch)) as Partial<Settings>);
   applyLocale();
 }
 

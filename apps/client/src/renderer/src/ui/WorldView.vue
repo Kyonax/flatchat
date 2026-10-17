@@ -157,6 +157,15 @@ async function fileReport(draft: ReportDraft): Promise<{ ok: true; receipt: stri
   return bridge.report(session.reportOf(draft, props.ticket.address));
 }
 
+/** This player's volume for one person (S3.08), kept in the settings by account. */
+function volumeOf(p: Person): number {
+  return Math.round((props.settings.voice.volumes[p.account] ?? 1) * 100);
+}
+
+function setVolume(p: Person, percent: number): void {
+  emit('change', { voice: { ...props.settings.voice, volumes: { ...props.settings.voice.volumes, [p.account]: Math.min(2, Math.max(0, percent / 100)) } } });
+}
+
 function applyModeration(p: Person): void {
   const m = MODERATION.find((x) => x.id === modChoice.value);
   if (!m || (m.action !== 'unmute' && !modReason.value.trim())) return;
@@ -202,6 +211,8 @@ onMounted(async () => {
   document.addEventListener('pointerlockchange', onLockChange);
   await session.start(props.ticket);
   if (state.value?.status === 'joined' && props.settings.voice.asked) await session.startVoice();
+  // The people this account muted, in every world (S3.08); an offline guest has none.
+  if (state.value?.status === 'joined' && !props.ticket.local) await session.loadMutes();
 });
 
 watch(
@@ -385,6 +396,28 @@ onBeforeUnmount(() => {
           >
             {{ t('people.moderate') }}
           </button>
+          <template v-if="!p.me">
+            <button
+              v-if="!ticket.local"
+              type="button"
+              class="small"
+              data-test="personal-mute"
+              :data-on="state.silenced.includes(p.account)"
+              @click="session?.setPersonalMute(p.account, !state.silenced.includes(p.account))"
+            >
+              {{ state.silenced.includes(p.account) ? t('people.unmute') : t('people.mute') }}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="200"
+              step="10"
+              :value="volumeOf(p)"
+              :aria-label="t('people.volume', { name: p.name })"
+              data-test="person-volume"
+              @change="setVolume(p, Number(($event.target as HTMLInputElement).value))"
+            >
+          </template>
           <button
             v-if="!p.me && !ticket.local"
             type="button"
@@ -470,9 +503,13 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="state?.status === 'joined' && (state.muted || state.talking || state.voice === 'denied' || (settings.voice.mode === 'push' && state.voice === 'on'))"
+      v-if="state?.status === 'joined' && (state.muted || state.earmuffs || state.talking || state.voice === 'denied' || (settings.voice.mode === 'push' && state.voice === 'on'))"
       class="voice whud"
     >
+      <span
+        v-if="state.earmuffs"
+        data-test="earmuffs"
+      >{{ t('world.earmuffs') }} · </span>
       <span
         v-if="state.muted"
         class="error"

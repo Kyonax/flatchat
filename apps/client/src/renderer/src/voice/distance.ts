@@ -20,3 +20,13 @@ export function voiceCutoffHz(d: number, range = VOICE_RANGE_M): number {
   const x = Math.min(1, Math.max(0, (d - NEAR_M) / (range - NEAR_M)));
   return 18_000 * Math.pow(2_500 / 18_000, x);
 }
+
+/** Earmuffs (S3.08): voices beyond this many metres drop to EARMUFF_GAIN. */
+export const EARMUFF_M = 2.5;
+export const EARMUFF_GAIN = 0.15;
+
+/** How loud one speaker plays: its distance within its range (the world's, from each frame), the
+ *  world's gain for it (a stage), this player's volume for that person, and earmuffs. */
+export function speakerLevel(d: number, range: number, worldGain: number, volume: number, earmuffs: boolean): number {
+  return voiceGain(d, range) * worldGain * volume * (earmuffs && d > EARMUFF_M ? EARMUFF_GAIN : 1);
+}

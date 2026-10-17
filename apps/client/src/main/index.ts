@@ -179,6 +179,24 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   }
 });
 
+// Personal mutes (S3.08): kept by the core, so they follow the account into every world.
+ipcMain.handle('flatchat:mutes', async () => {
+  try {
+    return { ok: true, accounts: (await auth?.mutes()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:set-mute', async (_event, account: unknown, on: unknown) => {
+  if (typeof account !== 'string' || typeof on !== 'boolean' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.setMute(account, on);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
 // Reports (S3.02): the page builds one (with the clip, only then) and the core files it.
 const REPORT_CATEGORIES = new Set(['csam', 'grooming', 'threats', 'intimate', 'underage', 'harassment', 'other']);
 ipcMain.handle('flatchat:report', async (_event, raw: unknown) => {

@@ -53,6 +53,9 @@ interface FlatchatBridge {
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
+  // Personal mutes (S3.08): the accounts this player does not hear, in every world.
+  mutes(): Promise<FlatchatResult<{ accounts: string[] }>>;
+  setMute(account: string, on: boolean): Promise<FlatchatResult<object>>;
   // Reports (S3.02): one from the world view, and the account's own with their decisions.
   report(report: import('./world/report').ReportPayload): Promise<FlatchatResult<{ receipt: string }>>;
   reports(): Promise<FlatchatResult<{ reports: Array<{ receipt: string; category: string; status: string; decision: string; createdAt: string }> }>>;

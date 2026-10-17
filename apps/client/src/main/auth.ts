@@ -168,6 +168,14 @@ export class Auth {
     return this.api.join(await this.access(), worldId);
   }
 
+  async mutes(): Promise<string[]> {
+    return this.api.mutes(await this.access());
+  }
+
+  async setMute(account: string, on: boolean): Promise<void> {
+    return this.api.setMute(await this.access(), account, on);
+  }
+
   async report(r: ReportBody): Promise<string> {
     return this.api.report(await this.access(), r);
   }

@@ -3,7 +3,7 @@
 // shows and changes them). Pure: no Node.js, no Electron, no DOM. Anything malformed falls back to
 // its default field by field, so a damaged file never stops the client.
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'people', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -27,6 +27,8 @@ export const DEFAULT_KEYS: Bindings = {
   chat: ['Enter'],
   talk: ['KeyT'],
   mute: ['KeyM'],
+  // Earmuffs (S3.08): voices farther than a couple of metres drop to a murmur.
+  earmuffs: ['KeyN'],
   // Who is here, with their roles (S3.06), and later what one can do about them.
   people: ['Tab'],
   menu: ['Escape'],
@@ -54,6 +56,8 @@ export interface VoiceSettings {
   inputDevice: string;
   /** Everyone else's voices, 0 to 1. */
   volume: number;
+  /** One person's voice, by account, 0 to 2 (S3.08); 1 when not set. */
+  volumes: Record<string, number>;
 }
 
 export interface ViewSettings {
@@ -95,7 +99,7 @@ export function defaultSettings(): Settings {
     language: 'system',
     core: '',
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
-    voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1 },
+    voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
     avatar: { height: HEIGHT_RANGE.default },
     sound: { world: 0.8, ui: 0.5 },
@@ -126,6 +130,14 @@ export function cleanKeys(raw: unknown): Bindings {
   return out;
 }
 
+const ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Per-person volumes kept: 500 at most, by account id, 0 to 2, the plain 1s dropped. */
+export function cleanVolumes(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(obj(raw)).slice(0, 500)) if (ACCOUNT_ID.test(k) && typeof v === 'number' && Number.isFinite(v) && v !== 1) out[k] = Math.min(2, Math.max(0, v));
+  return out;
+}
+
 export function cleanSettings(raw: unknown): Settings {
   const d = defaultSettings();
   const r = obj(raw);
@@ -145,6 +157,7 @@ export function cleanSettings(raw: unknown): Settings {
       muted: bool(voice['muted'], d.voice.muted),
       inputDevice: typeof voice['inputDevice'] === 'string' && voice['inputDevice'].length <= 200 ? voice['inputDevice'] : '',
       volume: num(voice['volume'], 0, 1, d.voice.volume),
+      volumes: cleanVolumes(voice['volumes']),
     },
     view: {
       person: pick(view['person'], ['first', 'third'] as const, d.view.person),

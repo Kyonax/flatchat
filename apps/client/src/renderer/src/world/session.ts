@@ -86,6 +86,10 @@ export interface WorldState {
   role: Role;
   /** A moderator muted this player (S3.07): the reason, or undefined when not muted. */
   heldMute: string | undefined;
+  /** The accounts this player muted, in every world (S3.08). */
+  silenced: string[];
+  /** Earmuffs on: far voices drop to a murmur (S3.08). */
+  earmuffs: boolean;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -205,6 +209,8 @@ export class WorldSession {
       people: [],
       role: 'visitor',
       heldMute: undefined,
+      silenced: [],
+      earmuffs: false,
     });
   }
 
@@ -390,6 +396,9 @@ export class WorldSession {
     try {
       this.chain = await VoiceChain.create();
       this.chain.recorder = this.recorder;
+      this.chain.volumeOf = (entity) => this.settings.voice.volumes[this.people.get(entity)?.account ?? ''] ?? 1;
+      this.chain.earmuffs = this.state.earmuffs;
+      this.applySilenced();
       await this.chain.ctx.resume();
       this.volume = new GainNode(this.chain.ctx, { gain: this.settings.voice.volume });
       this.chain.output.connect(this.volume).connect(this.chain.ctx.destination);
@@ -425,6 +434,7 @@ export class WorldSession {
     if (!this.typing) {
       if (this.controls.took('view')) this.state.person = this.state.person === 'first' ? 'third' : 'first';
       if (this.controls.took('mute')) this.toggleMute();
+      if (this.controls.took('earmuffs')) this.toggleEarmuffs();
       if (this.state.status === 'joined') {
         if (this.controls.took('fly')) this.toggleFlying();
         if (this.controls.took('sit')) this.sitOrStand();
@@ -612,6 +622,37 @@ export class WorldSession {
     this.state.players = this.names.size;
     this.state.people = sortPeople(this.people.values());
     this.state.role = this.people.get(this.entity)?.role ?? 'visitor';
+    this.applySilenced();
+  }
+
+  /** Loads the accounts this player muted (S3.08); the world's own guests (offline) have none. */
+  async loadMutes(): Promise<void> {
+    const r = await window.flatchat?.mutes();
+    if (r?.ok) {
+      this.state.silenced = r.accounts;
+      this.applySilenced();
+    }
+  }
+
+  /** Mutes or unmutes one person for this account, in every world (S3.08). */
+  async setPersonalMute(account: string, on: boolean): Promise<boolean> {
+    const r = await window.flatchat?.setMute(account, on);
+    if (!r?.ok) return false;
+    this.state.silenced = on ? [...new Set([...this.state.silenced, account])] : this.state.silenced.filter((a) => a !== account);
+    this.applySilenced();
+    return true;
+  }
+
+  /** The voices to drop: the muted accounts' entities here. */
+  private applySilenced(): void {
+    if (!this.chain) return;
+    const muted = new Set(this.state.silenced);
+    this.chain.silenced = new Set([...this.people.values()].filter((p) => muted.has(p.account)).map((p) => p.entity));
+  }
+
+  toggleEarmuffs(): void {
+    this.state.earmuffs = !this.state.earmuffs;
+    if (this.chain) this.chain.earmuffs = this.state.earmuffs;
   }
 
   /** A report from this world (S3.02): the player's choices, the evidence this visit holds, and

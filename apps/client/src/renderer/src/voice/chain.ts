@@ -12,7 +12,7 @@
 import type { MessageOf } from '@flatchat/protocol';
 import captureUrl from './capture-worklet.ts?worker&url';
 import type { ClipRecorder } from './clip';
-import { voiceCutoffHz, voiceGain } from './distance';
+import { speakerLevel, VOICE_RANGE_M, voiceCutoffHz } from './distance';
 import { JitterBuffer, type JitterStats } from './jitter';
 import { type MouthShape, mouthShape } from './mouth';
 import { FRAME_SAMPLES, type OpusDecoderHandle, type OpusEncoderHandle, SAMPLE_RATE, voiceDecoder, voiceEncoder } from './opus';
@@ -52,6 +52,11 @@ interface Speaker {
   panner: PannerNode;
   lastHeard: number;
   mouth: MouthShape;
+  /** The world's gain and range for this speaker, from its latest frame (S3.08). */
+  worldGain: number;
+  range: number;
+  /** Where it was last placed, to set its level again when a setting changes. */
+  at: Vec3 | undefined;
 }
 
 const MAX_SPEAKERS = 16;
@@ -66,6 +71,12 @@ export class VoiceChain {
   readonly output: GainNode;
   /** Keeps the last seconds of what was heard, for a report's clip (S3.02). */
   recorder: ClipRecorder | undefined;
+  /** Speakers this player muted (S3.08, their accounts mapped to entities): their voice is dropped. */
+  silenced: ReadonlySet<number> = new Set();
+  /** Earmuffs (S3.08): far voices drop to a murmur. */
+  earmuffs = false;
+  /** This player's volume for one person, by entity (S3.08); 1 when not set. */
+  volumeOf: (entity: number) => number = () => 1;
   private readonly freeDecoders: OpusDecoderHandle[];
   private readonly speakers = new Map<number, Speaker>();
   /** While true, captured frames are not sent; the first frame after unmuting has `start`. */
@@ -133,11 +144,14 @@ export class VoiceChain {
   receive(bundle: MessageOf<'voiceBundle'>): void {
     const now = performance.now();
     for (const frame of bundle.frames) {
+      if (this.silenced.has(frame.from)) continue;
       const speaker = this.speakers.get(frame.from) ?? this.addSpeaker(frame.from);
       if (!speaker) continue;
       speaker.jitter.push(frame.seq, frame.opus, now, frame.start);
       speaker.mouth = frame.mouth;
       speaker.lastHeard = now;
+      speaker.worldGain = frame.gain / 64;
+      speaker.range = frame.range || VOICE_RANGE_M;
     }
     for (const s of [...this.speakers.values()]) if (now - s.lastHeard > FORGET_MS) this.removeSpeaker(s);
   }
@@ -197,7 +211,7 @@ export class VoiceChain {
     // Distance loudness is the gain node's (distance.ts), so the panner only places the voice.
     const panner = new PannerNode(this.ctx, { panningModel: 'HRTF', distanceModel: 'linear', rolloffFactor: 0, refDistance: 1, maxDistance: 10_000 });
     node.connect(filter).connect(gain).connect(panner).connect(this.output);
-    const speaker: Speaker = { entity, jitter: new JitterBuffer(), decoder, node, filter, gain, panner, lastHeard: performance.now(), mouth: { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0, level: 0 } };
+    const speaker: Speaker = { entity, jitter: new JitterBuffer(), decoder, node, filter, gain, panner, lastHeard: performance.now(), mouth: { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0, level: 0 }, worldGain: 1, range: VOICE_RANGE_M, at: undefined };
     node.port.onmessage = () => node.port.postMessage(...this.nextFrame(speaker));
     this.speakers.set(entity, speaker);
     return speaker;
@@ -226,11 +240,12 @@ export class VoiceChain {
   private position(s: Speaker, at: Vec3): void {
     const t = this.ctx.currentTime;
     const d = Math.hypot(at.x - this.listener.x, at.y - this.listener.y, at.z - this.listener.z);
+    s.at = at;
     s.panner.positionX.setValueAtTime(at.x, t);
     s.panner.positionY.setValueAtTime(at.y, t);
     s.panner.positionZ.setValueAtTime(at.z, t);
-    s.gain.gain.setTargetAtTime(voiceGain(d), t, 0.05);
-    s.filter.frequency.setTargetAtTime(voiceCutoffHz(d), t, 0.05);
+    s.gain.gain.setTargetAtTime(speakerLevel(d, s.range, s.worldGain, this.volumeOf(s.entity), this.earmuffs), t, 0.05);
+    s.filter.frequency.setTargetAtTime(voiceCutoffHz(d, s.range), t, 0.05);
   }
 
   private removeSpeaker(s: Speaker): void {
