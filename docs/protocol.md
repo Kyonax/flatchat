@@ -1,4 +1,4 @@
-# The FlatChat protocol, version 5
+# The FlatChat protocol, version 6
 
 How FlatChat's programs talk: the client, the world server, the bots and the core. This page is the specification; the reference implementation is [`packages/protocol`](../packages/protocol) (TypeScript, Apache-2.0), the machine-readable schema is [`golden/schema.json`](../packages/protocol/golden/schema.json), and the golden packets in the same folder pin every byte. Version 0 was the first, built in Stage 0 (S0.06) and measured with 200 bots in spike S0.07. Version 1 (spike S0.08) gives every voice frame a `start` bit and makes its `seq` count 20 ms slots: see [Versions](#versions).
 
@@ -89,7 +89,7 @@ A world server may send **several snapshots for one tick**, each kept to about o
 | `say` | 0x20 | client | reliable | text | A chat line from the player, 1,024 bytes at most; the server's own length and rate limits apply on top |
 | `chat` | 0x21 | server | reliable | from, text | A chat line to show: from an entity, or from the world when `from` is absent; always shown as text, never as HTML |
 | `voice` | 0x30 | client | unreliable | seq, start, mouth, opus | One 20 ms Opus frame (255 bytes at most) and the mouth shapes that go with it; `seq` counts 20 ms slots, the silent ones too, and `start` marks the first frame after silence |
-| `voiceBundle` | 0x31 | server | unreliable | frames | Up to 16 speakers' frames for one listener and one 20 ms step, each with the speaker's entity number, its `seq` and `start` as sent, and its `gain`: the speaker's loudness as the world sets it (a stage, a plugin), 0 to 15 in eighths, 8 as spoken |
+| `voiceBundle` | 0x31 | server | unreliable | frames | Up to 16 speakers' frames for one listener and one 20 ms step, each with the speaker's entity number, its `seq` and `start` as sent, its `gain`: the speaker's loudness as the world sets it (a stage, a plugin), in 64ths, 64 as spoken and 255 nearly four times, and its `range`: how far the world carries this speaker, in metres (0 for the platform's 25 m), where the listener's falloff ends too |
 | `content` | 0x40 | server | reliable | world, size | The world's built content: the SHA-256 of its `world.json` (32 bytes) and that file's size; sent after `welcome` |
 | `fetch` | 0x41 | client | reliable | hash, from | Asks for one file by its SHA-256, from a byte offset (0, or where a lost connection stopped) |
 | `chunk` | 0x42 | server | reliable | hash, offset, total, data | Up to 16,384 bytes of a file, at `offset`, of `total`; the server paces them so content never starves the game |
@@ -187,3 +187,4 @@ The golden writer refuses step 3 without step 2, the tests fail while the golden
 | 3 | `portal`, and `spawn` in `hello`: travel between worlds through portals (S2.11) |
 | 4 | `height` in `hello` and the roster, `appearance`: heights within the world's range (S2.07); `teleport` and `placed`: seats and teleports (S2.06) |
 | 5 | Stage 3: `role` in the roster and the `role` message (S3.06); `put`, `publish`, `published` and `got`: new builds from the people with build rights (S3.06); `moderate` and `muted` (S3.07); `gain` in each `voiceBundle` frame (S3.08); `block` and `hidden` (S3.11); the connect token's format 1 with `owner`, `contact`, `friends` and `blocks`, and `hello`'s token up to 4,096 bytes (S3.06, S3.10, S3.11) |
+| 6 | `range` in each `voiceBundle` frame, and its `gain` a byte in 64ths (up to the world format's 4 times): a stage or a plugin carries a voice farther and louder, and listeners hear it fade over the same distance (S3.08) |

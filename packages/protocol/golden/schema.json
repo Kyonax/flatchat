@@ -1,6 +1,6 @@
 {
-  "protocol": 5,
-  "fingerprint": "78e23a01",
+  "protocol": 6,
+  "fingerprint": "1133523f",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -902,7 +902,14 @@
                       "name": "gain",
                       "type": {
                         "kind": "uint",
-                        "bits": 4
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "range",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
                       }
                     },
                     {

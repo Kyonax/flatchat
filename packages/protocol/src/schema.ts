@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -188,9 +188,11 @@ export const MESSAGES = {
     id: 0x31,
     from: 'server',
     channel: 'unreliable',
-    // `gain` (version 5, S3.08): the speaker's loudness as the world sets it (a stage, a plugin),
-    // 0 to 15 in eighths: 8 is as spoken.
-    body: struct({ frames: list(struct({ from: u16, seq: u16, start: bool, mouth, gain: uint(4), opus: bytes(255) }), 16) }),
+    // `gain` (S3.08): the speaker's loudness as the world sets it (a stage, a plugin), in 64ths: 64
+    // is as spoken, 255 nearly four times (the world format's zones go to 4). `range` (version 6):
+    // how far, in metres, the world carries this speaker, so the listener's falloff ends there too
+    // (0: the platform's 25 m).
+    body: struct({ frames: list(struct({ from: u16, seq: u16, start: bool, mouth, gain: u8, range: u8, opus: bytes(255) }), 16) }),
   },
   // World content (version 2, S2.04): the server names its built world by the SHA-256 of its
   // world.json; the client fetches what its cache lacks, file by file, from any offset (resuming
