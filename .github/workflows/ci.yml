@@ -41,6 +41,11 @@ jobs:
       # S2.11: 20 bots hop between two worlds through their portals, 5 times round.
       - name: Travel, bots hopping between two worlds
         run: node tools/bots/src/hop.ts --bots 20 --loops 5
+      # S2.15: Stage 2's acceptance lines with bots (a second host's world requested and approved on
+      # the admin page, portals both ways, 50 bots travelling, persistence across a restart); the
+      # Linux client job covers offline mode and a player's trip.
+      - name: Stage 2 acceptance, with bots
+        run: node tools/bots/src/accept-stage2.ts --bots 50
 
   host-tool:
     name: Host tool
