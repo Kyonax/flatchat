@@ -13,7 +13,8 @@ import { PNG } from 'pngjs';
 import { importNavMesh, init as initRecast, NavMeshQuery } from 'recast-navigation';
 import { describe, expect, it } from 'vitest';
 import { addBox, type MeshSpec, writeGlb } from '../src/glb-writer.ts';
-import { ConvertError, convertWorld, decompose, halve, readFolder } from '../src/world.ts';
+import { halve } from '../src/textures.ts';
+import { ConvertError, convertWorld, decompose, readFolder } from '../src/world.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLAZA = join(HERE, '..', '..', '..', 'kits', 'worlds', 'plaza');

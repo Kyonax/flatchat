@@ -1,0 +1,107 @@
+{
+  "vrm1": {
+    "kind": "vrm1",
+    "rank": "excellent",
+    "levels": {
+      "lod0": {
+        "triangles": 2880,
+        "bones": 57,
+        "materialSlots": 2
+      },
+      "lod1": {
+        "triangles": 1440,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "lod2": {
+        "triangles": 710,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "impostor": {
+        "triangles": 1500,
+        "bones": 20,
+        "materialSlots": 1
+      }
+    },
+    "bones": 54,
+    "expressions": [
+      "aa",
+      "blink"
+    ],
+    "height": 1.835,
+    "springs": 1,
+    "warnings": []
+  },
+  "vrm0": {
+    "kind": "vrm0",
+    "rank": "excellent",
+    "levels": {
+      "lod0": {
+        "triangles": 2880,
+        "bones": 57,
+        "materialSlots": 2
+      },
+      "lod1": {
+        "triangles": 1440,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "lod2": {
+        "triangles": 710,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "impostor": {
+        "triangles": 1500,
+        "bones": 20,
+        "materialSlots": 1
+      }
+    },
+    "bones": 54,
+    "expressions": [
+      "aa",
+      "blink",
+      "happy"
+    ],
+    "height": 1.835,
+    "springs": 1,
+    "warnings": [
+      "1 spring chain end(s) got VRM 0.x's 7 cm tail as a node"
+    ]
+  },
+  "glb": {
+    "kind": "glb",
+    "rank": "excellent",
+    "levels": {
+      "lod0": {
+        "triangles": 2880,
+        "bones": 57,
+        "materialSlots": 2
+      },
+      "lod1": {
+        "triangles": 1440,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "lod2": {
+        "triangles": 710,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "impostor": {
+        "triangles": 1500,
+        "bones": 20,
+        "materialSlots": 1
+      }
+    },
+    "bones": 54,
+    "expressions": [
+      "aa",
+      "blinkLeft"
+    ],
+    "height": 1.835,
+    "springs": 0,
+    "warnings": []
+  }
+}

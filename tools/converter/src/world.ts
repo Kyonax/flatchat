@@ -37,16 +37,14 @@ import {
   type WorldReport,
 } from '@flatchat/content';
 import { BODY } from '@flatchat/sim';
-import { type Document, Logger, type Mesh, NodeIO, type Texture } from '@gltf-transform/core';
-import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
+import { type Document, Logger, type Mesh, NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, meshopt, prune, simplifyPrimitive, weld } from '@gltf-transform/functions';
-import jpeg from 'jpeg-js';
-import { encodeToKTX2 } from 'ktx2-encoder';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
-import { PNG } from 'pngjs';
 import { exportNavMesh, init as initRecast } from 'recast-navigation';
 import { generateSoloNavMesh } from 'recast-navigation/generators';
+import { fitTextures } from './textures.ts';
 
 export interface ConvertOptions {
   /** Skip KTX2 (tests, quick previews): textures are only fitted to the size limits. */
@@ -99,94 +97,7 @@ const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest(
 
 // --------------------------------------------------------------------------------- textures
 
-interface Rgba {
-  width: number;
-  height: number;
-  data: Uint8Array;
-}
-
-function decode(bytes: Uint8Array, mime: string): Rgba | undefined {
-  try {
-    if (mime === 'image/png') {
-      const png = PNG.sync.read(Buffer.from(bytes));
-      return { width: png.width, height: png.height, data: new Uint8Array(png.data) };
-    }
-    if (mime === 'image/jpeg') {
-      const j = jpeg.decode(Buffer.from(bytes), { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 1024 });
-      return { width: j.width, height: j.height, data: new Uint8Array(j.data) };
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
-/** Halves an image by averaging 2×2 blocks (an odd last row or column is dropped). */
-export function halve(img: Rgba): Rgba {
-  const w = Math.max(1, img.width >> 1);
-  const h = Math.max(1, img.height >> 1);
-  const out = new Uint8Array(w * h * 4);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      for (let c = 0; c < 4; c++) {
-        const at = (yy: number, xx: number): number => img.data[(Math.min(img.height - 1, yy) * img.width + Math.min(img.width - 1, xx)) * 4 + c]!;
-        out[(y * w + x) * 4 + c] = (at(2 * y, 2 * x) + at(2 * y, 2 * x + 1) + at(2 * y + 1, 2 * x) + at(2 * y + 1, 2 * x + 1) + 2) >> 2;
-      }
-    }
-  }
-  return { width: w, height: h, data: out };
-}
-
-/** The GPU memory a texture takes once compressed with mipmaps (BC7 or ASTC: 1 byte a pixel). */
-const gpuBytes = (w: number, h: number): number => Math.ceil(w * h * 1.34);
-
-async function textures(docs: Document[], ktx2: boolean, warn: (w: string) => void): Promise<void> {
-  // Every decodable texture of every scene, fitted first to the side limit, then together to the budget.
-  const all: Array<{ doc: Document; texture: Texture; img: Rgba; normal: boolean }> = [];
-  for (const doc of docs) {
-    const normals = new Set(doc.getRoot().listMaterials().map((m) => m.getNormalTexture()).filter((t): t is Texture => !!t));
-    for (const texture of doc.getRoot().listTextures()) {
-      const image = texture.getImage();
-      const mime = texture.getMimeType();
-      if (!image) continue;
-      let img = decode(image, mime);
-      if (!img) {
-        warn(`a texture of type ${mime || 'unknown'} is kept as it is (only PNG and JPEG are converted)`);
-        continue;
-      }
-      while (Math.max(img.width, img.height) > TEXTURE_SIDE) img = halve(img);
-      all.push({ doc, texture, img, normal: normals.has(texture) });
-    }
-  }
-  let total = all.reduce((n, t) => n + gpuBytes(t.img.width, t.img.height), 0);
-  while (total > TEXTURE_BUDGET) {
-    const biggest = all.reduce((a, b) => (b.img.width * b.img.height > a.img.width * a.img.height ? b : a));
-    if (biggest.img.width <= 64) break;
-    total -= gpuBytes(biggest.img.width, biggest.img.height);
-    biggest.img = halve(biggest.img);
-    total += gpuBytes(biggest.img.width, biggest.img.height);
-  }
-  for (const t of all) {
-    if (ktx2) {
-      const { img } = t;
-      const out = await encodeToKTX2(new Uint8Array(1), {
-        isUASTC: t.normal,
-        isNormalMap: t.normal,
-        isPerceptual: !t.normal,
-        generateMipmap: true,
-        qualityLevel: 128,
-        compressionLevel: 2,
-        imageDecoder: async () => ({ width: img.width, height: img.height, data: img.data }),
-      });
-      t.texture.setImage(out).setMimeType('image/ktx2');
-      t.doc.createExtension(KHRTextureBasisu).setRequired(true);
-    } else {
-      const png = new PNG({ width: t.img.width, height: t.img.height });
-      png.data = Buffer.from(t.img.data);
-      t.texture.setImage(new Uint8Array(PNG.sync.write(png))).setMimeType('image/png');
-    }
-  }
-}
+const TEXTURE_LIMITS = { side: TEXTURE_SIDE, budget: TEXTURE_BUDGET };
 
 // --------------------------------------------------------------------------------- solids
 
@@ -447,7 +358,7 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
     docs.push(doc);
     parsed.push({ info, json, base });
   }
-  await textures(docs, o.ktx2 ?? true, warn);
+  await fitTextures(docs, TEXTURE_LIMITS, o.ktx2 ?? true, warn);
 
   const scenes: BuiltScene[] = [];
   for (const [i, doc] of docs.entries()) {
