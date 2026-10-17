@@ -36,8 +36,7 @@
 import { randomUUID } from 'node:crypto';
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fingerprintHex, fromHex, PROTOCOL_VERSION, WORLD_KEY_BYTES } from '@flatchat/protocol';
 import { PLAZA } from '@flatchat/sim';
@@ -51,7 +50,7 @@ import { builtOptions, DEFAULT_SERVER, mapOptions, WorldServer } from './server.
 import { ContentServer, loadBuiltWorld } from './world/content.ts';
 import { BuildUploads } from './world/uploads.ts';
 import { WalkableSurface } from './world/navigation.ts';
-import { WorldStore } from './world/store.ts';
+import { worldDataFile, WorldStore } from './world/store.ts';
 
 const VERSION = '0.0.0';
 
@@ -184,7 +183,7 @@ if (values.world !== undefined) {
 }
 
 let store: WorldStore | undefined;
-const dataPath = values.data ?? (built ? join(process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share'), 'flatchat', 'worlds', `${worldId}.db`) : undefined);
+const dataPath = values.data ?? (built ? worldDataFile(worldId) : undefined);
 if (dataPath) {
   try {
     mkdirSync(dirname(dataPath), { recursive: true });
@@ -259,6 +258,7 @@ const relay =
         ...(values.relay && rtc ? { rtc } : {}),
         status: () => ({ players: server.players, recommended: server.recommended, maximum: server.capacity }),
         onLimits: (maximum) => server.setApprovedCapacity(maximum),
+        onUnban: (account) => server.liftBanOnAppeal(account),
         log,
       })
     : undefined;

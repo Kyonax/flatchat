@@ -4,10 +4,17 @@
 // own, and from Stage 3 each plugin's) and where each account last stood. A world in `reset` mode
 // starts every run with its state cleared; a `persistent` world carries it over. Moderation records
 // (roles and bans, Stage 3) are never cleared by a reset.
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { STORE_LIMITS } from './store-limits.ts';
 
 export type Persistence = 'reset' | 'persistent';
+
+/** Where a built world keeps its database unless told otherwise: ~/.local/share/flatchat/worlds. */
+export function worldDataFile(worldId: string): string {
+  return join(process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share'), 'flatchat', 'worlds', `${worldId}.db`);
+}
 
 export interface Place {
   x: number;
@@ -22,6 +29,8 @@ create table if not exists kv (scope text not null, key text not null, value blo
 create table if not exists places (account text primary key, x real not null, y real not null, z real not null, yaw real not null, seen_at integer not null);
 create table if not exists roles (account text primary key, role text not null, granted_at integer not null);
 create table if not exists bans (account text primary key, until integer, reason text not null, banned_at integer not null);
+create table if not exists mutes (account text primary key, until integer, reason text not null, muted_at integer not null);
+create table if not exists moderation (id integer primary key, at integer not null, actor text not null, target text not null, action text not null, minutes integer not null, reason text not null);
 `;
 
 export { STORE_LIMITS };
@@ -110,6 +119,45 @@ export class WorldStore {
     return this.db.prepare('select account, role from roles order by granted_at').all() as Array<{ account: string; role: string }>;
   }
 
+  /** A moderator's mute here (S3.07): until a time (ms), or until lifted; it outlasts a rejoin. */
+  mute(account: string, until: number | undefined, reason: string, now = Date.now()): void {
+    this.db.prepare('insert into mutes (account, until, reason, muted_at) values (?, ?, ?, ?) on conflict (account) do update set until = excluded.until, reason = excluded.reason, muted_at = excluded.muted_at').run(account, until ?? null, reason.slice(0, 500), now);
+  }
+
+  unmute(account: string): void {
+    this.db.prepare('delete from mutes where account = ?').run(account);
+  }
+
+  /** The mute's reason while an account is muted here; a lapsed mute is lifted. */
+  muted(account: string, now = Date.now()): string | undefined {
+    const row = this.db.prepare('select until, reason from mutes where account = ?').get(account) as { until: number | null; reason: string } | undefined;
+    if (!row) return undefined;
+    if (row.until !== null && row.until <= now) {
+      this.unmute(account);
+      return undefined;
+    }
+    return row.reason;
+  }
+
+  /** The world's record of what its moderators did (S3.07): the statement of reasons behind every
+   *  kick, ban and mute, for appeals. Never reset. */
+  logModeration(e: { actor: string; target: string; action: string; minutes: number; reason: string }, now = Date.now()): void {
+    this.db.prepare('insert into moderation (at, actor, target, action, minutes, reason) values (?, ?, ?, ?, ?, ?)').run(now, e.actor, e.target, e.action, e.minutes, e.reason.slice(0, 500));
+  }
+
+  moderationLog(limit = 100): Array<{ at: number; actor: string; target: string; action: string; minutes: number; reason: string }> {
+    return this.db.prepare('select at, actor, target, action, minutes, reason from moderation order by id desc limit ?').all(limit) as Array<{ at: number; actor: string; target: string; action: string; minutes: number; reason: string }>;
+  }
+
+  /** The account the core approved the world for, once it has joined: nobody may ban it here. */
+  owner(): string | undefined {
+    return this.meta('owner');
+  }
+
+  setOwner(account: string): void {
+    this.setMeta('owner', account);
+  }
+
   /** Bans an account in this world (S3.01, S3.07): until a time (ms), or until lifted. Never reset. */
   ban(account: string, until: number | undefined, reason: string, now = Date.now()): void {
     this.db.prepare('insert into bans (account, until, reason, banned_at) values (?, ?, ?, ?) on conflict (account) do update set until = excluded.until, reason = excluded.reason, banned_at = excluded.banned_at').run(account, until ?? null, reason.slice(0, 500), now);
@@ -128,6 +176,12 @@ export class WorldStore {
       return undefined;
     }
     return row.reason;
+  }
+
+  /** Every ban in force here (S3.07), for the host tool. */
+  bans(now = Date.now()): Array<{ account: string; until: number | null; reason: string; bannedAt: number }> {
+    const rows = this.db.prepare('select account, until, reason, banned_at from bans where until is null or until > ? order by banned_at desc').all(now) as Array<{ account: string; until: number | null; reason: string; banned_at: number }>;
+    return rows.map((r) => ({ account: r.account, until: r.until, reason: r.reason, bannedAt: r.banned_at }));
   }
 
   close(): void {

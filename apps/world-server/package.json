@@ -18,6 +18,7 @@
     "./navigation": "./src/world/navigation.ts",
     "./plugins": "./src/plugins.ts",
     "./uploads": "./src/world/uploads.ts",
+    "./store": "./src/world/store.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

@@ -483,6 +483,9 @@ export class WorldServer implements PluginWorld {
       case 'role':
         this.events.add(`role:${this.giveRole(conn, message.account, message.role) ? 'given' : 'refused'}`, 0);
         break;
+      case 'moderate':
+        this.events.add(`moderate:${this.moderate(conn, message) ? message.action : 'refused'}`, 0);
+        break;
       case 'put':
         this.put(conn, message);
         break;
@@ -521,8 +524,13 @@ export class WorldServer implements PluginWorld {
     // An account already here (another window, a lost connection) makes room for itself.
     const earlier = [...this.byEntity.values()].find((c) => c.account === opened.claims.account);
     if (this.byEntity.size - (earlier ? 1 : 0) >= this.capacity) return this.refuse(conn, { reason: 'full', ...base, detail: '' });
-    const ban = this.banOf(opened.claims.account);
-    if (ban !== undefined) return this.refuse(conn, { reason: 'banned', ...base, detail: ban.slice(0, 160) });
+    // The owner is never banned from its own world (S3.07); the world remembers who it is.
+    if (opened.claims.owner && this.owner !== opened.claims.account) {
+      this.ownerAccount = opened.claims.account;
+      this.options.store?.setOwner(opened.claims.account);
+    }
+    const ban = opened.claims.owner ? undefined : this.banOf(opened.claims.account);
+    if (ban !== undefined) return this.refuse(conn, { reason: 'banned', ...base, detail: fitBytes(ban, 160) });
     const role: Role = opened.claims.owner ? 'owner' : this.storedRole(opened.claims.account);
     for (const rule of this.options.entryRules) {
       const verdict = rule(opened.claims, { players: this.byEntity.size, capacity: this.capacity });
@@ -571,6 +579,12 @@ export class WorldServer implements PluginWorld {
     this.send(conn, 'welcome', encodeMessage({ type: 'welcome', protocol: PROTOCOL_VERSION, build: this.options.build, world: this.options.worldId, entity, tickHz: this.options.tickHz, tick: this.tickNo }));
     const roster = encodeMessage({ type: 'roster', full: true, players: [...this.roster.values()], left: [] });
     this.send(conn, 'roster', roster);
+    // A moderator's mute outlasts leaving and coming back (S3.07).
+    const mute = opened.claims.owner ? undefined : this.muteOf(opened.claims.account);
+    if (mute !== undefined) {
+      conn.forceMuted = true;
+      this.send(conn, 'muted', encodeMessage({ type: 'muted', on: true, reason: fitBytes(mute, 160) }));
+    }
     this.rosterBytes.add(roster.length);
     if (conn.sink) this.options.content?.announce(conn.sink);
     this.joinMs.add(performance.now() - started);
@@ -688,16 +702,101 @@ export class WorldServer implements PluginWorld {
 
   /** Bans an account here (for `minutes`, or until lifted) and ends its connection. */
   pluginBan(account: string, minutes: number | undefined, reason: string): void {
-    const until = minutes === undefined || !(minutes > 0) ? undefined : Date.now() + minutes * 60_000;
+    this.ban(account, minutes === undefined || !(minutes > 0) ? undefined : Date.now() + minutes * 60_000, reason);
+  }
+
+  pluginUnban(account: string): void {
+    this.unban(account);
+  }
+
+  private ownerAccount: string | undefined;
+  private readonly mutes = new Map<string, { until: number | undefined; reason: string }>();
+
+  /** The world's owner once it has joined (S3.07): nobody bans or mutes it here. */
+  get owner(): string | undefined {
+    return this.options.store?.owner() ?? this.ownerAccount;
+  }
+
+  private ban(account: string, until: number | undefined, reason: string): void {
+    if (account === this.owner) return;
     if (this.options.store) this.options.store.ban(account, until, reason);
     else this.bans.set(account, { until, reason });
     for (const conn of this.byEntity.values()) if (conn.account === account) this.kick(conn, 'banned', reason);
     this.events.add('ban', 0);
   }
 
-  pluginUnban(account: string): void {
+  private unban(account: string): void {
     this.options.store?.unban(account);
     this.bans.delete(account);
+  }
+
+  /** Lifts a ban the world's owner reversed on appeal, through the core (S3.07). */
+  liftBanOnAppeal(account: string): void {
+    this.unban(account);
+    this.options.store?.logModeration({ actor: 'appeal', target: account, action: 'unban', minutes: 0, reason: 'reversed on appeal' });
+    this.events.add('appeal:unban', 0);
+  }
+
+  /** A mute's reason while an account is muted here; a lapsed one is lifted. */
+  private muteOf(account: string): string | undefined {
+    const stored = this.options.store?.muted(account);
+    if (stored !== undefined) return stored;
+    const m = this.mutes.get(account);
+    if (!m) return undefined;
+    if (m.until !== undefined && m.until <= Date.now()) {
+      this.mutes.delete(account);
+      return undefined;
+    }
+    return m.reason;
+  }
+
+  /** Mutes or unmutes an account here; it is told, with the reason. */
+  private mute(account: string, on: boolean, until: number | undefined, reason: string): void {
+    if (on) {
+      if (this.options.store) this.options.store.mute(account, until, reason);
+      else this.mutes.set(account, { until, reason });
+    } else {
+      this.options.store?.unmute(account);
+      this.mutes.delete(account);
+    }
+    for (const conn of this.byEntity.values()) {
+      if (conn.account !== account) continue;
+      conn.forceMuted = on;
+      this.send(conn, 'muted', encodeMessage({ type: 'muted', on, reason: on ? fitBytes(reason, 160) : '' }));
+    }
+  }
+
+  /** A moderator's action on an account here (S3.07): only from someone holding the moderate
+   *  right, over someone below them, never the owner, never oneself; a kick, ban or mute needs a
+   *  reason, which the player is told (the statement of reasons), and every action goes into the
+   *  world's record. */
+  private moderate(by: Conn, m: MessageOf<'moderate'>): boolean {
+    const here = [...this.byEntity.values()].filter((c) => c.account === m.account);
+    const current = here[0]?.role ?? this.storedRole(m.account);
+    if (!can(by.role, 'moderate') || by.account === undefined || m.account === by.account || m.account === this.owner || roleRank(current) >= roleRank(by.role)) return false;
+    const reason = cleanChat(m.reason);
+    if (!reason && (m.action === 'kick' || m.action === 'ban' || m.action === 'mute')) return false;
+    const until = m.minutes > 0 ? Date.now() + Math.min(m.minutes, 525_600) * 60_000 : undefined;
+    switch (m.action) {
+      case 'kick':
+        if (here.length === 0) return false;
+        for (const c of here) this.kick(c, 'kicked', reason);
+        break;
+      case 'ban':
+        this.ban(m.account, until, reason);
+        break;
+      case 'unban':
+        this.unban(m.account);
+        break;
+      case 'mute':
+        this.mute(m.account, true, until, reason);
+        break;
+      case 'unmute':
+        this.mute(m.account, false, undefined, '');
+        break;
+    }
+    this.options.store?.logModeration({ actor: by.account, target: m.account, action: m.action, minutes: m.minutes, reason });
+    return true;
   }
 
   private readonly roles = new Map<string, Role>();
@@ -781,7 +880,9 @@ export class WorldServer implements PluginWorld {
 
   pluginForceMute(entity: number, on: boolean): void {
     const conn = this.byEntity.get(entity);
-    if (conn) conn.forceMuted = on;
+    if (!conn || conn.forceMuted === on) return;
+    conn.forceMuted = on;
+    this.send(conn, 'muted', encodeMessage({ type: 'muted', on, reason: '' }));
   }
 
   private readonly scopes = new Map<string, Map<string, string>>();

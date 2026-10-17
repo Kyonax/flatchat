@@ -8,9 +8,12 @@
 // JSON messages:
 //
 //   core → world   { type: 'challenge', nonce }   { type: 'offer', id, sdp }   { type: 'ice', iceServers }
-//                  { type: 'limits', maximum }
+//                  { type: 'limits', maximum }    { type: 'unban', appeal, account }
 //   world → core   { type: 'auth', proof }        { type: 'answer', id, sdp }  { type: 'error', id, error }
-//                  { type: 'status', players, recommended, maximum }
+//                  { type: 'status', players, recommended, maximum }          { type: 'unbanned', appeal }
+//
+// `unban` (S3.07): the world's owner reversed a ban on appeal; the core repeats it on every
+// connection until the world answers `unbanned`.
 import { createHmac } from 'node:crypto';
 import type { IceServerSpec } from './rtc.ts';
 
@@ -47,6 +50,8 @@ export interface RelayOptions {
   status?: () => { players: number; recommended: number; maximum: number };
   /** The capacity the world's owner approved. */
   onLimits?: (maximum: number) => void;
+  /** A ban the world's owner reversed on appeal (S3.07). */
+  onUnban?: (account: string) => void;
   log: (event: string, fields?: Record<string, unknown>) => void;
   /** For tests; the global WebSocket (Node.js 24 has one) otherwise. */
   socketFactory?: (url: string) => WebSocket;
@@ -135,7 +140,7 @@ export class CoreRelay {
 
   private async message(ws: WebSocket, data: unknown): Promise<void> {
     if (typeof data !== 'string' || data.length > MAX_MESSAGE) return;
-    let m: { type?: unknown; nonce?: unknown; id?: unknown; sdp?: unknown; iceServers?: unknown; maximum?: unknown };
+    let m: { type?: unknown; nonce?: unknown; id?: unknown; sdp?: unknown; iceServers?: unknown; maximum?: unknown; appeal?: unknown; account?: unknown };
     try {
       m = JSON.parse(data) as typeof m;
     } catch {
@@ -150,6 +155,9 @@ export class CoreRelay {
       this.report(ws);
     } else if (m.type === 'limits' && typeof m.maximum === 'number') {
       this.o.onLimits?.(m.maximum);
+    } else if (m.type === 'unban' && typeof m.appeal === 'string' && typeof m.account === 'string' && /^[0-9a-f-]{36}$/.test(m.account)) {
+      this.o.onUnban?.(m.account);
+      this.send(ws, { type: 'unbanned', appeal: m.appeal.slice(0, 64) });
     } else if (m.type === 'ice' && Array.isArray(m.iceServers)) {
       this.o.rtc?.setIceServers(m.iceServers.filter((s): s is IceServerSpec => typeof s === 'object' && s !== null && 'urls' in s));
     } else if (m.type === 'offer' && typeof m.id === 'string' && typeof m.sdp === 'string') {
