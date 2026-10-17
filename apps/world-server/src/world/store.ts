@@ -5,6 +5,7 @@
 // starts every run with its state cleared; a `persistent` world carries it over. Moderation records
 // (roles and bans, Stage 3) are never cleared by a reset.
 import { DatabaseSync } from 'node:sqlite';
+import { STORE_LIMITS } from './store-limits.ts';
 
 export type Persistence = 'reset' | 'persistent';
 
@@ -23,8 +24,7 @@ create table if not exists roles (account text primary key, role text not null, 
 create table if not exists bans (account text primary key, until integer, reason text not null, banned_at integer not null);
 `;
 
-/** Values a scope may hold: 64 KB each, 1,000 keys each. */
-export const STORE_LIMITS = { value: 64 * 1024, keys: 1000, key: 128 };
+export { STORE_LIMITS };
 
 export class WorldStore {
   private readonly db: DatabaseSync;
@@ -91,6 +91,26 @@ export class WorldStore {
   savePlace(account: string, p: Place, now = Date.now()): void {
     if (this.mode !== 'persistent') return;
     this.db.prepare('insert into places (account, x, y, z, yaw, seen_at) values (?, ?, ?, ?, ?, ?) on conflict (account) do update set x = excluded.x, y = excluded.y, z = excluded.z, yaw = excluded.yaw, seen_at = excluded.seen_at').run(account, p.x, p.y, p.z, p.yaw, now);
+  }
+
+  /** Bans an account in this world (S3.01, S3.07): until a time (ms), or until lifted. Never reset. */
+  ban(account: string, until: number | undefined, reason: string, now = Date.now()): void {
+    this.db.prepare('insert into bans (account, until, reason, banned_at) values (?, ?, ?, ?) on conflict (account) do update set until = excluded.until, reason = excluded.reason, banned_at = excluded.banned_at').run(account, until ?? null, reason.slice(0, 500), now);
+  }
+
+  unban(account: string): void {
+    this.db.prepare('delete from bans where account = ?').run(account);
+  }
+
+  /** The ban's reason while an account is banned here; a lapsed ban is lifted. */
+  banned(account: string, now = Date.now()): string | undefined {
+    const row = this.db.prepare('select until, reason from bans where account = ?').get(account) as { until: number | null; reason: string } | undefined;
+    if (!row) return undefined;
+    if (row.until !== null && row.until <= now) {
+      this.unban(account);
+      return undefined;
+    }
+    return row.reason;
   }
 
   close(): void {

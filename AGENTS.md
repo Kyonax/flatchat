@@ -45,17 +45,17 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 | Path | What |
 |---|---|
 | `apps/client` | The Electron client: `src/main` (window, flags, sign-in through the browser, the settings file, the bridge's handlers, the avatar protocol), `src/preload`, `src/shared` (settings and key bindings), `src/renderer` (`ui/` the app's screens, `world/` the world view, `i18n/`, `net/`, `voice/`, and the spikes' `lounge/` and `crowd/`); `scripts/` (the notices file, the voice sample) |
-| `apps/world-server` | The world server: `src/main.ts` (the program), `src/server.ts` (joins, ticks, voice, chat), `src/world/` (cells, interest, snapshots, voice routing), `src/net/` (raw UDP and WebRTC transports) |
+| `apps/world-server` | The world server: `src/main.ts` (the program), `src/server.ts` (joins, ticks, voice, chat), `src/world/` (cells, interest, snapshots, voice routing, the world's database), `src/net/` (raw UDP and WebRTC transports), `src/plugins.ts` (the plugin loader and host interface, [docs/plugins.md](docs/plugins.md)), `plugins/` (the entry rules) |
 | `packages/protocol` | The wire protocol: codecs, messages, connect tokens, the version handshake, golden packets ([docs/protocol.md](docs/protocol.md)) |
 | `apps/core` | The central service: `src/app.ts` (the routes), `src/main.ts` (the program), `src/admin.ts` (the admin command line), accounts, the age rule, sign-in and sessions, worlds and connect tokens, `src/migrations/` (PostgreSQL) |
 | `packages/sim` | Movement rules shared by client and server: the controller, the move checks, the greybox plaza |
 | `packages/content` | The world format's manifest, markers and validator ([docs/world-format.md](docs/world-format.md)) |
-| `packages/*` | The plugin SDK (not started) |
+| `packages/*` | A separate plugin SDK package (not started: plugins import the world server's `@flatchat/world-server/plugins`) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |
 | `tools/bots` | Headless bots on the real protocol and the load-test runner (`npm run bots`) |
 | `tools/converter` | World folders into built worlds (avatars in Stage 4) |
-| `tools/host-tool` | The host's command: make, check, build, request, key, run, advise; its package and container image |
+| `tools/host-tool` | The host's command: make, check, build, request, key, run, plugins, advise; its package and container image |
 | `tools/blender` | The Blender bridge (not started) |
 | `kits`, `docs` | Body kits and the base library; specs and Stage 0's spike reports |
 | `.github/workflows/ci.yml` | CI: the harness, then the client packaged and smoke-tested on Linux and Windows |

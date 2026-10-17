@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "Bad Name!"
+version = "1"
+api = 1

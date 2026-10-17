@@ -26,8 +26,13 @@
 // put on a seat within 3 m, or on a clicked spot within 40 m, at most once a second; a spot must be
 // walkable (on a built world's navigation mesh, or above a code-made map's ground) unless the world
 // allows flying. The answer is `placed`, accepted or not.
+//
+// Plugins (S3.01): the server is their PluginWorld (players' facts, world notices, kicks, bans kept
+// in the world's database, force-mutes, a store per plugin). Their entry rules run after the
+// built-in ones, a chat line starting with `/` is a command for them (never shown to everyone),
+// and they hear joins, leaves, zones entered and left, and every tick.
 import { performance } from 'node:perf_hooks';
-import { type BuiltPortal, insideBox } from '@flatchat/content';
+import { type BuiltPortal, type BuiltZone, insideBox } from '@flatchat/content';
 import {
   type Channel,
   checkVersion,
@@ -52,7 +57,9 @@ import { memory, Samples, seededRandom, Tally } from './metrics.ts';
 import type { Link, ServerTransport, TransportName } from './net/types.ts';
 import { startTicker, type Ticker } from './ticker.ts';
 import { boundsOf, type ContentServer, type ContentSink, type LoadedWorld } from './world/content.ts';
+import type { PluginPlayer, Plugins, PluginWorld } from './plugins.ts';
 import type { WalkableSurface } from './world/navigation.ts';
+import { STORE_LIMITS } from './world/store-limits.ts';
 import type { WorldStore } from './world/store.ts';
 import { VoiceRouter, type VoiceConfig } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
@@ -102,6 +109,10 @@ export interface WorldServerOptions {
   spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number; group?: string; main?: boolean }>;
   /** A built world's portals (S2.11). */
   portals?: readonly BuiltPortal[];
+  /** A built world's zones (voice, quiet, private; S3.01's hooks, S3.08's voice rules). */
+  zones?: readonly BuiltZone[];
+  /** The world's name, for plugins. */
+  name?: string;
   /** The heights the world fits players into, in metres (S2.07). */
   heights?: { min: number; max: number };
   /** A built world's seats, in the built world's order (S2.06). */
@@ -158,6 +169,12 @@ interface Conn {
   height: number;
   teleportAt: number;
   appearanceAt: number;
+  /** The connect token's facts. */
+  claims?: Claims;
+  /** Silenced by a moderator or a plugin: the world forwards none of this player's voice. */
+  forceMuted: boolean;
+  /** The zones (their indices) the player stands in. */
+  zones: Set<number>;
 }
 
 type RosterPlayer = MessageBody<'roster'>['players'][number];
@@ -197,13 +214,15 @@ export function fitBytes(text: string, max: number): string {
 
 /** A world server's options for a built world (S2.03): its bounds, solids, flying, capacity and
  *  spawn points, and the content players download. */
-export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'portals' | 'seats' | 'heights' | 'content' | 'capacity' | 'recommended'> {
+export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'portals' | 'zones' | 'name' | 'seats' | 'heights' | 'content' | 'capacity' | 'recommended'> {
   const w = loaded.world;
   const size = Math.max(16, Math.ceil(Math.max(w.bounds.max[0], w.bounds.max[2])));
   return {
     world: { size, solids: boundsOf(loaded.colliders), flying: w.manifest.flying },
     spawnPoints: w.scenes.flatMap((scene, i) => scene.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw, group: s.group, main: i === 0 }))),
     portals: w.scenes.flatMap((scene) => scene.portals),
+    zones: w.scenes.flatMap((scene) => scene.zones),
+    name: w.manifest.name,
     seats: w.scenes.flatMap((scene) => scene.seats),
     heights: { min: w.manifest.avatars.minHeight, max: w.manifest.avatars.maxHeight },
     content,
@@ -220,7 +239,7 @@ export function mapOptions(map: WorldMap): Pick<WorldServerOptions, 'world' | 's
   };
 }
 
-export class WorldServer {
+export class WorldServer implements PluginWorld {
   readonly options: WorldServerOptions;
   readonly world: World;
   private readonly voice: VoiceRouter;
@@ -354,6 +373,8 @@ export class WorldServer {
       height: DEFAULT_HEIGHT_CM,
       teleportAt: -Infinity,
       appearanceAt: -Infinity,
+      forceMuted: false,
+      zones: new Set(),
     };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
     this.conns.add(conn);
@@ -392,6 +413,7 @@ export class WorldServer {
       case 'pose':
         this.events.add(`pose:${this.world.applyPose(conn.entity, message, now)}`, 0);
         if (this.options.portals?.length) this.portalCheck(conn);
+        if (this.options.zones?.length) this.zoneCheck(conn);
         break;
       case 'voice':
         this.voiceIn(conn, message, now);
@@ -405,7 +427,17 @@ export class WorldServer {
         }
         conn.chatTokens -= 1;
         const text = cleanChat(message.text);
-        if (text) this.chat(conn.entity, text);
+        if (!text) break;
+        const player = this.pluginPlayer(conn);
+        if (text.startsWith('/') && player) {
+          // A command for the world's plugins, never shown to everyone.
+          const [name = '', ...args] = text.slice(1).split(/\s+/).filter(Boolean);
+          if (name) this.plugins?.notify('on_command', player, name.toLowerCase().slice(0, 32), args.slice(0, 16));
+          this.events.add('command', 0);
+          break;
+        }
+        const line = player && this.plugins ? this.plugins.chat(player, text) : text;
+        if (line) this.chat(conn.entity, cleanChat(line));
         break;
       }
       case 'ping':
@@ -456,9 +488,16 @@ export class WorldServer {
     // An account already here (another window, a lost connection) makes room for itself.
     const earlier = [...this.byEntity.values()].find((c) => c.account === opened.claims.account);
     if (this.byEntity.size - (earlier ? 1 : 0) >= this.capacity) return this.refuse(conn, { reason: 'full', ...base, detail: '' });
+    const ban = this.banOf(opened.claims.account);
+    if (ban !== undefined) return this.refuse(conn, { reason: 'banned', ...base, detail: ban.slice(0, 160) });
     for (const rule of this.options.entryRules) {
       const verdict = rule(opened.claims, { players: this.byEntity.size, capacity: this.capacity });
       if (!verdict.admit) return this.refuse(conn, { reason: 'rule', ...base, detail: verdict.detail.slice(0, 160) });
+    }
+    if (this.plugins) {
+      const c = opened.claims;
+      const verdict = this.plugins.joinRequest({ account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18, players: this.byEntity.size, capacity: this.capacity });
+      if (!verdict.admit) return this.refuse(conn, { reason: 'rule', ...base, detail: verdict.reason.slice(0, 160) });
     }
     if (earlier) this.kick(earlier, 'kicked', 'joined again from somewhere else');
     const entity = this.allocate();
@@ -469,6 +508,7 @@ export class WorldServer {
     conn.entity = entity;
     conn.account = opened.claims.account;
     conn.name = opened.claims.name;
+    conn.claims = opened.claims;
     conn.joinedAt = performance.now();
     const size = this.world.config.size;
     const sp = this.options.spawn;
@@ -500,6 +540,8 @@ export class WorldServer {
     if (conn.sink) this.options.content?.announce(conn.sink);
     this.joinMs.add(performance.now() - started);
     this.events.add('join', 0);
+    const joined = this.pluginPlayer(conn);
+    if (joined) this.plugins?.notify('on_join', joined);
   }
 
   /** A chosen height in centimetres (0: the platform's default) fitted into the world's range. */
@@ -567,6 +609,128 @@ export class WorldServer {
     return { x: at.x, y: ground, z: at.z };
   }
 
+  // ------------------------------------------------------------------ plugins (S3.01)
+
+  private plugins: Plugins | undefined;
+  /** Bans kept in memory when the world has no database. */
+  private readonly bans = new Map<string, { until: number | undefined; reason: string }>();
+
+  /** Runs these plugins' hooks from now on. */
+  usePlugins(plugins: Plugins): void {
+    this.plugins = plugins;
+  }
+
+  get id(): string {
+    return this.options.worldId;
+  }
+
+  get name(): string {
+    return this.options.name ?? 'A world';
+  }
+
+  private pluginPlayer(conn: Conn): PluginPlayer | undefined {
+    const c = conn.claims;
+    if (conn.entity === undefined || !c) return undefined;
+    return { entity: conn.entity, account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18 };
+  }
+
+  pluginPlayers(): PluginPlayer[] {
+    return [...this.byEntity.values()].flatMap((c) => this.pluginPlayer(c) ?? []);
+  }
+
+  pluginSay(text: string, to?: number): void {
+    const line = cleanChat(text);
+    if (!line) return;
+    const bytes = encodeMessage({ type: 'chat', text: line });
+    const targets = to === undefined ? [...this.byEntity.values()] : [this.byEntity.get(to)].filter((c): c is Conn => c !== undefined);
+    for (const conn of targets) this.send(conn, 'chat', bytes);
+  }
+
+  pluginKick(entity: number, reason: string): void {
+    const conn = this.byEntity.get(entity);
+    if (conn) this.kick(conn, 'kicked', reason);
+  }
+
+  /** Bans an account here (for `minutes`, or until lifted) and ends its connection. */
+  pluginBan(account: string, minutes: number | undefined, reason: string): void {
+    const until = minutes === undefined || !(minutes > 0) ? undefined : Date.now() + minutes * 60_000;
+    if (this.options.store) this.options.store.ban(account, until, reason);
+    else this.bans.set(account, { until, reason });
+    for (const conn of this.byEntity.values()) if (conn.account === account) this.kick(conn, 'banned', reason);
+    this.events.add('ban', 0);
+  }
+
+  pluginUnban(account: string): void {
+    this.options.store?.unban(account);
+    this.bans.delete(account);
+  }
+
+  /** Why an account is banned here, if it is. */
+  private banOf(account: string): string | undefined {
+    const stored = this.options.store?.banned(account);
+    if (stored !== undefined) return stored;
+    const b = this.bans.get(account);
+    if (!b) return undefined;
+    if (b.until !== undefined && b.until <= Date.now()) {
+      this.bans.delete(account);
+      return undefined;
+    }
+    return b.reason;
+  }
+
+  pluginForceMute(entity: number, on: boolean): void {
+    const conn = this.byEntity.get(entity);
+    if (conn) conn.forceMuted = on;
+  }
+
+  private readonly scopes = new Map<string, Map<string, string>>();
+
+  pluginStore(scope: string): { get(key: string): string | undefined; set(key: string, value: string): boolean; delete(key: string): void; keys(): string[] } {
+    const store = this.options.store;
+    if (store) {
+      return {
+        get: (key) => {
+          const v = store.get(scope, key);
+          return v ? new TextDecoder().decode(v) : undefined;
+        },
+        set: (key, value) => store.set(scope, key, new TextEncoder().encode(String(value))),
+        delete: (key) => store.delete(scope, key),
+        keys: () => store.keys(scope),
+      };
+    }
+    let m = this.scopes.get(scope);
+    if (!m) this.scopes.set(scope, (m = new Map()));
+    const map = m;
+    return {
+      get: (key) => map.get(key),
+      set: (key, value) => {
+        // The same limits as the world's database, so a plugin behaves alike with and without one.
+        const text = String(value);
+        if (key.length === 0 || key.length > STORE_LIMITS.key || Buffer.byteLength(text) > STORE_LIMITS.value) return false;
+        if (map.size >= STORE_LIMITS.keys && !map.has(key)) return false;
+        map.set(key, text);
+        return true;
+      },
+      delete: (key) => void map.delete(key),
+      keys: () => [...map.keys()].sort(),
+    };
+  }
+
+  /** Zones entered and left since the last pose, for the plugins (and S3.08's voice rules). */
+  private zoneCheck(conn: Conn): void {
+    const p = conn.entity === undefined ? undefined : this.world.players.get(conn.entity);
+    const player = this.pluginPlayer(conn);
+    if (!p || !player) return;
+    const zones = this.options.zones!;
+    const now = new Set<number>();
+    zones.forEach((z, i) => {
+      if (insideBox(z, p)) now.add(i);
+    });
+    for (const i of now) if (!conn.zones.has(i)) this.plugins?.notify('on_zone_enter', player, { index: i, kind: zones[i]!.kind });
+    for (const i of conn.zones) if (!now.has(i)) this.plugins?.notify('on_zone_exit', player, { index: i, kind: zones[i]!.kind });
+    conn.zones = now;
+  }
+
   /** The spawn points a join may use: the named group's when it has any, else the main ones. */
   private spawnChoices(group: string): ReadonlyArray<{ x: number; y: number; z: number; yaw: number }> {
     const all = this.options.spawnPoints ?? [];
@@ -614,8 +778,10 @@ export class WorldServer {
     const entity = conn.entity;
     conn.state = 'closed';
     if (entity === undefined || this.byEntity.get(entity) !== conn) return;
+    const leaving = this.pluginPlayer(conn);
     this.byEntity.delete(entity);
     this.roster.delete(entity);
+    if (leaving) this.plugins?.notify('on_leave', leaving, reason.startsWith('leave: ') ? reason.slice(7) : reason);
     if (conn.sink) this.options.content?.forget(conn.sink);
     const p = this.world.players.get(entity);
     if (p && conn.account) this.options.store?.savePlace(conn.account, { x: p.x, y: p.y, z: p.z, yaw: p.yaw });
@@ -647,6 +813,7 @@ export class WorldServer {
 
   private tick(tick: number): void {
     this.tickNo = tick;
+    this.plugins?.notify('on_tick', tick);
     const { snapshots, stats } = this.world.tick(tick);
     for (const [entity, messages] of snapshots) {
       const conn = this.byEntity.get(entity);
@@ -696,6 +863,10 @@ export class WorldServer {
       return;
     }
     conn.spokeAt = now;
+    if (conn.forceMuted) {
+      this.events.add('voice:muted', 0);
+      return;
+    }
     this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, opus: message.opus });
   }
 

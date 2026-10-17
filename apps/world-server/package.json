@@ -16,6 +16,7 @@
     "./server": "./src/server.ts",
     "./content": "./src/world/content.ts",
     "./navigation": "./src/world/navigation.ts",
+    "./plugins": "./src/plugins.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -23,7 +24,8 @@
     "@flatchat/protocol": "*",
     "@flatchat/sim": "*",
     "node-datachannel": "0.33.4",
-    "recast-navigation": "0.43.1"
+    "recast-navigation": "0.43.1",
+    "smol-toml": "1.9.1"
   },
   "scripts": {
     "start": "node --min-semi-space-size=16 --max-semi-space-size=16 src/main.ts",

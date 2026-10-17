@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "greeter"
+version = "1.0.0"
+api = 1
+description = "Says hello, counts visits and answers /roll: the plugin loader's test."
+permissions = ["chat", "store"]
+hooks = ["on_join", "on_command", "on_chat"]
+
+[settings]
+greeting = "Welcome"

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "entry-open"
+version = "1.0.0"
+api = 1
+description = "Entry rule: anyone with the world's id comes in (the world's capacity and bans still apply)."
+hooks = ["on_join_request"]

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "entry-trust"
+version = "1.0.0"
+api = 1
+description = "Entry rule: a minimum trust level, or testers only (the closed test)."
+hooks = ["on_join_request"]
+
+[settings]
+min_trust = 1
+testers_only = false

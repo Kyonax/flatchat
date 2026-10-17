@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "entry-verified"
+version = "1.0.0"
+api = 1
+description = "Entry rule: a verified email and an account at least min_account_days old."
+hooks = ["on_join_request"]
+
+[settings]
+min_account_days = 7

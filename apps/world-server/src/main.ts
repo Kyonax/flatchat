@@ -10,6 +10,7 @@
 //                    [--capacity 200] [--recommended N] [--world-size 256] [--metrics-every 5] [--trace FILE]
 //                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
 //                    [--core URL [--relay]] [--ice-server URL]… [--map-port] [--world BUILT_DIR] [--data FILE]
+//                    [--plugins DIR]…
 //
 // With --core and its key, the world keeps a channel to the core (an outbound WebSocket; the world
 // proves it holds its key) that reports its players to the world browser and brings the capacity
@@ -21,7 +22,8 @@
 // --world serves a built world (the converter's output: world.json and content/), which players
 // download over their connection (S2.04): its bounds, spawn points, solids, flying and maximum
 // capacity come from it (--capacity still overrides; --map, --world-size and --spawn do not apply).
-// --data is the world's database (S2.08; default ~/.local/share/flatchat/worlds/WORLD_ID.db for a
+// --plugins loads every plugin folder in DIR (S3.01: plugin.toml and its module; a broken one is
+// refused with a `plugin-refused` line). --data is the world's database (S2.08; default ~/.local/share/flatchat/worlds/WORLD_ID.db for a
 // built world, none otherwise): a persistent world keeps its state and where each player left.
 // --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
 // spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
@@ -38,6 +40,7 @@ import { parseArgs } from 'node:util';
 import { fingerprintHex, fromHex, PROTOCOL_VERSION, WORLD_KEY_BYTES } from '@flatchat/protocol';
 import { PLAZA } from '@flatchat/sim';
 import { PortMapper } from './net/portmap.ts';
+import { Plugins } from './plugins.ts';
 import { CoreRelay } from './net/relay.ts';
 import { RtcServer } from './net/rtc.ts';
 import type { ServerTransport } from './net/types.ts';
@@ -78,6 +81,7 @@ const { values } = parseArgs({
     ticks: { type: 'string' },
     capacity: { type: 'string' },
     recommended: { type: 'string' },
+    plugins: { type: 'string', multiple: true },
     'world-size': { type: 'string' },
     'metrics-every': { type: 'string', default: '5' },
     trace: { type: 'string' },
@@ -209,6 +213,12 @@ const server = new WorldServer(
   listening,
 );
 
+const plugins = new Plugins(server, log);
+if (values.plugins?.length) {
+  await plugins.load(values.plugins);
+  server.usePlugins(plugins);
+}
+
 const started = performance.now();
 const ticker = server.start(maxTicks);
 const where = Object.assign({}, ...listening.map((t) => t.address)) as Record<string, string | number>;
@@ -256,6 +266,7 @@ const shutdown = async (reason: string): Promise<void> => {
   relay?.stop();
   await mapper?.stop();
   const summary = await server.stop(reason);
+  plugins.close();
   store?.close();
   traceOut?.end();
   const tickMs = summary['tickMs'] as { max: number } | undefined;

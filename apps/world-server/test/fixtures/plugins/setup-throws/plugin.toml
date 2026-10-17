@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "setup-throws"
+version = "1.0.0"
+api = 1
+hooks = ["on_join"]

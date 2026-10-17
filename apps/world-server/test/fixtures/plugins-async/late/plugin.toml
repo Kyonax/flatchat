@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
+name = "late"
+version = "1.0.0"
+api = 1
+description = "Async code done right and wrong: an async setup, a rejecting async hook, an entry rule that answers with a promise."
+permissions = ["chat"]
+hooks = ["on_join_request", "on_join"]
