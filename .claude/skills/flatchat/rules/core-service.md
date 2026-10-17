@@ -2,7 +2,7 @@
 title: The Core Service — Accounts by Invitation, the Age Rule, Browser Sign-in, Sessions, Worlds, Connect Tokens, PostgreSQL and the Admin Command Line
 impact: CRITICAL
 impactDescription: The core holds every account, password hash, birth date and world key. A SQL string built from input, a page that renders what someone typed as markup, a token or email in a log line, a sign-in code that can be polled for, or a test that needs a shared database each turn into an account takeover, a leak of minors' data or a flaky CI.
-tags: core, apps/core, Fastify, PostgreSQL, pg, node-postgres, migrations, Argon2id, crypto.argon2, PHC, invitations, sign-up, age rule, minors, OQ-16, rr-015, Decreto 1377, consent, privacy notice, sign-in, system browser, loopback redirect, RFC 8252, PKCE, RFC 7636, login request, sessions, access token, refresh token, rotation, reuse detection, rate limits, worlds, approval, world key, connect token, world browser, public list, recommended capacity, favourites, listed, unlisted, MAX_CAPACITY, admin, core:db, core:admin, T18, T19, SQL injection, escaping, content security policy
+tags: core, apps/core, trust levels, FLATCHAT_CORE_TRUST, active_days, trustOf, earnedTrust, parseTrust, tester, Fastify, PostgreSQL, pg, node-postgres, migrations, Argon2id, crypto.argon2, PHC, invitations, sign-up, age rule, minors, OQ-16, rr-015, Decreto 1377, consent, privacy notice, sign-in, system browser, loopback redirect, RFC 8252, PKCE, RFC 7636, login request, sessions, access token, refresh token, rotation, reuse detection, rate limits, worlds, approval, world key, connect token, world browser, public list, recommended capacity, favourites, listed, unlisted, MAX_CAPACITY, admin, core:db, core:admin, T18, T19, SQL injection, escaping, content security policy
 ---
 
 `apps/core` is FlatChat's central service (DR-05, AGPL-3.0-or-later): TypeScript run directly by Node.js 24, Fastify 5 for HTTP, PostgreSQL through `pg` (DR-06). Stage 1 built its spine: accounts by invitation (S1.02), the age rule and the data-processing authorization (S1.03), sign-in through the system browser with sessions (S1.04), worlds with their approval and key (S1.05) and connect tokens (S1.06).
@@ -12,7 +12,8 @@ tags: core, apps/core, Fastify, PostgreSQL, pg, node-postgres, migrations, Argon
 | File | Job |
 |---|---|
 | `src/main.ts` | The program: migrates, listens (127.0.0.1:8787 by default), JSON log lines `ready`, `request`, `stopped`; SIGINT, SIGTERM and `--stop-on-stdin` |
-| `src/config.ts` | Settings from the environment only (`FLATCHAT_CORE_DB`, `FLATCHAT_CORE_SECRET`, `FLATCHAT_CORE_URL`, `FLATCHAT_CORE_OPERATOR`, `FLATCHAT_CORE_CONTACT`, `FLATCHAT_CORE_TUNNEL`) |
+| `src/config.ts` | Settings from the environment only (`FLATCHAT_CORE_DB`, `FLATCHAT_CORE_SECRET`, `FLATCHAT_CORE_URL`, `FLATCHAT_CORE_OPERATOR`, `FLATCHAT_CORE_CONTACT`, `FLATCHAT_CORE_TUNNEL`, `FLATCHAT_CORE_TRUST`, the TURN settings) |
+| `src/trust.ts` | Trust levels (S3.09): `DEFAULT_TRUST`, `parseTrust`, `earnedTrust`, `trustOf` (pure) |
 | `src/app.ts` | `buildCore(options)`: every route, the security headers, the rate limits, the JSON-only API; tests drive it with `app.inject` |
 | `src/db.ts` | `Db` (a pool, `query`, `tx`), migrations from `src/migrations/NNNN-name.sql` under an advisory lock |
 | `src/secrets.ts` | Random tokens and their SHA-256 digests, PKCE challenges, Argon2id as PHC strings, world keys sealed under the core's secret |
@@ -50,6 +51,7 @@ node --env-file=FILE apps/core/src/admin.ts world approve WORLD_ID   # prints FL
 | Sessions | An access token for 15 minutes (`Authorization: Bearer`), a refresh token for 30 days that rotates on every use. A refresh token seen after its rotation ends the session (`refresh-reused`). A suspended or banned account fails every check |
 | Worlds | `POST /api/v1/worlds` registers one (pending). `admin world approve` makes its 32-byte key, seals it under a key derived from `FLATCHAT_CORE_SECRET` (HKDF, AES-256-GCM bound to the world's id) and prints it once. Every change goes into `world_events`, the approval record |
 | Connect tokens | `POST /api/v1/worlds/:id/join` seals the account's facts for that world for 60 s (`packages/protocol`, sf-001). A world learns the account id, display name, trust, tester flag, verified email, account age in days and an under-18 flag; never the email or the birth date |
+| Trust levels (S3.09, G-04) | `trustOf` = the higher of the stored level (`admin account EMAIL --trust N`, a floor; 4 to 7 only by hand) and the earned one: 0 without a verified email, else levels 1 to 3 at `FLATCHAT_CORE_TRUST`'s `days:active` thresholds (default `3:1,14:5,60:20`; each level at least the one below, else a `ConfigError`). A join is activity: `connectToken` adds one `active_days` per UTC day (`last_active_day`, migration 0004) with `returning`, and seals the token with the counted value, so the day's first join already carries it. `/api/v1/me` answers the computed level. The tester flag is apart: the closed test's door (`entry-trust`, rule `plugins`) |
 
 ## The World Browser (S2.09, Q-L4, Q-L11, Q-L19)
 
@@ -90,7 +92,7 @@ node --env-file=FILE apps/core/src/admin.ts world approve WORLD_ID   # prints FL
 
 ## Tests
 
-`npm run test -w @flatchat/core` needs PostgreSQL's programs, not a running server: the global setup makes a cluster in a temporary folder (Unix socket only, fsync off) and removes it afterwards; each test file gets its own migrated database. `scripts/pg.ts` finds `initdb` and `pg_ctl` through `PG_BIN`, `pg_config`, `PATH`, or `/usr/lib/postgresql/N/bin` (GitHub's Ubuntu runners have PostgreSQL there, not on the path). `FLATCHAT_TEST_DB` points the tests at a database you run instead. Time is injected (`now`), so expiry tests move a clock instead of waiting; `TEST_COST` keeps Argon2id cheap in tests (the PHC string records each hash's cost). A Unix socket's path is limited to about 100 bytes, so clusters live in short folders without spaces.
+`npm run test -w @flatchat/core` needs PostgreSQL's programs, not a running server: the global setup makes a cluster in a temporary folder (Unix socket only, fsync off) and removes it afterwards; each test file gets its own migrated database. `scripts/pg.ts` finds `initdb` and `pg_ctl` through `PG_BIN`, `pg_config`, `PATH`, or `/usr/lib/postgresql/N/bin` (GitHub's Ubuntu runners have PostgreSQL there, not on the path). `FLATCHAT_TEST_DB` points the tests at a database you run instead. Time is injected (`now`), so expiry tests move a clock instead of waiting (an access token lasts 15 minutes: a test that moves the clock a day signs in again at the new time); `TEST_COST` keeps Argon2id cheap in tests (the PHC string records each hash's cost). A Unix socket's path is limited to about 100 bytes, so clusters live in short folders without spaces.
 
 ## Correct vs. Incorrect
 

@@ -14,7 +14,7 @@ This rule governs what the code may do with anything that did not come from this
 | T05 | `eval(…)`, `new Function(…)`, `Function(…)`, `setTimeout` or `setInterval` given a string | error | Parse data (JSON, the protocol's codecs); never execute it |
 | T06 | Assigning `innerHTML` or `outerHTML`, `insertAdjacentHTML(…)`, `document.write(…)`, Vue's `v-html` | error | Vue's `{{ }}` interpolation, or `textContent`; formatting by building elements, never by parsing markup |
 | T11 | Importing three's file loaders (`three/addons/loaders/…`, `three/examples/jsm/loaders/…`) anywhere in `apps/client` | warning | The client loads only the platform's own validated format through the content package; raw loaders belong to `tools/converter` |
-| T12 | Importing `vm` or `node:vm` | error | Run untrusted code (world plugins) in its own process with no ambient authority |
+| T12 | Importing `vm` or `node:vm` | error | `node:vm` is not a sandbox. Code from strangers (object scripts, after the MVP) runs only in its own process with no ambient authority; host-installed plugins go through the host interface (rule `plugins`) |
 | T13 | `exec` or `execSync` from `child_process` | warning | `execFile` or `spawn` with an argument array: no shell, so no shell injection |
 
 Strings and comments that mention these names never trigger the linter: it parses the code. One line can opt out, with a reason, through a comment on it or on the line above: `// trap-lint: allow T11 because <reason>`. Use that only for a reviewed exception, never to silence a finding.
@@ -27,7 +27,7 @@ Strings and comments that mention these names never trigger the linter: it parse
 | Network messages | World server, client, core | `decodeMessage(bytes, sender)` only: it refuses unknown, malformed, oversized and wrong-direction messages with a `ProtocolError` (rule `protocol-and-codecs`); drop the packet and count the code, never let it stop a tick, never `JSON.parse` a raw packet into trusted state. The world server also refuses a message on the wrong channel, closes a link after 50 malformed messages, and rate-limits voice (60 frames a second) and chat (one line a second) per player (`world-networking`) |
 | Uploaded models, textures, animations, effects | The core's upload path, then `tools/converter` | Converted to the platform's own format, validated and ranked before anyone downloads them |
 | World and avatar files downloaded by a client | Client | Only the platform's format, from the core's asset store, checked against its manifest |
-| World plugins | World server | Their own process and permissions, declared in `plugin.toml`; never `node:vm`, never `eval` |
+| World plugins | World server | Code the host chose to install, imported by the world server (T-04): they reach the world only through the host interface, whose calls check the permissions declared in `plugin.toml` and shown at install (rule `plugins`); never `node:vm`, never `eval`. Code from strangers waits for a sandboxed process offering the same interface |
 | Links in chat or worlds | Client | Never opened without a check; see the client rule's `shell.openExternal` allow-list |
 
 "Never load engine-native resource files from strangers" is the general form of T11: a raw loader parses whatever bytes it is given, so a crafted file reaches the parser, the GPU driver and the memory budget unchecked. Only the converter, which runs where a crash costs nothing and its output is validated, reads raw formats. Until the content package's loader exists, the client loads no outside assets at all.
@@ -57,7 +57,7 @@ new GLTFLoader().load(avatar.url, (gltf) => scene.add(gltf.scene));
 import vm from 'node:vm';
 vm.runInNewContext(pluginSource, { world });
 ```
-**Correct:** start the plugin as a separate process with only the permissions its manifest declares, talking to the server over a message channel.
+**Correct:** a host-installed plugin (S3.01) is imported as a module and handed only the host interface (`HostApi`), whose calls check the permissions in its `plugin.toml`; code from strangers (object scripts, after the MVP) runs in a separate sandboxed process that offers the same interface.
 **Why:** `node:vm` shares the process; its own documentation says it is not a security mechanism (T12).
 
 **Incorrect:** building a shell command from a file name.

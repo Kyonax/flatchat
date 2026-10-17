@@ -1,9 +1,9 @@
 ---
 name: flatchat
-description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, PostgreSQL); the world server, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds and the crowd bench; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T19); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
+description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins and entry rules, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T19); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.11.1"
+  version: "1.12.0"
   verified: "2026-10-17"
 ---
 
@@ -46,6 +46,7 @@ Reference these guidelines when:
 *   Touching voice: capture, the codec, the playout buffer, spatial sound or mouth shapes.
 *   Adding or changing a network message, a codec, the connect token or the version handshake; reading packets from other players.
 *   Handling chat, names, world or avatar files, uploads, plugins or network messages.
+*   Writing or loading a world plugin, an entry rule, or anything that reads trust levels or the tester flag.
 *   Writing tests, or making code testable without a GPU, Electron or sudo.
 *   A harness check, a trap-linter finding or a CI job fails.
 *   Upgrading Node, npm, TypeScript, ESLint, Electron, Vite, Vue or three.
@@ -72,6 +73,8 @@ Reference these guidelines when:
 | Movement: the character controller, the server's move checks, the plaza and maps | `rules/movement-sim.md` + `rules/world-networking.md` |
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
+| World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
+| Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -96,6 +99,7 @@ A trap-linter finding names its rule; read that rule.
 | `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
 | `client-app` | The app mode: sign-in in the main process (core-api, loopback, auth, safeStorage), settings and bindings, vue-i18n with the bare-strings rule, the world view (session, controls, remotes, camera, instanced avatars), chat and voice limits, the end-to-end test with Playwright. |
 | `host-tool` | `tools/host-tool`: sign-in from a terminal, request, approve on `/admin` (CSRF, session cookie), key, run; the capacity advisor; the package and container image; the world's SQLite database. |
+| `plugins` | World plugins (S3.01, S3.05): plugin.toml checks, the in-process model and the narrow `HostApi` (T-04), permissions and `HOOK_NEEDS`, refusals, `guard` with promise handling, fail-closed entry rules, the three entry rules, `host plugins`. |
 | `world-format` | `packages/content`: world.toml's fields, the OMI and FLATCHAT_world markers at world transforms, safe paths, limits, `validateWorld`. |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
