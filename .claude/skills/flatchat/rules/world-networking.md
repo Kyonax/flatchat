@@ -73,6 +73,10 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 
 `RtcServer.answer(sdp, label)` resolves with the answer once ICE has gathered and opens the link in the background; the HTTP handler and the relay both call it.
 
+## World Content (`src/world/content.ts`, S2.04)
+
+`--world BUILT_DIR` serves a built world (the converter's `world.json` and `content/<sha256>`): `loadBuiltWorld` checks world.json with `parseBuiltWorld` and every file's hash, and `builtOptions` takes the world's bounds, spawn points (each join picks one), solids (an axis-aligned box around each collider, for the height check), flying and maximum capacity. After `welcome` the server sends `content`; a player's `fetch` queues a file (64 at most), `unfetch` drops it, an unknown hash gets `notFound`. `ContentServer.step()` runs on the voice ticker (50 Hz): 16 KB chunks, at most 2 MB/s a player and 6 MB/s in total, so downloads never starve the game. The client downloads, checks and caches it (`client-app`).
+
 ## Interest Management and Snapshots (`src/world/`)
 
 | Point | Rule |

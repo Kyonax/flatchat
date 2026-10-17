@@ -54,9 +54,18 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 | Chat | World-wide; the client keeps the server's limits (a burst of 5, then one per 1.5 s; 280 characters) and says "slow down" instead of sending what the server would drop; joins and leaves become notices the page words in its language |
 | Voice | The first time in a world, `MicQuestion` asks: open microphone (highlighted) or push-to-talk. Hearing works without a microphone. Push-to-talk and self-mute set `chain.muted`; `chain.sending` drives the "Talking" indicator |
 
+## Downloaded Worlds and Physics (S2.04, S2.06)
+
+| Part | Rule |
+|---|---|
+| Downloading | A `content` message during the join names the built world; `Downloader` (`world/download.ts`) takes what the cache has, fetches the rest one file at a time, puts chunks together strictly in order, checks each file's SHA-256 (`crypto.subtle`), and reads world.json with `parseBuiltWorld`; a stall of 30 s, a hash mismatch or chunks out of order end it. The HUD shows the percentage |
+| The cache | `src/main/content-cache.ts` in the app's data folder (`content/<sha256>`), filled through the bridge (`contentHas`, `contentGet`, `contentPut`); the main process keeps a file only if its bytes match its name; 2 GB, least recently used dropped first |
+| Scenes | `world/scene-loader.ts`: `checkGlb` refuses a GLB that is not self-contained (any `uri`) or fails `inspectScene`; GLTFLoader with three's `MeshoptDecoder` and `KTX2Loader` (T11 allowed on those imports, with the reason); objects static (`matrixAutoUpdate` off) |
+| Physics | `world/physics.ts`: Rapier's kinematic character controller (`@dimforge/rapier3d-compat`, whose WebAssembly is inside the bundle) over the world's colliders, with `packages/sim`'s speeds, jump and step; autostep 0.45 m, snap to ground 0.4 m, slopes to 45°. A world made in code (the plaza without content) gets its boxes as colliders (`mapColliders`) |
+
 ## The End-to-End Test
 
-`node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--keep]` runs Stage 1's path with every real program: a private PostgreSQL (`apps/core/scripts/db.ts`), the core, an account from an invitation, a world registered and approved through the admin command line, a world server with `--map plaza`, and the packaged client under Playwright (`playwright-core`'s `_electron`). It replaces `shell.openExternal` in the main process, plays the browser over HTTP (the sign-in page, the form, the redirect to the loopback port), then clicks through the app: join, the microphone question, walking, a jump, a chat line. It passes when the world server's summary shows 1 join, more than 10 applied poses and 1 chat line. It needs a display (`xvfb-run -a` in CI's Linux job) and PostgreSQL's programs. Give the client a fresh profile (`XDG_CONFIG_HOME`), or a remembered session skips the sign-in screen.
+`node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--keep]` runs Stage 1's path with every real program: a private PostgreSQL (`apps/core/scripts/db.ts`), the core, an account from an invitation, a world registered and approved through the admin command line, a world server with `--map plaza`, and the packaged client under Playwright (`playwright-core`'s `_electron`). It replaces `shell.openExternal` in the main process, plays the browser over HTTP (the sign-in page, the form, the redirect to the loopback port), then clicks through the app: join, the microphone question, walking, a jump, a chat line. The world is the plaza converted from `kits/worlds/plaza` and served with `--world`, so the client downloads it. It passes when the world server's summary shows 1 join, more than 10 applied poses, 1 chat line and at least 3 fetches. It needs a display (`xvfb-run -a` in CI's Linux job) and PostgreSQL's programs. Give the client a fresh profile (`XDG_CONFIG_HOME`), or a remembered session skips the sign-in screen.
 
 ## Correct vs. Incorrect
 

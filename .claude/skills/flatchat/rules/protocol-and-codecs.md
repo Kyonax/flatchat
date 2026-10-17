@@ -59,9 +59,9 @@ The same files run in Node.js 24 and in Chromium's sandboxed renderer, so the pa
 
 The decoder refuses with a `ProtocolError` whose `code` is one of `truncated`, `trailing`, `padding`, `bad-varint`, `unknown-type`, `wrong-direction`, `too-long`, `bad-utf8`, `out-of-range`, `bad-value`. A test feeds it 20,000 random and damaged packets and accepts no other kind of exception.
 
-## Version 1
+## Version 2
 
-Version 1 (S0.08) gave `voice` and each `voiceBundle` frame a `start` bit and made their `seq` count 20 ms slots, silent ones included; version 0 (S0.06) was the same otherwise. Thirteen messages in four groups, numbered by group: joining 0x01–0x06 (`hello`, `welcome`, `refuse`, `leave`, `ping`, `pong`), state 0x10–0x12 (`pose`, `snapshot`, `roster`), chat 0x20–0x21 (`say`, `chat`), voice 0x30–0x31 (`voice`, `voiceBundle`). Each has a sender (`client`, `server` or `either`) and a channel (`reliable` or `unreliable`). Positions are fixed-point at 1/128 m; snapshots write avatars as offsets inside 32 m cells (`CELL_SIZE`), near ones in full and far ones coarse. `docs/protocol.md` lists every field.
+Version 2 (S2.04) added world content: `content` (0x40, the SHA-256 of the built world's `world.json` and its size, sent after `welcome`), `fetch` (0x41, a file by hash from an offset), `chunk` (0x42, at most 16,384 bytes at an offset of a total), `unfetch` (0x43) and `notFound` (0x44); schema `3ff4d993`. Version 1 (S0.08) gave `voice` and each `voiceBundle` frame a `start` bit and made their `seq` count 20 ms slots, silent ones included; version 0 (S0.06) was the same otherwise. Before content, thirteen messages in four groups, numbered by group: joining 0x01–0x06 (`hello`, `welcome`, `refuse`, `leave`, `ping`, `pong`), state 0x10–0x12 (`pose`, `snapshot`, `roster`), chat 0x20–0x21 (`say`, `chat`), voice 0x30–0x31 (`voice`, `voiceBundle`). Each has a sender (`client`, `server` or `either`) and a channel (`reliable` or `unreliable`). Positions are fixed-point at 1/128 m; snapshots write avatars as offsets inside 32 m cells (`CELL_SIZE`), near ones in full and far ones coarse. `docs/protocol.md` lists every field.
 
 ## Changing the Protocol
 

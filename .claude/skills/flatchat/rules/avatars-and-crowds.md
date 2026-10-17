@@ -28,7 +28,7 @@ This rule governs `apps/client/src/renderer/src/crowd/` (spike S0.09's crowd ben
 | Outlines | three-vrm draws MToon's outline as a second material over the same triangles; the low preset keeps only the surface material |
 | Shared textures | three-vrm gives each material slot its own texture object, and three.js's WebGPU renderer uploads every texture object on its own: a VRoid avatar uploaded 68 to 72 textures from 28 images. `shareTextures` keeps one object per image and sampling |
 | VRM 0.x poses | Its normalized rig was built facing −z, before `rotateVRM0`: negate the x and z rotations (three-vrm's own VRMA player does) |
-| The page's policy | `connect-src 'self' blob: flatchat-avatar:` and `img-src 'self' data: blob:`: GLTFLoader fetches embedded images as blob URLs |
+| The page's policy | `connect-src 'self' blob: data: flatchat-avatar:`, `img-src 'self' data: blob:`, `worker-src 'self' blob:`: GLTFLoader fetches embedded images as blob URLs (see `client-electron`) |
 | The trap linter | T11 warns on `three/addons/loaders/*` in the client; `avatar.ts` carries `trap-lint: allow T11` because the converter does not exist yet. A shipping client loads only the converter's output |
 
 ## What the Converter Must Do (Measured on the Bench)
