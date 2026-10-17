@@ -55,6 +55,10 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 | Travel (S2.11) | The world's `portal` message calls `session.onTravel`; `WorldView` emits `travel`; `ClientApp.goThrough` asks the core for the world (`world(id)`: offline or missing keeps the player where they are, with a line saying why for 5 s), then a connect token, and replaces the world: `WorldView` is keyed by `visit`, so it remounts, the old session leaves with `travel` (`conn.close(detail, 'travel')`), and the new one joins with the portal's spawn group in `hello` |
 | Voice | The first time in a world, `MicQuestion` asks: open microphone (highlighted) or push-to-talk. Hearing works without a microphone. Push-to-talk and self-mute set `chain.muted`; `chain.sending` drives the "Talking" indicator |
 
+## People, Roles and Coming Back (S3.06)
+
+The roster's `role` feeds `WorldSession.state.people` (`world/people.ts`: `sortPeople`, this player first) and `state.role`. The People panel (`WorldView.vue`, action `people`, Tab) frees the pointer while open (`onLockChange` must not open the menu then) and shows a role select only where `canGiveTo(state.role, person)` allows, offering `rolesToGive(state.role)`; `session.giveRole` sends `role` and the roster answers. A `rule` or `banned` refusal shows the world's own words (`refusedDetail`, text only). A leave `closing` with detail `updating` (a world restarting on a new build) emits `rejoin`: `ClientApp.vue` waits until the core lists the world online, every 3 s for a minute, then joins it again; if it never comes back, the lost card offers the way out. Rule `roles-and-moderation`.
+
 ## Downloaded Worlds and Physics (S2.04, S2.06)
 
 | Part | Rule |
