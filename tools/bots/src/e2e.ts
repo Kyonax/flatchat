@@ -176,6 +176,15 @@ try {
     steps['people'] = await page.locator('[data-test=people] [data-test=person]').first().getAttribute('data-role', { timeout: 10_000 }).catch(() => null);
     await snap('2b-people');
     await page.keyboard.press('Tab');
+    // A report from inside the world (S3.02): the menu, the form, the receipt.
+    await page.keyboard.press('Escape');
+    await page.locator('[data-test=report-world]').click({ timeout: 10_000 });
+    await page.locator('[data-test=report-category]').selectOption('harassment');
+    await page.locator('[data-test=report-text]').fill('A test report from the end-to-end test.');
+    await page.locator('[data-test=report-send]').click();
+    steps['report'] = await page.locator('[data-test=report-receipt]').getAttribute('data-receipt', { timeout: 15_000 }).catch(() => null);
+    await snap('2c-report');
+    await page.locator('[data-test=report-done]').click();
     if (values.shot) await page.screenshot({ path: values.shot });
     // Back through the portal south of the spawn (S2.11): the world says so, the client asks the
     // core for the garden and joins it at its arrival spawn.
@@ -223,6 +232,7 @@ try {
     (garden2['join']?.messages ?? 0) === 1 &&
     steps['sounds'] === '1' &&
     steps['people'] === 'owner' &&
+    /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
     (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
   await stop(core.proc);
