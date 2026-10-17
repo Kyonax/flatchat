@@ -144,6 +144,11 @@ const es: Shape<typeof en> = {
     pushToTalk: 'Mantén {key} para hablar',
     menu: 'Menú',
     resume: 'Volver al mundo',
+    travelling: 'Viajando a {world}…',
+    portalOpening: 'El portal se está abriendo…',
+    portalOffline: 'El portal lleva a {world}, que ahora mismo está desconectado.',
+    portalNowhere: 'Este portal no lleva a ningún lado: su mundo no existe.',
+    portalFailed: 'El portal no se abrió: {reason}',
     refused: {
       'client-outdated': 'Tu FlatChat es demasiado antiguo para este mundo. Actualízalo.',
       'server-outdated': 'Este mundo usa un FlatChat más antiguo que el tuyo.',

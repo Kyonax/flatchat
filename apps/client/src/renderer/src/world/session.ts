@@ -73,6 +73,14 @@ export interface Ticket {
   address: string;
   token: Uint8Array;
   iceServers?: RTCIceServer[];
+  /** The spawn group a portal named (S2.11). */
+  spawn?: string;
+}
+
+/** Where a portal leads (S2.11). */
+export interface Travel {
+  world: string;
+  spawn: string;
 }
 
 export class WorldSession {
@@ -110,6 +118,8 @@ export class WorldSession {
   private closed = false;
   /** Set while the page's chat box has focus: keys go to the text, not the avatar. */
   typing = false;
+  /** Called when the player walks into a portal (S2.11): the page takes them there. */
+  onTravel: ((to: Travel) => void) | undefined;
 
   constructor(canvas: HTMLCanvasElement, map: WorldMap, settings: Settings, onChange: (state: WorldState) => WorldState = (s) => s) {
     this.canvas = canvas;
@@ -165,7 +175,13 @@ export class WorldSession {
     await renderer.setAnimationLoop(() => this.frame(view.scene, view.camera));
 
     try {
-      this.conn = await WorldConnection.join({ signalUrl: ticket.address, token: ticket.token, iceServers: ticket.iceServers ?? [], onMessage: (m) => this.message(m) });
+      this.conn = await WorldConnection.join({
+        signalUrl: ticket.address,
+        token: ticket.token,
+        iceServers: ticket.iceServers ?? [],
+        ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
+        onMessage: (m) => this.message(m),
+      });
     } catch (err) {
       this.state.status = err instanceof JoinRefused ? 'refused' : 'lost';
       this.state.reason = err instanceof JoinRefused ? err.reason : 'unreachable';
@@ -407,6 +423,9 @@ export class WorldSession {
         this.state.reason = m.reason;
         this.state.detail = m.detail;
         break;
+      case 'portal':
+        if (this.state.status === 'joined') this.onTravel?.({ world: m.world, spawn: m.spawn });
+        break;
       default:
         break;
     }
@@ -479,8 +498,8 @@ export class WorldSession {
     this.state.download = undefined;
   }
 
-  /** Leaves the world and lets go of the renderer, the microphone and the loops. */
-  leave(): void {
+  /** Leaves the world (`travel` through a portal) and lets go of the renderer, the microphone and the loops. */
+  leave(reason: 'quit' | 'travel' = 'quit'): void {
     if (this.closed) return;
     this.closed = true;
     for (const t of this.timers) clearInterval(t);
@@ -489,7 +508,7 @@ export class WorldSession {
     this.detachers = [];
     this.unlock();
     this.downloader?.cancel();
-    this.conn?.close('left the world');
+    this.conn?.close(reason === 'travel' ? 'went through a portal' : 'left the world', reason);
     this.physics?.dispose();
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();

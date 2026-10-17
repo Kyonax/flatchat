@@ -17,9 +17,12 @@ const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
 const systemLocale = ref('en');
 const showSettings = ref(false);
-const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[] } } | undefined>(undefined);
+const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; spawn?: string }; visit: number } | undefined>(undefined);
 const joining = ref('');
 const joinError = ref('');
+const travel = ref<{ status: 'going' | 'failed'; text: string } | undefined>(undefined);
+let visits = 0;
+let travelling = false;
 let offAuth: (() => void) | undefined;
 
 function applyLocale(): void {
@@ -39,10 +42,40 @@ async function join(w: FlatchatWorld): Promise<void> {
   const r = await bridge.joinWorld(w.id);
   joining.value = '';
   if (!r.ok) {
-    joinError.value = t('home.joinFailed', { reason: te(`home.reasons.${r.error}`) ? t(`home.reasons.${r.error}`) : r.error });
+    joinError.value = t('home.joinFailed', { reason: reason(r.error) });
     return;
   }
-  world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers } };
+  world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers }, visit: (visits += 1) };
+}
+
+function reason(code: string): string {
+  return te(`home.reasons.${code}`) ? t(`home.reasons.${code}`) : code;
+}
+
+/** Through a portal (S2.11): the target world's connect token from the core, then the new world;
+ *  on any refusal the player stays where they are, told why. */
+async function goThrough(to: { world: string; spawn: string }): Promise<void> {
+  if (!bridge || travelling) return;
+  travelling = true;
+  travel.value = { status: 'going', text: '' };
+  const fail = (text: string): void => {
+    travel.value = { status: 'failed', text };
+    setTimeout(() => {
+      if (travel.value?.status === 'failed') travel.value = undefined;
+    }, 5000);
+  };
+  try {
+    const info = await bridge.world(to.world);
+    if (!info.ok) return fail(info.error === 'no-world' ? t('world.portalNowhere') : t('world.portalFailed', { reason: reason(info.error) }));
+    if (!info.world.online) return fail(t('world.portalOffline', { world: info.world.name }));
+    travel.value = { status: 'going', text: info.world.name };
+    const r = await bridge.joinWorld(to.world);
+    if (!r.ok) return fail(t('world.portalFailed', { reason: reason(r.error) }));
+    world.value = { world: info.world, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, ...(to.spawn ? { spawn: to.spawn } : {}) }, visit: (visits += 1) };
+    travel.value = undefined;
+  } finally {
+    travelling = false;
+  }
 }
 
 onMounted(async () => {
@@ -76,13 +109,16 @@ onBeforeUnmount(() => offAuth?.());
   <template v-else>
     <WorldView
       v-if="world"
+      :key="world.visit"
       :world="world.world"
       :ticket="world.ticket"
       :settings="settings"
       :paused="showSettings"
+      :travel="travel"
       @leave="world = undefined"
       @settings="showSettings = true"
       @change="change"
+      @travel="goThrough"
     />
     <HomeView
       v-else-if="!showSettings"

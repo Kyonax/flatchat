@@ -140,6 +140,11 @@ export default {
     pushToTalk: 'Hold {key} to talk',
     menu: 'Menu',
     resume: 'Back to the world',
+    travelling: 'Travelling to {world}…',
+    portalOpening: 'The portal is opening…',
+    portalOffline: 'The portal leads to {world}, which is offline right now.',
+    portalNowhere: 'This portal leads nowhere: its world does not exist.',
+    portalFailed: 'The portal did not open: {reason}',
     refused: {
       'client-outdated': 'Your FlatChat is too old for this world. Update it.',
       'server-outdated': 'This world runs an older FlatChat than yours.',

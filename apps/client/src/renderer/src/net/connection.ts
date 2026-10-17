@@ -27,6 +27,8 @@ export interface JoinOptions {
   /** STUN and TURN servers from the core (S1.13); none on a LAN or loopback. */
   iceServers?: RTCIceServer[];
   build?: string;
+  /** The spawn group a portal named (S2.11); the world's own spawn points when left out. */
+  spawn?: string;
   timeoutMs?: number;
   /** Gets every message from the first one, the welcome, the join's roster and its snapshot included. */
   onMessage?: (m: Message) => void;
@@ -135,7 +137,7 @@ export class WorldConnection {
       const reply = Promise.race([conn.next('welcome', () => true, timeout), conn.next('refuse', () => true, timeout)]);
       const placed = conn.next('snapshot', (s) => s.correction?.seq === 0, timeout);
       placed.catch(() => undefined); // a refused join never gets one
-      conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token });
+      conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '' });
       const first = await reply;
       if (first.type === 'refuse') throw new JoinRefused(first.reason, first.detail);
       conn.welcome = first;
@@ -177,8 +179,9 @@ export class WorldConnection {
     return structuredClone(this.counters);
   }
 
-  close(reason = 'quit'): void {
-    this.send({ type: 'leave', reason: 'quit', detail: reason });
+  /** Leaves: `travel` when the player went through a portal, `quit` otherwise. */
+  close(detail = 'quit', reason: 'quit' | 'travel' = 'quit'): void {
+    this.send({ type: 'leave', reason, detail });
     setTimeout(() => this.pc.close(), 200);
   }
 

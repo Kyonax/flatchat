@@ -4,12 +4,19 @@ import { PLAZA } from '@flatchat/sim';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { actionFor, type Settings } from '../../../shared/settings';
-import { CHAT_MAX, WorldSession, type WorldState } from '../world/session';
+import { CHAT_MAX, type Travel, WorldSession, type WorldState } from '../world/session';
 import { keyLabel } from './keys';
 import MicQuestion from './MicQuestion.vue';
 
-const props = defineProps<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[] }; settings: Settings; paused: boolean }>();
-const emit = defineEmits<{ leave: []; settings: []; change: [patch: Partial<Settings>] }>();
+const props = defineProps<{
+  world: FlatchatWorld;
+  ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; spawn?: string };
+  settings: Settings;
+  paused: boolean;
+  /** A portal's journey (S2.11): where to, or why it failed. */
+  travel: { status: 'going' | 'failed'; text: string } | undefined;
+}>();
+const emit = defineEmits<{ leave: []; settings: []; change: [patch: Partial<Settings>]; travel: [to: Travel] }>();
 const { t } = useI18n();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -20,6 +27,8 @@ const tooFast = ref(false);
 const menu = ref(false);
 let session: WorldSession | undefined;
 const state = ref<WorldState | undefined>(undefined);
+// Set when this world's portal is taking the player away: the leave says `travel`.
+let travelling = false;
 
 const asking = computed(() => state.value?.status === 'joined' && !props.settings.voice.asked);
 const talkKey = computed(() => props.settings.keys.talk[0] ?? 'KeyT');
@@ -94,6 +103,10 @@ onMounted(async () => {
     return r;
   });
   session.attach();
+  session.onTravel = (to) => {
+    travelling = true;
+    emit('travel', to);
+  };
   window.addEventListener('keydown', onKey);
   document.addEventListener('pointerlockchange', onLockChange);
   await session.start(props.ticket);
@@ -107,6 +120,13 @@ watch(
 );
 
 watch(
+  () => props.travel?.status,
+  (status) => {
+    if (status === 'failed') travelling = false;
+  },
+);
+
+watch(
   () => props.paused,
   (paused) => {
     if (paused) session?.unlock();
@@ -116,7 +136,7 @@ watch(
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey);
   document.removeEventListener('pointerlockchange', onLockChange);
-  session?.leave();
+  session?.leave(travelling ? 'travel' : 'quit');
 });
 </script>
 
@@ -137,7 +157,16 @@ onBeforeUnmount(() => {
       <span class="muted small"> · {{ t('world.frames', { backend: state?.backend ?? '', n: state?.fps ?? 0 }) }}</span>
     </div>
     <div
-      v-if="state?.status === 'connecting'"
+      v-if="travel"
+      class="center whud"
+      :class="{ error: travel.status === 'failed' }"
+      role="status"
+      data-test="travel"
+    >
+      {{ travel.status === 'going' ? (travel.text ? t('world.travelling', { world: travel.text }) : t('world.portalOpening')) : travel.text }}
+    </div>
+    <div
+      v-else-if="state?.status === 'connecting'"
       class="center whud"
       data-test="connecting"
     >
