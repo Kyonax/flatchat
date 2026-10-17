@@ -61,6 +61,20 @@ const resetKeys = (): void => emit('change', { keys: Object.fromEntries(ACTIONS.
 const clear = (a: Action, slot: 0 | 1): void => emit('change', { keys: unbind(props.settings.keys, a, slot) });
 const voice = (patch: Partial<Settings['voice']>): void => emit('change', { voice: { ...props.settings.voice, ...patch } });
 const view = (patch: Partial<Settings['view']>): void => emit('change', { view: { ...props.settings.view, ...patch } });
+const serverDraft = ref(props.settings.core);
+const serverBad = ref(false);
+function saveServer(): void {
+  const text = serverDraft.value.trim();
+  let ok = text === '';
+  try {
+    const u = new URL(text);
+    ok ||= u.protocol === 'https:' || (u.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(u.hostname));
+  } catch {
+    // not a URL
+  }
+  serverBad.value = !ok;
+  if (ok) emit('change', { core: text });
+}
 const num = (e: Event): number => Number((e.target as HTMLInputElement).value);
 const str = (e: Event): string => (e.target as HTMLSelectElement).value;
 </script>
@@ -211,6 +225,22 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           @change="voice({ volume: num($event) })"
         >
       </label>
+      <h2>{{ t('settings.server') }}</h2>
+      <div class="row">
+        <input
+          v-model="serverDraft"
+          type="text"
+          class="grow"
+          :placeholder="t('settings.serverPlaceholder')"
+          data-test="server"
+          @change="saveServer"
+        >
+      </div>
+      <p
+        :class="serverBad ? 'error' : 'muted'"
+      >
+        {{ serverBad ? t('settings.serverInvalid') : t('settings.serverHint') }}
+      </p>
     </div>
   </div>
 </template>

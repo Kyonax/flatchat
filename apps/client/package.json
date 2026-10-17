@@ -15,6 +15,7 @@
     "test": "vitest run",
     "typecheck": "vue-tsc -p tsconfig.json",
     "dist:linux": "npm run build && electron-builder --linux",
+    "dist:testers": "npm run build && electron-builder --linux AppImage tar.gz",
     "dist:win": "npm run build && electron-builder --win --x64"
   },
   "devDependencies": {

@@ -52,6 +52,10 @@ export default {
     volume: 'Voices volume',
     inputDevice: 'Microphone',
     defaultDevice: 'System default',
+    server: 'FlatChat server',
+    serverPlaceholder: 'https://core.example.org',
+    serverHint: 'Leave empty for the usual one. A new address applies when FlatChat restarts.',
+    serverInvalid: 'An https address, like https://core.example.org',
   },
   actions: {
     forward: 'Move forward',

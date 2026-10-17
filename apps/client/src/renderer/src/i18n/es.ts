@@ -56,6 +56,10 @@ const es: Shape<typeof en> = {
     volume: 'Volumen de las voces',
     inputDevice: 'Micrófono',
     defaultDevice: 'El del sistema',
+    server: 'Servidor de FlatChat',
+    serverPlaceholder: 'https://core.example.org',
+    serverHint: 'Déjalo vacío para usar el habitual. Una dirección nueva se aplica al reiniciar FlatChat.',
+    serverInvalid: 'Una dirección https, como https://core.example.org',
   },
   actions: {
     forward: 'Avanzar',

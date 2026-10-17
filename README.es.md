@@ -10,16 +10,15 @@ Creado por [Kyonax](https://github.com/Kyonax). · [Read in English](README.md)
 
 ## Estado
 
-**Etapa 0 del MVP: bases y pruebas de concepto. Todavía no hay nada jugable.**
+**Etapa 1 del MVP: el núcleo en greybox. Una prueba cerrada por invitación.**
 
-La etapa 0 monta este repositorio, las herramientas, la integración continua y el arnés de pruebas, y mide las cuatro mayores incógnitas antes de que la primera etapa jugable dependa de ellas:
+La etapa 0 midió las cuatro mayores incógnitas ([docs/spikes](docs/spikes/README.md)): 200 jugadores en un mundo, la voz, multitudes en un portátil modesto y llegar a un PC de casa. La etapa 1 construye la columna de la plataforma sobre esos resultados: cuentas por invitación en el núcleo, inicio de sesión con el navegador del sistema, el mundo del creador, entrar en él, caminar, correr y saltar en una plaza greybox con avatares provisionales, chat de texto y voz por proximidad, alojado en un PC de casa ([docs/hosting.md](docs/hosting.md)).
 
-- **200 jugadores en un mundo:** bots sobre el protocolo real, contra un servidor de mundo en un PC de casa.
-- **La voz:** eco, ruido, retardo y desvanecimiento con la distancia, en portátiles comunes.
-- **Multitudes en un portátil modesto:** gráficos Intel Iris Xe o AMD Radeon 680M, 720p, 30 cuadros por segundo.
-- **Llegar a un PC de casa:** a través de routers domésticos y del NAT de los operadores (CGNAT), con un servidor de retransmisión cuando nada más funciona.
+Después, el MVP etapa por etapa: mundos y viajes, plugins y moderación, avatares, efectos y una prueba cerrada con la comunidad.
 
-Después, el MVP etapa por etapa: el núcleo en greybox (cuentas, el mundo del creador, entrar, moverse, chat de texto y voz por proximidad), mundos y viajes, plugins y moderación, avatares, efectos y una prueba cerrada con la comunidad.
+## Probarlo
+
+Durante la prueba cerrada FlatChat es solo por invitación: un enlace de invitación crea la cuenta. El cliente para Linux (un AppImage o un .tar.gz) y Windows (un zip) sale de cada ejecución de la integración continua (`flatchat-linux` y `client-windows`), o del enlace que comparta el creador. Ábrelo, inicia sesión con el navegador y elige un mundo. En Configuración están los controles (cada tecla se puede cambiar), la voz (micrófono abierto o pulsar para hablar), el idioma y, para pruebas, la dirección del servidor.
 
 ## Las partes
 

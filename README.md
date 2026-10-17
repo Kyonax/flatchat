@@ -10,16 +10,15 @@ Created by [Kyonax](https://github.com/Kyonax). · [Leer en español](README.es.
 
 ## Status
 
-**Stage 0 of the MVP: foundations and proof spikes. Nothing is playable yet.**
+**Stage 1 of the MVP: the core greybox. A closed test by invitation.**
 
-Stage 0 sets up this repository, the toolchain, CI and the test harness, and measures the four biggest unknowns before the first playable stage depends on them:
+Stage 0 measured the four biggest unknowns ([docs/spikes](docs/spikes/README.md)): 200 players in one world, voice, crowds on a weak laptop, and reaching a home PC. Stage 1 builds the platform's spine on those results: accounts by invitation on the core, signing in through the system browser, the creator's world, joining it, walking, running and jumping on a greybox plaza with placeholder avatars, text chat and proximity voice, hosted from a home PC ([docs/hosting.md](docs/hosting.md)).
 
-- **200 players in one world:** bots on the real protocol, against a world server on a home PC.
-- **Voice:** echo, noise, delay and fading with distance, on ordinary laptops.
-- **Crowds on a weak laptop:** Intel Iris Xe or AMD Radeon 680M graphics, 720p, 30 frames per second.
-- **Reaching a home PC:** through home routers and carrier-grade NAT, with a relay when nothing else works.
+Then the MVP, stage by stage: worlds and travel, plugins and moderation, avatars, effects, and a closed test with the community.
 
-Then the MVP, stage by stage: the core greybox (accounts, the creator's world, joining, moving, text chat and proximity voice), worlds and travel, plugins and moderation, avatars, effects, and a closed test with the community.
+## Trying it
+
+FlatChat is invitation-only during the closed test: an invitation link creates the account. The client for Linux (an AppImage or a .tar.gz) and Windows (a zip) comes from each CI run (`flatchat-linux` and `client-windows`), or from the link the creator shares. Run it, sign in with the browser, and pick a world. Settings has the controls (every key can be changed), the voice (open microphone or push-to-talk), the language and, for tests, the server's address.
 
 ## The parts
 

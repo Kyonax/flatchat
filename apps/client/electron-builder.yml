@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # Packages the built client (out/) for Linux and Windows. Windows builds from Linux as a zip:
 # signing and editing the executable's resources need Wine and wait for the release builds.
+# `npm run dist:linux` makes the unpacked folder the smoke tests run; `npm run dist:testers` adds
+# what testers download (S1.14): an AppImage (one file, most distributions) and a .tar.gz.
 appId: com.kyonax.flatchat
 productName: FlatChat
 electronVersion: 44.8.0
@@ -18,6 +20,8 @@ linux:
   target: dir
   executableName: flatchat
   category: Game
+  artifactName: FlatChat-${version}-linux-${arch}.${ext}
 win:
   target: zip
+  artifactName: FlatChat-${version}-windows-${arch}.${ext}
   signAndEditExecutable: false
