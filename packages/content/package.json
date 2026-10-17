@@ -1,0 +1,22 @@
+{
+  "name": "@flatchat/content",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's content formats: the world format's manifest and markers, and its validator.",
+  "license": "Apache-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "smol-toml": "1.9.1"
+  }
+}

@@ -49,7 +49,8 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 | `packages/protocol` | The wire protocol: codecs, messages, connect tokens, the version handshake, golden packets ([docs/protocol.md](docs/protocol.md)) |
 | `apps/core` | The central service: `src/app.ts` (the routes), `src/main.ts` (the program), `src/admin.ts` (the admin command line), accounts, the age rule, sign-in and sessions, worlds and connect tokens, `src/migrations/` (PostgreSQL) |
 | `packages/sim` | Movement rules shared by client and server: the controller, the move checks, the greybox plaza |
-| `packages/*` | The other shared libraries: content, plugin-sdk (not started) |
+| `packages/content` | The world format's manifest, markers and validator ([docs/world-format.md](docs/world-format.md)) |
+| `packages/*` | The plugin SDK (not started) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |
 | `tools/bots` | Headless bots on the real protocol and the load-test runner (`npm run bots`) |
