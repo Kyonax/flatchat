@@ -71,6 +71,7 @@ Reference these guidelines when:
 | The client app: signing in through the browser, settings and key bindings, the two languages, the world view, chat, voice in the world, the end-to-end test | `rules/client-app.md` + `rules/client-electron.md` |
 | Movement: the character controller, the server's move checks, the plaza and maps | `rules/movement-sim.md` + `rules/world-networking.md` |
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
+| Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -94,6 +95,7 @@ A trap-linter finding names its rule; read that rule.
 | `avatars-and-crowds` | VRM on the WebGPU renderer (MToon node materials, shared textures, VRM 0.x poses), what the converter must do (merge materials, texture budgets), paced swaps, the crowd bench and S0.09's pass lines, the test-avatar sets. |
 | `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
 | `client-app` | The app mode: sign-in in the main process (core-api, loopback, auth, safeStorage), settings and bindings, vue-i18n with the bare-strings rule, the world view (session, controls, remotes, camera, instanced avatars), chat and voice limits, the end-to-end test with Playwright. |
+| `host-tool` | `tools/host-tool`: sign-in from a terminal, request, approve on `/admin` (CSRF, session cookie), key, run; the capacity advisor; the package and container image; the world's SQLite database. |
 | `world-format` | `packages/content`: world.toml's fields, the OMI and FLATCHAT_world markers at world transforms, safe paths, limits, `validateWorld`. |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
