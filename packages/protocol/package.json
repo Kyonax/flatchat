@@ -1,0 +1,21 @@
+{
+  "name": "@flatchat/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's wire protocol: the message schema, bit-packed codecs, the connect token and the version handshake.",
+  "license": "Apache-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./golden": "./src/golden.ts"
+  },
+  "scripts": {
+    "golden": "node scripts/golden.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json"
+  }
+}

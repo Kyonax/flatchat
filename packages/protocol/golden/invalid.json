@@ -1,0 +1,120 @@
+{
+  "cases": [
+    {
+      "name": "empty",
+      "kind": "message",
+      "from": null,
+      "hex": "",
+      "error": "truncated"
+    },
+    {
+      "name": "type-zero",
+      "kind": "message",
+      "from": null,
+      "hex": "00",
+      "error": "unknown-type"
+    },
+    {
+      "name": "type-unknown",
+      "kind": "message",
+      "from": null,
+      "hex": "ff",
+      "error": "unknown-type"
+    },
+    {
+      "name": "cut-short",
+      "kind": "message",
+      "from": null,
+      "base": "ping",
+      "truncate": 3,
+      "error": "truncated",
+      "hex": "050201"
+    },
+    {
+      "name": "extra-byte",
+      "kind": "message",
+      "from": null,
+      "base": "ping",
+      "append": "00",
+      "error": "trailing",
+      "hex": "0502010d0c0b0a00"
+    },
+    {
+      "name": "padding-bit",
+      "kind": "message",
+      "from": "client",
+      "base": "pose-origin",
+      "xor": [
+        14,
+        128
+      ],
+      "error": "padding",
+      "hex": "100000000000000000000000000080"
+    },
+    {
+      "name": "welcome-from-client",
+      "kind": "message",
+      "from": "client",
+      "base": "welcome",
+      "error": "wrong-direction",
+      "hex": "02000005302e302e300f1e2d3c4b5a49788796a5b4c3d2e1f001001440e20100"
+    },
+    {
+      "name": "hello-from-server",
+      "kind": "message",
+      "from": "server",
+      "base": "hello",
+      "error": "wrong-direction",
+      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "name": "length-padded",
+      "kind": "message",
+      "from": "client",
+      "hex": "208000",
+      "error": "bad-varint"
+    },
+    {
+      "name": "text-too-long",
+      "kind": "message",
+      "from": "client",
+      "hex": "208108",
+      "error": "too-long"
+    },
+    {
+      "name": "seventeen-voices",
+      "kind": "message",
+      "from": "server",
+      "hex": "3111",
+      "error": "too-long"
+    },
+    {
+      "name": "bad-utf8",
+      "kind": "message",
+      "from": "client",
+      "hex": "2001ff",
+      "error": "bad-utf8"
+    },
+    {
+      "name": "reason-out-of-range",
+      "kind": "message",
+      "from": "server",
+      "base": "refuse-version",
+      "xor": [
+        1,
+        15
+      ],
+      "error": "out-of-range",
+      "hex": "030f0000000000"
+    },
+    {
+      "name": "block-extra-byte",
+      "kind": "block",
+      "from": null,
+      "base": "empty",
+      "append": "00",
+      "error": "trailing",
+      "hex": "00000000000000"
+    }
+  ]
+}

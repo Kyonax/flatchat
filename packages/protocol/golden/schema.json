@@ -1,0 +1,961 @@
+{
+  "protocol": 1,
+  "fingerprint": "5af998cf",
+  "schema": {
+    "constants": {
+      "maxMessageBytes": 65536,
+      "cellSize": 32
+    },
+    "messages": [
+      {
+        "name": "hello",
+        "id": 1,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "protocol",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "fingerprint",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "build",
+              "type": {
+                "kind": "string",
+                "maxBytes": 32
+              }
+            },
+            {
+              "name": "token",
+              "type": {
+                "kind": "bytes",
+                "maxBytes": 256
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "welcome",
+        "id": 2,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "protocol",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "build",
+              "type": {
+                "kind": "string",
+                "maxBytes": 32
+              }
+            },
+            {
+              "name": "world",
+              "type": {
+                "kind": "uuid"
+              }
+            },
+            {
+              "name": "entity",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "tickHz",
+              "type": {
+                "kind": "uint",
+                "bits": 8
+              }
+            },
+            {
+              "name": "tick",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "refuse",
+        "id": 3,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "reason",
+              "type": {
+                "kind": "enum",
+                "bits": 4,
+                "values": [
+                  "client-outdated",
+                  "server-outdated",
+                  "schema-mismatch",
+                  "token-invalid",
+                  "token-expired",
+                  "token-replayed",
+                  "wrong-world",
+                  "full",
+                  "banned",
+                  "rule",
+                  "closing",
+                  "error"
+                ]
+              }
+            },
+            {
+              "name": "protocolMin",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "protocolMax",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "detail",
+              "type": {
+                "kind": "string",
+                "maxBytes": 160
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "leave",
+        "id": 4,
+        "from": "either",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "reason",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "quit",
+                  "travel",
+                  "kicked",
+                  "banned",
+                  "timeout",
+                  "closing",
+                  "error"
+                ]
+              }
+            },
+            {
+              "name": "detail",
+              "type": {
+                "kind": "string",
+                "maxBytes": 160
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "ping",
+        "id": 5,
+        "from": "either",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "id",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "time",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "pong",
+        "id": 6,
+        "from": "either",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "id",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "time",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "pose",
+        "id": 16,
+        "from": "client",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "seq",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "position",
+              "type": {
+                "kind": "struct",
+                "fields": [
+                  {
+                    "name": "x",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "y",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 18,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "z",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "yaw",
+              "type": {
+                "kind": "angle",
+                "bits": 10
+              }
+            },
+            {
+              "name": "look",
+              "type": {
+                "kind": "fixed",
+                "bits": 8,
+                "fraction": 6,
+                "signed": true
+              }
+            },
+            {
+              "name": "stance",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "standing",
+                  "crouching",
+                  "sitting",
+                  "jumping",
+                  "falling",
+                  "flying"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "snapshot",
+        "id": 17,
+        "from": "server",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "tick",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "ack",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "uint",
+                  "bits": 16
+                }
+              }
+            },
+            {
+              "name": "correction",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "seq",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 16
+                      }
+                    },
+                    {
+                      "name": "position",
+                      "type": {
+                        "kind": "struct",
+                        "fields": [
+                          {
+                            "name": "x",
+                            "type": {
+                              "kind": "fixed",
+                              "bits": 28,
+                              "fraction": 7,
+                              "signed": true
+                            }
+                          },
+                          {
+                            "name": "y",
+                            "type": {
+                              "kind": "fixed",
+                              "bits": 18,
+                              "fraction": 7,
+                              "signed": true
+                            }
+                          },
+                          {
+                            "name": "z",
+                            "type": {
+                              "kind": "fixed",
+                              "bits": 28,
+                              "fraction": 7,
+                              "signed": true
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "name": "yaw",
+                      "type": {
+                        "kind": "angle",
+                        "bits": 10
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "blocks",
+              "type": {
+                "kind": "list",
+                "max": 256,
+                "of": {
+                  "kind": "bytes",
+                  "maxBytes": 4096
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "roster",
+        "id": 18,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "full",
+              "type": {
+                "kind": "bool"
+              }
+            },
+            {
+              "name": "players",
+              "type": {
+                "kind": "list",
+                "max": 256,
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "entity",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 16
+                      }
+                    },
+                    {
+                      "name": "account",
+                      "type": {
+                        "kind": "uuid"
+                      }
+                    },
+                    {
+                      "name": "name",
+                      "type": {
+                        "kind": "string",
+                        "maxBytes": 64
+                      }
+                    },
+                    {
+                      "name": "trust",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 3
+                      }
+                    },
+                    {
+                      "name": "avatar",
+                      "type": {
+                        "kind": "optional",
+                        "of": {
+                          "kind": "fixedBytes",
+                          "length": 32
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "left",
+              "type": {
+                "kind": "list",
+                "max": 256,
+                "of": {
+                  "kind": "uint",
+                  "bits": 16
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "say",
+        "id": 32,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "text",
+              "type": {
+                "kind": "string",
+                "maxBytes": 1024
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "chat",
+        "id": 33,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "from",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "uint",
+                  "bits": 16
+                }
+              }
+            },
+            {
+              "name": "text",
+              "type": {
+                "kind": "string",
+                "maxBytes": 1024
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "voice",
+        "id": 48,
+        "from": "client",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "seq",
+              "type": {
+                "kind": "uint",
+                "bits": 16
+              }
+            },
+            {
+              "name": "start",
+              "type": {
+                "kind": "bool"
+              }
+            },
+            {
+              "name": "mouth",
+              "type": {
+                "kind": "struct",
+                "fields": [
+                  {
+                    "name": "aa",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  },
+                  {
+                    "name": "ih",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  },
+                  {
+                    "name": "ou",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  },
+                  {
+                    "name": "ee",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  },
+                  {
+                    "name": "oh",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  },
+                  {
+                    "name": "level",
+                    "type": {
+                      "kind": "uint",
+                      "bits": 4
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "opus",
+              "type": {
+                "kind": "bytes",
+                "maxBytes": 255
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "voiceBundle",
+        "id": 49,
+        "from": "server",
+        "channel": "unreliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "frames",
+              "type": {
+                "kind": "list",
+                "max": 16,
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "from",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 16
+                      }
+                    },
+                    {
+                      "name": "seq",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 16
+                      }
+                    },
+                    {
+                      "name": "start",
+                      "type": {
+                        "kind": "bool"
+                      }
+                    },
+                    {
+                      "name": "mouth",
+                      "type": {
+                        "kind": "struct",
+                        "fields": [
+                          {
+                            "name": "aa",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          },
+                          {
+                            "name": "ih",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          },
+                          {
+                            "name": "ou",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          },
+                          {
+                            "name": "ee",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          },
+                          {
+                            "name": "oh",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          },
+                          {
+                            "name": "level",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 4
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "name": "opus",
+                      "type": {
+                        "kind": "bytes",
+                        "maxBytes": 255
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "cellBlock": {
+      "kind": "struct",
+      "fields": [
+        {
+          "name": "cx",
+          "type": {
+            "kind": "int",
+            "bits": 16
+          }
+        },
+        {
+          "name": "cz",
+          "type": {
+            "kind": "int",
+            "bits": 16
+          }
+        },
+        {
+          "name": "full",
+          "type": {
+            "kind": "list",
+            "max": 256,
+            "of": {
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "uint",
+                    "bits": 16
+                  }
+                },
+                {
+                  "name": "x",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 12,
+                    "fraction": 7,
+                    "signed": false
+                  }
+                },
+                {
+                  "name": "y",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 18,
+                    "fraction": 7,
+                    "signed": true
+                  }
+                },
+                {
+                  "name": "z",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 12,
+                    "fraction": 7,
+                    "signed": false
+                  }
+                },
+                {
+                  "name": "yaw",
+                  "type": {
+                    "kind": "angle",
+                    "bits": 10
+                  }
+                },
+                {
+                  "name": "look",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 8,
+                    "fraction": 6,
+                    "signed": true
+                  }
+                },
+                {
+                  "name": "stance",
+                  "type": {
+                    "kind": "enum",
+                    "bits": 3,
+                    "values": [
+                      "standing",
+                      "crouching",
+                      "sitting",
+                      "jumping",
+                      "falling",
+                      "flying"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "coarse",
+          "type": {
+            "kind": "list",
+            "max": 256,
+            "of": {
+              "kind": "struct",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "uint",
+                    "bits": 16
+                  }
+                },
+                {
+                  "name": "x",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 8,
+                    "fraction": 3,
+                    "signed": false
+                  }
+                },
+                {
+                  "name": "y",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 12,
+                    "fraction": 1,
+                    "signed": true
+                  }
+                },
+                {
+                  "name": "z",
+                  "type": {
+                    "kind": "fixed",
+                    "bits": 8,
+                    "fraction": 3,
+                    "signed": false
+                  }
+                },
+                {
+                  "name": "yaw",
+                  "type": {
+                    "kind": "angle",
+                    "bits": 6
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "token": {
+      "version": 0,
+      "cipher": "AES-256-GCM",
+      "header": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": {
+              "kind": "uint",
+              "bits": 8
+            }
+          },
+          {
+            "name": "world",
+            "type": {
+              "kind": "uuid"
+            }
+          },
+          {
+            "name": "expiresAt",
+            "type": {
+              "kind": "u64"
+            }
+          },
+          {
+            "name": "nonce",
+            "type": {
+              "kind": "fixedBytes",
+              "length": 12
+            }
+          }
+        ]
+      },
+      "claims": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "account",
+            "type": {
+              "kind": "uuid"
+            }
+          },
+          {
+            "name": "name",
+            "type": {
+              "kind": "string",
+              "maxBytes": 64
+            }
+          },
+          {
+            "name": "trust",
+            "type": {
+              "kind": "uint",
+              "bits": 3
+            }
+          },
+          {
+            "name": "tester",
+            "type": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "emailVerified",
+            "type": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "under18",
+            "type": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "ageDays",
+            "type": {
+              "kind": "uint",
+              "bits": 16
+            }
+          }
+        ]
+      }
+    }
+  }
+}

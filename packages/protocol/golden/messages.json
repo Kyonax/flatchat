@@ -1,0 +1,265 @@
+{
+  "cases": [
+    {
+      "name": "hello",
+      "value": {
+        "type": "hello",
+        "protocol": 0,
+        "fingerprint": 305419896,
+        "build": "0.0.0",
+        "token": "000102030405060708090a0b0c0d0e0f"
+      },
+      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "name": "welcome",
+      "value": {
+        "type": "welcome",
+        "protocol": 0,
+        "build": "0.0.0",
+        "world": "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0",
+        "entity": 1,
+        "tickHz": 20,
+        "tick": 123456
+      },
+      "hex": "02000005302e302e300f1e2d3c4b5a49788796a5b4c3d2e1f001001440e20100"
+    },
+    {
+      "name": "refuse-version",
+      "value": {
+        "type": "refuse",
+        "reason": "client-outdated",
+        "protocolMin": 0,
+        "protocolMax": 0,
+        "detail": ""
+      },
+      "hex": "03000000000000"
+    },
+    {
+      "name": "refuse-rule",
+      "value": {
+        "type": "refuse",
+        "reason": "rule",
+        "protocolMin": 3,
+        "protocolMax": 4,
+        "detail": "Solo para la comunidad: ñandú 🎮"
+      },
+      "hex": "03390040004002536f6c6f2070617261206c6120636f6d756e696461643a20c3b1616e64c3ba20f09f8eae"
+    },
+    {
+      "name": "leave-travel",
+      "value": {
+        "type": "leave",
+        "reason": "travel",
+        "detail": ""
+      },
+      "hex": "040100"
+    },
+    {
+      "name": "ping",
+      "value": {
+        "type": "ping",
+        "id": 258,
+        "time": 168496141
+      },
+      "hex": "0502010d0c0b0a"
+    },
+    {
+      "name": "pong",
+      "value": {
+        "type": "pong",
+        "id": 258,
+        "time": 168496141
+      },
+      "hex": "0602010d0c0b0a"
+    },
+    {
+      "name": "pose-origin",
+      "value": {
+        "type": "pose",
+        "seq": 0,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "yaw": 0,
+        "look": 0,
+        "stance": "standing"
+      },
+      "hex": "100000000000000000000000000000"
+    },
+    {
+      "name": "pose-far",
+      "value": {
+        "type": "pose",
+        "seq": 65535,
+        "position": {
+          "x": -1000.5,
+          "y": 2.25,
+          "z": 4321.125
+        },
+        "yaw": 3.141592653589793,
+        "look": -0.25,
+        "stance": "flying"
+      },
+      "hex": "10ffffc00bfe0f1200241c0200085f"
+    },
+    {
+      "name": "snapshot-empty",
+      "value": {
+        "type": "snapshot",
+        "tick": 1,
+        "blocks": []
+      },
+      "hex": "11010000000000"
+    },
+    {
+      "name": "snapshot-correction",
+      "value": {
+        "type": "snapshot",
+        "tick": 4294967295,
+        "ack": 7,
+        "correction": {
+          "seq": 6,
+          "position": {
+            "x": 12.5,
+            "y": -3.25,
+            "z": 1.75
+          },
+          "yaw": 1.5707963267948966
+        },
+        "blocks": [
+          "deadbeef",
+          "0102"
+        ]
+      },
+      "hex": "11ffffffff0f001a000019000098ffe0000000900001deadbeef020102"
+    },
+    {
+      "name": "roster-full",
+      "value": {
+        "type": "roster",
+        "full": true,
+        "players": [
+          {
+            "entity": 1,
+            "account": "6b0e2c1a-7f3d-4e8a-9c21-5d4f3a2b1c0e",
+            "name": "Kyonax",
+            "trust": 4
+          },
+          {
+            "entity": 2,
+            "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
+            "name": "Ñandú 🎮",
+            "trust": 0,
+            "avatar": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        ],
+        "left": []
+      },
+      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178240000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85500"
+    },
+    {
+      "name": "roster-change",
+      "value": {
+        "type": "roster",
+        "full": false,
+        "players": [],
+        "left": [
+          3,
+          4
+        ]
+      },
+      "hex": "1200040600080000"
+    },
+    {
+      "name": "say",
+      "value": {
+        "type": "say",
+        "text": "hola 👋"
+      },
+      "hex": "2009686f6c6120f09f918b"
+    },
+    {
+      "name": "chat-player",
+      "value": {
+        "type": "chat",
+        "from": 1,
+        "text": "hello"
+      },
+      "hex": "2103000a0068656c6c6f"
+    },
+    {
+      "name": "chat-world",
+      "value": {
+        "type": "chat",
+        "text": "The world restarts in 5 minutes."
+      },
+      "hex": "21400054686520776f726c6420726573746172747320696e2035206d696e757465732e"
+    },
+    {
+      "name": "voice",
+      "value": {
+        "type": "voice",
+        "seq": 100,
+        "mouth": {
+          "aa": 15,
+          "ih": 0,
+          "ou": 3,
+          "ee": 7,
+          "oh": 1,
+          "level": 9
+        },
+        "opus": "78a1b2c3d4e5f60718293a4b5c6d7e8f",
+        "start": true
+      },
+      "hex": "3064001fe622210078a1b2c3d4e5f60718293a4b5c6d7e8f"
+    },
+    {
+      "name": "voice-bundle",
+      "value": {
+        "type": "voiceBundle",
+        "frames": [
+          {
+            "from": 1,
+            "seq": 100,
+            "mouth": {
+              "aa": 15,
+              "ih": 0,
+              "ou": 3,
+              "ee": 7,
+              "oh": 1,
+              "level": 9
+            },
+            "opus": "78a1b2c3d4e5f60718293a4b5c6d7e8f",
+            "start": false
+          },
+          {
+            "from": 2,
+            "seq": 7,
+            "mouth": {
+              "aa": 0,
+              "ih": 0,
+              "ou": 0,
+              "ee": 0,
+              "oh": 0,
+              "level": 0
+            },
+            "opus": "f8",
+            "start": true
+          }
+        ]
+      },
+      "hex": "3102010064001ee622210078a1b2c3d4e5f60718293a4b5c6d7e8f020007000100000200f8"
+    },
+    {
+      "name": "voice-bundle-empty",
+      "value": {
+        "type": "voiceBundle",
+        "frames": []
+      },
+      "hex": "3100"
+    }
+  ]
+}
