@@ -72,7 +72,7 @@ Node.js removes `import type` lines before it runs a file, so the plugin needs n
 | `on_command` | For each chat line starting with `/`, which no one else sees | `player`, `name` (lowercase, 32 characters at most), `args` (16 words at most) | Nothing |
 | `on_zone_enter`, `on_zone_exit` | When a player's position enters or leaves one of the world's [zones](world-format.md) | `player`, `{ index, kind }` | Nothing |
 | `on_tick` | Every state tick (20 a second by default) | `tick` | Nothing |
-| `on_voice_settings` | Arrives with the voice controls (S3.08); not called yet | `player` | `{ range, gain }`. Needs `voice` |
+| `on_voice_settings` | When the player joins, and whenever the zones it stands in change | `player` | `{ range, gain }`: `range` in metres (1 to 200), `gain` a multiplier (1 as spoken, up to 4); either may be left out. It overrides the zone's; a minor's voice stays within the world's range and gain whatever it says (S3.10). Needs `voice` |
 
 A player's facts come from the connect token the core sealed for this world: `entity` (its number in this world), `account`, `name`, `trust` (0 to 7), `tester`, `emailVerified`, `ageDays` (the account's age) and `under18`; and `role`, the player's role in this world (`visitor`, `builder`, `moderator`, `admin` or `owner`, S3.06). A world never learns a player's email or birth date.
 
