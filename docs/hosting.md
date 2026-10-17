@@ -89,6 +89,8 @@ Carrier-grade NAT (common in Colombia: the census in [spikes/s-home.md](spikes/s
 
 The world server receives its own credentials from the core over its WebSocket, so a world behind carrier-grade NAT can relay too.
 
+To check a relay, start the client with `--relay-only`: it then connects to worlds only through the TURN servers the core hands out, as a player behind a NAT that lets nothing else through would. If the join fails with `--relay-only` and works without it, the relay is not reachable or its credentials do not match the core's settings. CI runs the end-to-end test this way against coturn on every change (`node tools/bots/src/e2e.ts CLIENT --relay`).
+
 ## 5. Inviting friends
 
 ```sh
