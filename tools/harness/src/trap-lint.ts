@@ -56,6 +56,8 @@ export const TRAPS = {
   T15: { severity: 'error', rule: 'ci-github-actions', title: 'Linux client smoke test that cannot draw', fix: 'on Ubuntu runners, lift the AppArmor user-namespace limit in an earlier step and pass --enable-unsafe-swiftshader' },
   T16: { severity: 'warning', rule: 'client-electron', title: 'external link opened unchecked', fix: 'pass shell.openExternal only URLs built in code or checked against an allow-list of https hosts' },
   T17: { severity: 'error', rule: 'protocol-and-codecs', title: 'Node.js API in a shared package', fix: 'packages/ also run in the client\'s sandboxed renderer: use what Node.js and browsers both have (Uint8Array, DataView, TextEncoder, crypto.subtle), never Node built-ins, Buffer, process or __dirname' },
+  T18: { severity: 'error', rule: 'core-service', title: 'SQL text built at run time', fix: 'pass values as query parameters ($1, $2, …); a template may only splice in an ALL_CAPS constant such as a column list' },
+  T19: { severity: 'error', rule: 'core-service', title: 'markup made from data in the core\'s pages', fix: 'raw() takes only literal markup written in the code; everything else goes through html`…`, which escapes it' },
 } as const satisfies Record<string, Trap>;
 
 export type TrapId = keyof typeof TRAPS;
@@ -74,6 +76,17 @@ const isPreload = (rel: string): boolean => rel.startsWith('apps/client/src/prel
 const isClient = (rel: string): boolean => rel.startsWith('apps/client/');
 /** The shared libraries' code, which runs in Node.js and in the client's renderer alike. */
 const isShared = (rel: string): boolean => /^packages\/[^/]+\/src\//.test(rel);
+const isCore = (rel: string): boolean => rel.startsWith('apps/core/src/');
+const CONSTANT = /^[A-Z][A-Z0-9_]*$/;
+
+/** SQL that is not one piece of text: a template splicing in anything but an ALL_CAPS constant,
+ *  or a + with a non-literal side. A variable holding SQL is not judged. */
+function dynamicSql(arg: ts.Expression): boolean {
+  if (ts.isTemplateExpression(arg)) return arg.templateSpans.some((span) => !(ts.isIdentifier(span.expression) && CONSTANT.test(span.expression.text)));
+  if (ts.isBinaryExpression(arg) && arg.operatorToken.kind === ts.SyntaxKind.PlusToken) return !(isStringLike(arg.left) && isStringLike(arg.right));
+  if (ts.isParenthesizedExpression(arg)) return dynamicSql(arg.expression);
+  return false;
+}
 
 /** Is this identifier a use of the global (Buffer.from, process.env, f(__dirname)), not a property name? */
 function usesGlobal(id: ts.Identifier): boolean {
@@ -181,6 +194,10 @@ function scanCode(rel: string, text: string, kind = scriptKind(rel), lineOffset 
         add('T16', node, 'shell.openExternal gets a URL built at run time');
       } else if (isPreload(rel) && /(^|\.)ipcRenderer\.\w+$/.test(callee) && IPC_METHODS.has(callee.split('.').pop() ?? '')) {
         if (!(first && ts.isStringLiteral(first))) add('T09', node, `${callee} gets a channel chosen at run time`);
+      }
+      if (/(^|\.)query$/.test(callee) && first && dynamicSql(first)) add('T18', node, `${callee} gets SQL text built at run time`);
+      if (isCore(rel) && callee === 'raw' && first && !ts.isStringLiteral(first) && !ts.isNoSubstitutionTemplateLiteral(first)) {
+        add('T19', node, 'raw(…) marks text built at run time as markup');
       }
       const [base, method] = [callee.split('.').slice(0, -1).join('.'), callee.split('.').pop()];
       if ((method === 'exec' || method === 'execSync') && childProcessNames.has(base)) {

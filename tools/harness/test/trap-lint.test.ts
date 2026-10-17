@@ -103,6 +103,28 @@ describe('the shared packages', () => {
   });
 });
 
+describe('the core', () => {
+  it('rejects SQL built at run time (T18) but not parameters or constant column lists', () => {
+    const bad = {
+      rel: 'apps/core/src/a.ts',
+      text: "db.query(`select * from accounts where email = '${email}'`);\nsql.query('select ' + cols + ' from x');\nawait this.pool.query(`delete from ${table}`);",
+    };
+    const good = {
+      rel: 'apps/core/src/b.ts',
+      text: "db.query('select 1 from accounts where email_key = $1', [key]);\ndb.query(`select ${ACCOUNT_COLUMNS} from accounts where id = $1`, [id]);\ndb.query('select 1' + ' from x');\ndb.query(text);",
+    };
+    expect(traps(bad, good)).toEqual(['T18', 'T18', 'T18']);
+  });
+
+  it('rejects markup made from data in its pages (T19)', () => {
+    const src = {
+      rel: 'apps/core/src/pages.ts',
+      text: "raw('<b>ok</b>');\nraw(`<i>ok</i>`);\nraw(name);\nraw(`<b>${name}</b>`);\nraw('<b>' + name);",
+    };
+    expect(traps(src)).toEqual(['T19', 'T19', 'T19']);
+  });
+});
+
 describe('CI workflows', () => {
   const wf = (text: string): Source => ({ rel: '.github/workflows/ci.yml', text });
   const good = `jobs:
