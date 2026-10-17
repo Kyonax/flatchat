@@ -8,6 +8,8 @@
 //
 //   node tools/converter/scripts/make-travel.ts OUT --worlds ID_A,ID_B [--names "A,B"] [--kits plaza,park]
 //        [--modes reset,persistent]   (each world's persistence; the kits' own when left out)
+//        [--quiet]                    (Stage 3's acceptance, S3.13: the second world gets a quiet zone,
+//                                      with a spawn group `quiet` inside it and `near-quiet` 7 m outside)
 //
 // Writes OUT/a and OUT/b (world folders) and OUT/a.built and OUT/b.built. One JSON line names each
 // world's portal centre and arrival point, in its metres (and the first world's at the top).
@@ -23,7 +25,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
@@ -86,11 +88,22 @@ function fountainWav(seconds = 2, rate = 22_050): Uint8Array {
   return out;
 }
 
-function travelScene(kit: 'plaza' | 'park', to: string): Uint8Array {
+/** The quiet zone of the second world (S3.13): a 6 m box, away from the portal and the arrivals. */
+function quietMarkers(kit: 'plaza' | 'park'): NodeSpec[] {
+  const [x, y, z] = kit === 'park' ? [24, 0, 8] : [C + 14, pave, C - 14];
+  return [
+    { name: 'quiet-zone', translation: [x, y + 2, z], extensions: { FLATCHAT_world: { zone: { kind: 'quiet', size: [6, 4, 6] } } } },
+    { name: 'quiet', translation: [x, y, z], extensions: { OMI_spawn_point: { title: 'Quiet', group: 'quiet' } } },
+    { name: 'near-quiet', translation: [x, y, z + 7], extensions: { OMI_spawn_point: { title: 'Near the quiet', group: 'near-quiet' } } },
+  ];
+}
+
+function travelScene(kit: 'plaza' | 'park', to: string, quiet = false): Uint8Array {
   const { portal, arrival } = LAYOUT[kit];
   const markers: NodeSpec[] = [
     { name: 'portal', translation: portal, extensions: { FLATCHAT_world: { portal: { world: to, spawn: 'arrival', size: SIZE } } } },
     { name: 'arrival', translation: arrival, extensions: { OMI_spawn_point: { title: 'Arrivals', group: 'arrival' } } },
+    ...(quiet ? quietMarkers(kit) : []),
   ];
   if (kit === 'park') {
     // The base library's arch around the portal: still no geometry in the park's files.
@@ -122,7 +135,7 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
   const dir = join(out, label);
   mkdirSync(dir, { recursive: true });
   cpSync(join(ROOT, 'kits', 'worlds', kit), dir, { recursive: true });
-  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!));
+  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!, values.quiet && label === 'b'));
   if (kit === 'plaza') writeFileSync(join(dir, 'scenes', 'fountain.wav'), fountainWav());
   let toml = readFileSync(join(dir, 'world.toml'), 'utf8').replace(/^name = ".*"$/m, `name = ${JSON.stringify(names[k])}`);
   if (modes) toml = toml.replace(/^mode = ".*"$/m, `mode = "${modes[k]}"`);
