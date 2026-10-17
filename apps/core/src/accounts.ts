@@ -60,7 +60,8 @@ function toAccount(r: AccountRow): Account {
 }
 
 /** The version of the short privacy notice every account agrees to (the full policy: S7.02). */
-export const NOTICE_VERSION = '2026-10-17';
+// .2: worlds also receive ownership, blocks and a minor's friends; moderation decisions are kept (S3.07).
+export const NOTICE_VERSION = '2026-10-17.2';
 
 // ------------------------------------------------------------------------------ the fields
 
@@ -221,7 +222,8 @@ export async function signUp(db: Db, s: SignUp, o: SignUpOptions): Promise<SignU
 
 // ------------------------------------------------------------------------------- sign-in
 
-export type SignInResult = { ok: true; account: Account } | { ok: false; problem: 'wrong' | 'suspended' | 'banned' };
+/** A suspended or banned account's id comes back only once its password checked (S3.07). */
+export type SignInResult = { ok: true; account: Account } | { ok: false; problem: 'wrong'; account?: undefined } | { ok: false; problem: 'suspended' | 'banned'; account: string };
 
 /** Checks an email and password. A missing address costs the same time as a wrong password. */
 export async function checkSignIn(db: Sql, email: string, password: string, decoy: Promise<string>): Promise<SignInResult> {
@@ -231,7 +233,7 @@ export async function checkSignIn(db: Sql, email: string, password: string, deco
     return { ok: false, problem: 'wrong' };
   }
   if (!(await verifyPassword(password, row.password_hash))) return { ok: false, problem: 'wrong' };
-  if (row.status !== 'active') return { ok: false, problem: row.status };
+  if (row.status !== 'active') return { ok: false, problem: row.status, account: row.id };
   return { ok: true, account: toAccount(row) };
 }
 

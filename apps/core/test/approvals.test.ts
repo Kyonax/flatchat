@@ -46,7 +46,7 @@ describe('approving another host’s world', () => {
     const stranger = await account('stranger@example.org');
 
     // 1. The host asks: a relayed world, pending.
-    const made = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name: 'Second Home', address: 'relay', capacity: 30 } });
+    const made = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name: 'Second Home', address: 'relay', capacity: 30, agreement: 1 } });
     const world = made.json() as { id: string; status: string };
     expect(world.status).toBe('pending');
     expect((await app.inject({ method: 'GET', url: '/api/v1/my/worlds', headers: host.bearer })).json()).toMatchObject({ worlds: [{ id: world.id, status: 'pending' }] });

@@ -114,7 +114,7 @@ describe('sign-up by invitation (S1.02, S1.03)', () => {
     expect(a?.email_verified).toBe(true);
     expect(a?.password_hash).toMatch(/^\$argon2id\$/);
     const consents = await db.query<{ kind: string; notice_version: string }>('select kind, notice_version from consents where account_id = $1', [a!.id]);
-    expect(consents).toEqual([{ kind: 'data-processing', notice_version: '2026-10-17' }]);
+    expect(consents).toEqual([{ kind: 'data-processing', notice_version: '2026-10-17.2' }]);
     const dup = await signupWith(signupFields(await invite(), { email: 'bea@example.org' }));
     expect(dup.body).toContain('already exists');
   });
@@ -297,7 +297,7 @@ describe('worlds and connect tokens (S1.05, S1.06)', () => {
     const t = await signIn('hal@example.org');
     const auth = { authorization: `Bearer ${t.access}` };
     expect((await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: auth, payload: { name: 'Plaza', address: 'http://example.org/rtc' } })).statusCode).toBe(400);
-    const created = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: auth, payload: { name: 'Kyonax Plaza', address: 'http://127.0.0.1:7779/rtc', capacity: 60 } });
+    const created = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: auth, payload: { name: 'Kyonax Plaza', address: 'http://127.0.0.1:7779/rtc', capacity: 60, agreement: 1 } });
     expect(created.statusCode).toBe(201);
     const world = created.json() as { id: string; status: string };
     expect(world.status).toBe('pending');

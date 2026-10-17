@@ -44,9 +44,9 @@ Run with the same environment: `node --env-file=FILE apps/core/src/admin.ts COMM
 | `migrate` | Applies the database migrations (the core also does it when it starts) |
 | `invite [--email E] [--note N] [--days 14]` | Prints a sign-up link, shown once. With `--email`, only that address can use it and it counts as verified |
 | `invites`, `accounts` | Lists them |
-| `account EMAIL [--tester on\|off] [--trust 0-7] [--status active\|suspended\|banned]` | Shows or changes an account; suspending or banning ends its sessions |
+| `account EMAIL [--tester on\|off] [--trust 0-7] [--status active\|suspended\|banned --reason R]` | Shows or changes an account; a status change needs the reason the account is shown (S3.07), and is recorded; suspending or banning ends its sessions |
 | `worlds [--status pending\|approved\|revoked]` | Lists the worlds |
-| `world register --name N --owner EMAIL --address URL [--capacity 50]` | Registers a world for an account |
+| `world register --name N --owner EMAIL --address URL [--capacity 50]` | Registers a world for an account (the operator's own: the host agreement counts as accepted) |
 | `world approve ID [--note N]` | Approves it and prints `FLATCHAT_WORLD_KEY` and `FLATCHAT_WORLD_ID` for the world server's environment, once |
 | `world revoke ID [--note N]`, `world events ID` | Revokes it; shows its approval record |
 
@@ -58,6 +58,10 @@ Run with the same environment: `node --env-file=FILE apps/core/src/admin.ts COMM
 
 The token carries the account's trust level (S3.09), which worlds' entry rules use. An account earns levels 1 to 3 with its age, a verified email and its active days (the days on which it joined a world, counted once a day), at the thresholds of `FLATCHAT_CORE_TRUST`; without a verified email it stays at 0. The owner may set a level by hand (`account EMAIL --trust N`): it is a floor, and levels 4 to 7 come only that way. The tester flag is apart from the levels: the closed test's door.
 
+## Moderation (S3.07)
+
+The owner suspends, bans or lifts accounts on the admin page (`/admin`) or with `admin account EMAIL --status … --reason R`; every decision is recorded with its reason (`moderation_actions`). A suspended or banned account cannot sign in, join a world, or (from Stage 4) upload; when its password checks, the sign-in page shows the decision and its reason, and a one-time form to appeal it. The admin page lists the appeals: reversing one lifts the decision, upholding it shows the person the answer when they sign in again. A player banned from a world appeals to that world's owner (the host tool's `appeals` and `appeal`). Every host accepts the host agreement (`/host-agreement`, English and Spanish) before a world is registered, and the admin page revokes a world with the reason its host reads (`host worlds`).
+
 ## The API
 
 | Method and path | Auth | What |
@@ -68,7 +72,9 @@ The token carries the account's trust level (S3.09), which worlds' entry rules u
 | `POST /api/v1/sessions/refresh` | — | `{ refresh }` → new tokens (a refresh token works once) |
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
 | `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created |
-| `POST /api/v1/worlds` | Bearer | `{ name, address, capacity? }` → a pending world |
+| `POST /api/v1/worlds` | Bearer | `{ name, address, capacity?, listed?, agreement }` → a pending world; `agreement` is the host agreement's version the host accepts (1), else `agreement-required` |
+| `POST /api/v1/worlds/:id/appeals`, `GET /api/v1/worlds/:id/appeal` | Bearer | A player's appeal against that world's ban, `{ reason, text }`, and where it stands (S3.07) |
+| `GET /api/v1/my/worlds/:id/appeals`, `POST /api/v1/my/worlds/:id/appeals/:appeal` | Bearer | The world's owner reads the appeals and decides one, `{ decision: reverse\|uphold, note }`; a reversal goes to the world over its host channel |
 | `GET /api/v1/worlds` | — | `{ worlds: [{ id, name, capacity }] }`, the approved ones |
 | `GET /api/v1/worlds/:id` | — | Its name, status and capacity, and its address once approved |
 | `POST /api/v1/worlds/:id/join` | Bearer | `{ token, address, expiresAt }` |

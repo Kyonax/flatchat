@@ -7,9 +7,11 @@
 //   node --env-file=PATH src/admin.ts invite [--email E] [--note N] [--days 14]
 //   node --env-file=PATH src/admin.ts invites                      every invitation and its state
 //   node --env-file=PATH src/admin.ts accounts
-//   node --env-file=PATH src/admin.ts account EMAIL [--tester on|off] [--trust 0-7] [--status active|suspended|banned] [--admin on|off]
+//   node --env-file=PATH src/admin.ts account EMAIL [--tester on|off] [--trust 0-7] [--status active|suspended|banned --reason R] [--admin on|off]
+//                                                                  a status change needs the reason the account is shown (S3.07)
 //   node --env-file=PATH src/admin.ts worlds [--status pending|approved|revoked]
 //   node --env-file=PATH src/admin.ts world register --name N --owner EMAIL --address URL [--capacity 50] [--unlisted]
+//                                                                  the operator's own world: the host agreement counts as accepted
 //   node --env-file=PATH src/admin.ts world approve ID [--note N]  prints the world's key, once
 //   node --env-file=PATH src/admin.ts world revoke ID [--note N]
 //   node --env-file=PATH src/admin.ts world events ID
@@ -20,7 +22,7 @@ import { accountByEmail, createInvitation } from './accounts.ts';
 import { ConfigError, readEnv } from './config.ts';
 import { Db, migrate } from './db.ts';
 import { sealingKey } from './secrets.ts';
-import { revokeAccountSessions } from './sessions.ts';
+import { HOST_AGREEMENT_VERSION, moderateAccount } from './moderation.ts';
 import { approveWorld, cleanAddress, cleanWorldName, listWorlds, MAX_CAPACITY, registerWorld, revokeWorld, worldById, worldEvents } from './worlds.ts';
 
 const { values, positionals } = parseArgs({
@@ -32,6 +34,7 @@ const { values, positionals } = parseArgs({
     tester: { type: 'string' },
     trust: { type: 'string' },
     status: { type: 'string' },
+    reason: { type: 'string' },
     admin: { type: 'string' },
     name: { type: 'string' },
     owner: { type: 'string' },
@@ -115,8 +118,10 @@ try {
       }
       if (values.status !== undefined) {
         if (!['active', 'suspended', 'banned'].includes(values.status)) fail('--status active|suspended|banned');
-        await db.query('update accounts set status = $2 where id = $1', [a.id, values.status]);
-        if (values.status !== 'active') say(`ended ${await revokeAccountSessions(db, a.id, values.status, now)} session(s)`);
+        const reason = values.reason?.trim() || fail('--reason: the account is shown why (and may appeal)');
+        const action = values.status === 'active' ? 'lift' : values.status === 'suspended' ? 'suspend' : 'ban';
+        const ended = await moderateAccount(db, a.id, action, reason, 'admin command line', now);
+        if (action !== 'lift') say(`ended ${ended} session(s)`);
       }
       const b = (await accountByEmail(db, email))!;
       say(`${b.id}  ${b.status}  trust ${b.trust}  tester ${b.tester ? 'on' : 'off'}  email ${b.emailVerified ? 'verified' : 'not verified'}  ${JSON.stringify(b.displayName)}  since ${when(b.createdAt)}`);
@@ -135,7 +140,7 @@ try {
         const owner = (await accountByEmail(db, values.owner ?? '')) ?? fail(`--owner: no account ${values.owner ?? ''}`);
         const capacity = Number(values.capacity);
         if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY) fail(`--capacity 1 to ${MAX_CAPACITY}`);
-        const w = await registerWorld(db, { name, ownerId: owner.id, address, capacity, listed: !values.unlisted }, now);
+        const w = await registerWorld(db, { name, ownerId: owner.id, address, capacity, listed: !values.unlisted, agreement: HOST_AGREEMENT_VERSION }, now);
         say(`registered ${w.id} (pending): approve it with: world approve ${w.id}`);
       } else if (sub === 'approve') {
         const id = arg ?? fail('world approve ID');

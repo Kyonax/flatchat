@@ -4,7 +4,8 @@
 // no TCP port. A player posts an offer to /api/v1/worlds/:id/signal; the core relays it to that
 // world and returns the world's answer. One connection per world: a newer one replaces the older.
 // The world also reports how many players it holds and the capacity its world.toml sets (S2.09),
-// which the world browser shows; the core answers with the capacity the owner approved.
+// which the world browser shows; the core answers with the capacity the owner approved. A ban a
+// world's owner reversed on appeal goes to the world as `unban` until it answers `unbanned` (S3.07).
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const HOST_PROTOCOL = 'flatchat-host-1';
@@ -73,7 +74,13 @@ export class HostRegistry {
 
   /** Runs one host connection: the challenge, the proof, then relaying. `key` opens the world's key
    *  (undefined: the world is not approved). `onOnline` sends the world its ICE servers. */
-  accept(worldId: string, socket: HostSocket, key: () => Promise<Uint8Array | undefined>, onOnline: (send: (m: Record<string, unknown>) => void) => Promise<void>): void {
+  accept(
+    worldId: string,
+    socket: HostSocket,
+    key: () => Promise<Uint8Array | undefined>,
+    onOnline: (send: (m: Record<string, unknown>) => void) => Promise<void>,
+    onMessage?: (m: Record<string, unknown>) => Promise<void>,
+  ): void {
     const nonce = randomBytes(18).toString('base64url');
     let authed = false;
     const send = (m: Record<string, unknown>): void => {
@@ -130,6 +137,10 @@ export class HostRegistry {
           host.status = cleanStatus(m) ?? host.status;
           return;
         }
+        if (m.type === 'unbanned') {
+          await onMessage?.(m as Record<string, unknown>);
+          return;
+        }
         if (typeof m.id !== 'string') return;
         const p = host.pending.get(m.id);
         if (!p) return;
@@ -166,6 +177,18 @@ export class HostRegistry {
       } catch {
         // the socket closed
       }
+    }
+  }
+
+  /** Sends one connected world a message; false when it is not connected. */
+  send(worldId: string, message: Record<string, unknown>): boolean {
+    const host = this.hosts.get(worldId);
+    if (!host) return false;
+    try {
+      host.socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
     }
   }
 

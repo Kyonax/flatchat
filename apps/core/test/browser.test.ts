@@ -94,7 +94,7 @@ describe('the world browser', () => {
     const host = await account('host@example.org');
     const player = await account('player@example.org');
     const make = async (name: string, extra: Record<string, unknown>): Promise<{ id: string; key: Uint8Array }> => {
-      const r = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name, address: 'relay', ...extra } });
+      const r = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name, address: 'relay', agreement: 1, ...extra } });
       expect(r.statusCode).toBe(201);
       const id = (r.json() as { id: string }).id;
       return { id, key: await approveWorld(db, sealingKey(secret), id, 'admin:test', '', new Date()) };
@@ -165,7 +165,7 @@ describe('the world browser', () => {
     const player = await account('fan@example.org');
     const ids: string[] = [];
     for (const name of ['First Fav', 'Second Fav']) {
-      const r = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name, address: 'relay' } });
+      const r = await app.inject({ method: 'POST', url: '/api/v1/worlds', headers: host.bearer, payload: { name, address: 'relay', agreement: 1 } });
       ids.push((r.json() as { id: string }).id);
     }
     const [a, b] = ids as [string, string];

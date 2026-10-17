@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The admin page (S2.10): where the owner approves the worlds other hosts ask for, and revokes
-// them. It signs in with an admin account's email and password on its own form, and keeps a
+// The admin page (S2.10, S3.07): where the owner approves the worlds other hosts ask for and
+// revokes them with a reason, suspends, bans or lifts accounts with a reason, and decides the
+// appeals against those decisions. It signs in with an admin account's email and password on its own form, and keeps a
 // session in an HttpOnly, SameSite=Strict cookie; every form carries the session's CSRF token.
 // Sessions last 12 hours and are stored as digests.
 import type { Db, Sql } from './db.ts';
@@ -42,6 +43,8 @@ export interface AdminWorld {
   address: string;
   capacity: number;
   created: Date;
+  /** The host agreement's version its host accepted, if any (S3.07). */
+  agreement: number | null;
 }
 
 function frame(title: string, body: ReturnType<typeof html>): string {
@@ -63,18 +66,43 @@ ${error ? html`<p class="error" role="alert">${error}</p>` : ''}
   );
 }
 
-export function adminWorldsPage(admin: { email: string; csrf: string }, worlds: readonly AdminWorld[], notice?: string): string {
+/** An appeal against the platform's decision, waiting for the owner (S3.07). */
+export interface AdminAppeal {
+  id: string;
+  account: string;
+  name: string;
+  action: string;
+  reason: string;
+  text: string;
+  createdAt: Date;
+}
+
+export function adminWorldsPage(admin: { email: string; csrf: string }, worlds: readonly AdminWorld[], notice?: string, appeals: readonly AdminAppeal[] = []): string {
+  const csrf = html`<input type="hidden" name="csrf" value="${admin.csrf}">`;
   const row = (w: AdminWorld): ReturnType<typeof html> => html`<tr>
 <td><strong>${w.name}</strong><br><span class="muted">${w.id}</span></td>
-<td>${w.status}</td><td>${w.owner}</td><td>${w.address}</td><td>${w.capacity}</td>
-<td>${w.status !== 'approved' ? html`<form method="post" action="/admin/worlds/${w.id}/approve"><input type="hidden" name="csrf" value="${admin.csrf}"><button type="submit">Approve</button></form>` : ''}
-${w.status !== 'revoked' ? html`<form method="post" action="/admin/worlds/${w.id}/revoke"><input type="hidden" name="csrf" value="${admin.csrf}"><button type="submit" class="secondary">Revoke</button></form>` : ''}</td></tr>`;
+<td>${w.status}${w.agreement ? '' : html`<br><span class="muted">no host agreement</span>`}</td><td>${w.owner}</td><td>${w.address}</td><td>${w.capacity}</td>
+<td>${w.status !== 'approved' ? html`<form method="post" action="/admin/worlds/${w.id}/approve">${csrf}<button type="submit">Approve</button></form>` : ''}
+${w.status !== 'revoked' ? html`<form method="post" action="/admin/worlds/${w.id}/revoke">${csrf}<input name="note" aria-label="Why it is revoked" placeholder="Why (the host is told)" required maxlength="500"><button type="submit" class="secondary">Revoke</button></form>` : ''}</td></tr>`;
+  const appeal = (a: AdminAppeal): ReturnType<typeof html> => html`<tr>
+<td><strong>${a.name}</strong><br><span class="muted">${a.account}</span></td>
+<td>${a.action}: ${a.reason}</td><td>${a.text}</td><td>${a.createdAt.toISOString().slice(0, 16).replace('T', ' ')}</td>
+<td><form method="post" action="/admin/appeals/${a.id}">${csrf}<input name="note" aria-label="The answer" placeholder="The answer (the person is told)" maxlength="1000">
+<button type="submit" name="decision" value="reverse">Reverse</button><button type="submit" name="decision" value="uphold" class="secondary">Uphold</button></form></td></tr>`;
   return frame(
     'Worlds',
     html`<h1>Worlds</h1><p class="muted">Signed in as ${admin.email}. <a href="/admin/signout">Sign out</a></p>
 ${notice ? html`<p role="status">${notice}</p>` : ''}
 <table class="list"><thead><tr><th>World</th><th>Status</th><th>Host</th><th>Address</th><th>Capacity</th><th></th></tr></thead>
 <tbody>${worlds.map(row)}</tbody></table>
-${worlds.length === 0 ? raw('<p class="muted">No worlds yet.</p>') : ''}`,
+${worlds.length === 0 ? raw('<p class="muted">No worlds yet.</p>') : ''}
+<h2>Appeals</h2>
+${appeals.length === 0 ? raw('<p class="muted">No appeals wait for a decision.</p>') : html`<table class="list"><thead><tr><th>Account</th><th>Decision</th><th>Appeal</th><th>Sent</th><th></th></tr></thead><tbody>${appeals.map(appeal)}</tbody></table>`}
+<h2>Suspend, ban or lift an account</h2>
+<form method="post" action="/admin/accounts">${csrf}
+<label for="acct-email">Email</label><input id="acct-email" name="email" type="email" required>
+<label for="acct-action">Decision</label><select id="acct-action" name="action"><option value="suspend">Suspend</option><option value="ban">Ban</option><option value="lift">Lift</option></select>
+<label for="acct-reason">Reason (the person is shown it, and may appeal)</label><input id="acct-reason" name="reason" required maxlength="1000">
+<button type="submit">Apply</button></form>`,
   );
 }

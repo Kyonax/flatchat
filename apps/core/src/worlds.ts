@@ -78,10 +78,12 @@ export function cleanAddress(address: string): string | undefined {
   return local ? url.toString() : undefined;
 }
 
-export async function registerWorld(db: Sql, o: { name: string; ownerId: string; address: string; capacity?: number; listed?: boolean }, now: Date): Promise<World> {
+/** Registers a world (pending until approved); `agreement` is the host agreement's version its host
+ *  accepted (S3.07). */
+export async function registerWorld(db: Sql, o: { name: string; ownerId: string; address: string; capacity?: number; listed?: boolean; agreement?: number }, now: Date): Promise<World> {
   const [row] = await db.query<WorldRow>(
-    `insert into worlds (name, owner_id, address, capacity, listed, created_at) values ($1, $2, $3, $4, $5, $6) returning ${COLUMNS}`,
-    [o.name, o.ownerId, o.address, o.capacity ?? 50, o.listed ?? true, now],
+    `insert into worlds (name, owner_id, address, capacity, listed, created_at, agreement_version, agreement_at) values ($1, $2, $3, $4, $5, $6, $7, $8) returning ${COLUMNS}`,
+    [o.name, o.ownerId, o.address, o.capacity ?? 50, o.listed ?? true, now, o.agreement ?? null, o.agreement === undefined ? null : now],
   );
   await db.query("insert into world_events (world_id, kind, actor, at) values ($1, 'registered', $2, $3)", [row!.id, `account:${o.ownerId}`, now]);
   return toWorld(row!);

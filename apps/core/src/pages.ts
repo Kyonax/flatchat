@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The core's own pages: sign-in, sign-up, the privacy notice. Plain HTML forms with no script.
+// The core's own pages: sign-in, sign-up, the privacy notice, an account's standing and appeal
+// (S3.07), the host agreement. Plain HTML forms with no script.
 // Every value goes through `html`, which escapes it; only `raw()` marks trusted markup, and only
 // this file builds any. The page's policy forbids scripts, frames and outside resources.
 import { COUNTRY_CODES } from './countries.ts';
@@ -42,7 +43,7 @@ export const CSS = `:root{color-scheme:light dark;--bg:#f5f5f2;--fg:#17171a;--mu
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:28rem;margin:6vh auto;padding:0 16px}h1{font-size:1.5rem;margin:0 0 .5rem}p{margin:.5rem 0 1rem}.muted{color:var(--muted);font-size:.9rem}
 form{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:16px}label{display:block;font-weight:600;margin:.75rem 0 .25rem}
-input,select{width:100%;font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:2px;background:var(--bg);color:var(--fg)}
+input,select,textarea{width:100%;font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:2px;background:var(--bg);color:var(--fg)}
 .row{display:flex;gap:8px}.row>*{flex:1}.check{display:flex;gap:8px;align-items:flex-start;font-weight:400}.check input{width:auto;margin-top:.3rem}
 button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:#121214;cursor:pointer}
 .error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}
@@ -130,4 +131,45 @@ export function privacyPage(lang: Lang, operator: string, contact: string): stri
   const s: Strings = STRINGS[lang];
   const paragraphs = s.privacy.map((p) => p.replace('{operator}', operator).replace('{contact}', contact));
   return page(lang, s.privacyTitle, html`<h1>${s.privacyTitle}</h1>${paragraphs.map((p) => html`<p>${p}</p>`)}`);
+}
+
+const day = (d: Date): string => d.toISOString().slice(0, 10);
+
+export interface Standing {
+  action: 'suspend' | 'ban' | 'lift';
+  reason: string;
+  at: Date;
+  appeal: { status: 'pending' | 'upheld' | 'reversed'; createdAt: Date; decidedAt: Date | null; note: string } | undefined;
+}
+
+/** What a suspended or banned account sees after its password checked (S3.07): the decision, its
+ *  reason (the statement of reasons), and the appeal form or where its appeal stands. */
+export function standingPage(lang: Lang, status: 'suspended' | 'banned', st: Standing | undefined, appealToken: string | undefined, error?: string): string {
+  const s = STRINGS[lang];
+  // A status set without a recorded decision (before S3.07) has no reason to show.
+  const decision = st
+    ? html`<p>${(st.action === 'suspend' ? s.suspendedSince : s.bannedSince).replace('{date}', day(st.at))}</p><p>${s.standingReason.replace('{reason}', st.reason)}</p>`
+    : html`<p>${status === 'suspended' ? s.signinSuspended : s.signinBanned}</p>`;
+  const a = st?.appeal;
+  const appealLine = a
+    ? a.status === 'pending'
+      ? html`<p role="status">${s.appealPending.replace('{date}', day(a.createdAt))}</p>`
+      : html`<p role="status">${s.appealUpheld.replace('{date}', day(a.decidedAt ?? a.createdAt))}</p>${a.note ? html`<p>${s.appealNote.replace('{note}', a.note)}</p>` : ''}`
+    : '';
+  const form =
+    st && !a && appealToken
+      ? html`<p class="muted">${s.appealLead}</p>
+<form method="post" action="/appeal?lang=${lang}">
+${error ? html`<p class="error" role="alert">${error}</p>` : ''}
+<input type="hidden" name="token" value="${appealToken}">
+<label for="text">${s.appealText}</label><textarea id="text" name="text" rows="6" maxlength="2000" required></textarea>
+<button type="submit">${s.appealSend}</button></form>`
+      : '';
+  return page(lang, s.standingTitle, html`<h1>${s.standingTitle}</h1>${decision}${appealLine}${form}`);
+}
+
+/** The host agreement every approved host accepts (S3.07, S2.10). */
+export function agreementPage(lang: Lang, version: number): string {
+  const s = STRINGS[lang];
+  return page(lang, s.agreementTitle, html`<h1>${s.agreementTitle}</h1><p>${s.agreementLead.replace('{version}', String(version))}</p><ol>${s.agreement.map((p) => html`<li>${p}</li>`)}</ol>`);
 }

@@ -7,12 +7,28 @@ import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
+import {
+  APPEAL_MAX,
+  appealDecision,
+  appealToken,
+  appealWorldBan,
+  decidePlatformAppeal,
+  decideWorldAppeal,
+  HOST_AGREEMENT_VERSION,
+  moderateAccount,
+  myWorldAppeal,
+  pendingPlatformAppeals,
+  pendingUnbans,
+  standing,
+  unbanDelivered,
+  worldAppeals,
+} from './moderation.ts';
 import type { AgePolicy } from './age.ts';
 import type { Db } from './db.ts';
 import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
 import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
-import { CSS, messagePage, PAGE_POLICY, privacyPage, signinPage, signupPage, type SignupValues } from './pages.ts';
+import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
 import {
   authenticate,
@@ -202,6 +218,25 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     return htmlPage(reply, privacyPage(lang, o.operator, o.contact));
   });
 
+  app.get('/host-agreement', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    return htmlPage(reply, agreementPage(lang, HOST_AGREEMENT_VERSION));
+  });
+
+  // An appeal against a suspension or ban (S3.07), from the form its standing page showed.
+  app.post('/appeal', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!limits.signinByAddress.take(req.ip, now().getTime())) return htmlPage(reply.code(429), messagePage(lang, s.standingTitle, s.tooMany, true));
+    const text = str(b['text'], APPEAL_MAX).trim();
+    if (!text) return htmlPage(reply.code(400), messagePage(lang, s.standingTitle, s.appealEmpty, true));
+    const r = await appealDecision(o.db, str(b['token'], 64), text, now());
+    if (r === 'expired' || r === 'nothing') return htmlPage(reply.code(410), messagePage(lang, s.standingTitle, s.appealExpired, true));
+    o.log?.('appeal', { kind: 'platform' });
+    return htmlPage(reply, messagePage(lang, s.appealSentTitle, s.appealSent));
+  });
+
   app.get('/signin', async (req, reply) => {
     const q = req.query as Record<string, unknown>;
     const lang = pickLang(q['lang'], req.headers['accept-language']);
@@ -227,10 +262,13 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       return htmlPage(reply.code(429), signinPage(lang, request, { email, error: s.tooMany }));
     }
     const result = await checkSignIn(o.db, email, password, decoy);
-    if (!result.ok) {
-      const error = result.problem === 'suspended' ? s.signinSuspended : result.problem === 'banned' ? s.signinBanned : s.signinWrong;
-      return htmlPage(reply.code(401), signinPage(lang, request, { email, error }));
+    if (!result.ok && result.problem !== 'wrong' && result.account) {
+      // The password checked: the account sees the decision, its reason and its appeal (S3.07).
+      const st = await standing(o.db, result.account);
+      const token = st && !st.appeal ? await appealToken(o.db, result.account, now()) : undefined;
+      return htmlPage(reply.code(403), standingPage(lang, result.problem, st, token));
     }
+    if (!result.ok) return htmlPage(reply.code(401), signinPage(lang, request, { email, error: s.signinWrong }));
     const done = await completeLoginRequest(o.db, request, result.account.id, now());
     if (!done) return htmlPage(reply.code(410), messagePage(lang, s.signinTitle, s.requestGone, true));
     // The code goes only to the loopback port of the client that started this sign-in (RFC 8252).
@@ -302,18 +340,28 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   const sameToken = (a: string, b: string): boolean => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
   async function adminWorlds(): Promise<AdminWorld[]> {
-    const rows = await o.db.query<{ id: string; name: string; status: string; email: string; address: string; capacity: number; created_at: Date }>(
-      'select w.id, w.name, w.status, a.email, w.address, w.capacity, w.created_at from worlds w join accounts a on a.id = w.owner_id order by w.created_at desc limit 500',
+    const rows = await o.db.query<{ id: string; name: string; status: string; email: string; address: string; capacity: number; created_at: Date; agreement_version: number | null }>(
+      'select w.id, w.name, w.status, a.email, w.address, w.capacity, w.created_at, w.agreement_version from worlds w join accounts a on a.id = w.owner_id order by w.created_at desc limit 500',
     );
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, owner: r.email, address: r.address, capacity: r.capacity, created: r.created_at }));
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, owner: r.email, address: r.address, capacity: r.capacity, created: r.created_at, agreement: r.agreement_version }));
   }
+
+  const adminNotices: Record<string, string> = {
+    approved: 'Approved. Its host fetches the world key with the host tool.',
+    revoked: 'Revoked: no new connect tokens, and its key is gone. Its host sees the reason.',
+    suspend: 'Suspended: its sessions ended. It sees the reason when it signs in, and may appeal.',
+    ban: 'Banned: its sessions ended. It sees the reason when it signs in, and may appeal.',
+    lift: 'Lifted: the account can sign in again.',
+    reverse: 'Reversed: the decision is lifted.',
+    uphold: 'Upheld: the person sees the answer when they sign in.',
+    'no-account': 'No account has that email.',
+  };
 
   app.get('/admin', async (req, reply) => {
     const admin = await adminFromCookie(o.db, req.headers.cookie, now());
     if (!admin) return reply.code(303).header('location', '/admin/signin').send();
     const done = str((req.query as Record<string, unknown>)['done'], 16);
-    const notice = done === 'approved' ? 'Approved. Its host fetches the world key with the host tool.' : done === 'revoked' ? 'Revoked: no new connect tokens, and its key is gone.' : undefined;
-    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), notice));
+    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db)));
   });
 
   app.get('/admin/signin', async (_req, reply) => htmlPage(reply, adminSigninPage()));
@@ -350,9 +398,42 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const world = await worldById(o.db, id);
     if (!world || (action !== 'approve' && action !== 'revoke')) return reply.code(404).send();
     if (action === 'approve') await approveWorld(o.db, sealing, id, `admin:${admin.accountId}`, 'admin page', now());
-    else await revokeWorld(o.db, id, `admin:${admin.accountId}`, 'admin page', now());
+    else {
+      // A revocation says why (S3.07): for a host that broke the host agreement, which rule.
+      const note = str(((req.body ?? {}) as Record<string, unknown>)['note'], 500).trim() || 'revoked on the admin page';
+      await revokeWorld(o.db, id, `admin:${admin.accountId}`, note, now());
+    }
     o.log?.(`world-${action}d`, { world: id });
     return reply.code(303).header('location', `/admin?done=${action}d`).send();
+  });
+
+  // The owner suspends, bans or lifts an account, with the reason it is shown (S3.07, G-11).
+  app.post('/admin/accounts', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const action = str(b['action'], 16);
+    const reason = str(b['reason'], 1000).trim();
+    if ((action !== 'suspend' && action !== 'ban' && action !== 'lift') || !reason) return reply.code(400).send();
+    const [a] = await o.db.query<{ id: string }>('select id from accounts where email_key = $1', [str(b['email'], 254).trim().toLowerCase()]);
+    if (!a) return reply.code(303).header('location', '/admin?done=no-account').send();
+    await moderateAccount(o.db, a.id, action, reason, `admin:${admin.accountId}`, now());
+    o.log?.('account-moderated', { action });
+    return reply.code(303).header('location', `/admin?done=${action}`).send();
+  });
+
+  app.post('/admin/appeals/:id', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const decision = str(b['decision'], 16);
+    const id = (req.params as { id: string }).id;
+    if ((decision !== 'reverse' && decision !== 'uphold') || !/^[0-9a-f-]{36}$/i.test(id)) return reply.code(400).send();
+    if (!(await decidePlatformAppeal(o.db, id, decision, str(b['note'], 1000).trim(), `admin:${admin.accountId}`, now()))) return reply.code(404).send();
+    o.log?.('appeal-decided', { kind: 'platform', decision });
+    return reply.code(303).header('location', `/admin?done=${decision}`).send();
   });
 
   // -------------------------------------------------------------------------------- API
@@ -419,7 +500,11 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!name || !address || !Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY || typeof listed !== 'boolean') {
       return sendProblem(reply, problem(400, 'bad-request', `a name (3-48 characters), an address (https, or http on a private address), a capacity (1-${MAX_CAPACITY}) and listed (true or false)`));
     }
-    const w = await registerWorld(o.db, { name, ownerId: who.accountId, address, capacity, listed }, now());
+    // Every host accepts the host agreement before a world is registered (S3.07).
+    if (b['agreement'] !== HOST_AGREEMENT_VERSION) {
+      return sendProblem(reply, problem(400, 'agreement-required', `accept the host agreement (version ${HOST_AGREEMENT_VERSION}, ${publicUrl}/host-agreement): send agreement: ${HOST_AGREEMENT_VERSION}`));
+    }
+    const w = await registerWorld(o.db, { name, ownerId: who.accountId, address, capacity, listed, agreement: HOST_AGREEMENT_VERSION }, now());
     return reply.code(201).send({ id: w.id, name: w.name, status: w.status, capacity: w.capacity, listed: w.listed });
   });
 
@@ -463,11 +548,65 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   app.get('/api/v1/my/worlds', async (req, reply) => {
     const who = await bearer(req, reply);
     if (!who) return reply;
-    const rows = await o.db.query<{ id: string; name: string; status: string; address: string; capacity: number; listed: boolean }>(
-      'select id, name, status, address, capacity, listed from worlds where owner_id = $1 order by created_at',
+    const rows = await o.db.query<{ id: string; name: string; status: string; address: string; capacity: number; listed: boolean; agreement: number | null; note: string | null }>(
+      `select w.id, w.name, w.status, w.address, w.capacity, w.listed, w.agreement_version as agreement,
+              (select e.note from world_events e where e.world_id = w.id and e.kind = 'revoked' order by e.id desc limit 1) as note
+         from worlds w where owner_id = $1 order by created_at`,
       [who.accountId],
     );
-    return { worlds: rows.map((r) => ({ ...r, online: hosts.online(r.id), players: hosts.status(r.id)?.status?.players ?? 0 })) };
+    // A revoked world's host reads why (S3.07).
+    return { worlds: rows.map(({ note, ...r }) => ({ ...r, ...(r.status === 'revoked' ? { revokedFor: note ?? '' } : {}), online: hosts.online(r.id), players: hosts.status(r.id)?.status?.players ?? 0 })) };
+  });
+
+  // Appeals against a world's ban (S3.07): the banned player sends one to the world's owner, who
+  // decides with the host tool; a reversal goes to the world over its host channel.
+  app.post('/api/v1/worlds/:id/appeals', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (limited(limits.joinByAccount, who.accountId, reply)) return reply;
+    const w = await worldById(o.db, (req.params as { id: string }).id);
+    if (!w) return sendProblem(reply, problem(404, 'no-world', 'no such world'));
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const text = str(b['text'], APPEAL_MAX).trim();
+    if (!text) return sendProblem(reply, problem(400, 'bad-request', 'text: why the ban is wrong'));
+    const r = await appealWorldBan(o.db, who.accountId, w.id, str(b['reason'], 500), text, now());
+    if (r === 'pending') return sendProblem(reply, problem(409, 'appeal-pending', 'an appeal to this world waits for its owner'));
+    o.log?.('appeal', { kind: 'world', world: w.id });
+    return reply.code(201).send({ id: r.id, status: 'pending' });
+  });
+
+  app.get('/api/v1/worlds/:id/appeal', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await myWorldAppeal(o.db, who.accountId, (req.params as { id: string }).id);
+    if (!a) return sendProblem(reply, problem(404, 'no-appeal', 'no appeal to this world'));
+    return { id: a.id, status: a.status, createdAt: a.createdAt.toISOString(), decidedAt: a.decidedAt?.toISOString() ?? null, note: a.note };
+  });
+
+  const ownWorld = async (accountId: string, id: string): Promise<boolean> =>
+    /^[0-9a-f-]{36}$/i.test(id) && (await o.db.query('select 1 from worlds where id = $1 and owner_id = $2', [id, accountId])).length > 0;
+
+  app.get('/api/v1/my/worlds/:id/appeals', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const id = (req.params as { id: string }).id;
+    if (!(await ownWorld(who.accountId, id))) return sendProblem(reply, problem(404, 'no-world', 'no such world of yours'));
+    return { appeals: (await worldAppeals(o.db, id)).map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })) };
+  });
+
+  app.post('/api/v1/my/worlds/:id/appeals/:appeal', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const { id, appeal } = req.params as { id: string; appeal: string };
+    if (!(await ownWorld(who.accountId, id))) return sendProblem(reply, problem(404, 'no-world', 'no such world of yours'));
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const decision = b['decision'];
+    if ((decision !== 'reverse' && decision !== 'uphold') || !/^[0-9a-f-]{36}$/i.test(appeal)) return sendProblem(reply, problem(400, 'bad-request', 'decision: reverse or uphold'));
+    const r = await decideWorldAppeal(o.db, id, appeal, decision, str(b['note'], 1000).trim(), `account:${who.accountId}`, now());
+    if (!r) return sendProblem(reply, problem(404, 'no-appeal', 'no such appeal waiting'));
+    if (r.account) hosts.send(id, { type: 'unban', appeal, account: r.account });
+    o.log?.('appeal-decided', { kind: 'world', decision });
+    return { id: appeal, status: decision === 'reverse' ? 'reversed' : 'upheld', delivered: r.account ? hosts.online(id) : undefined };
   });
 
   // A host lists or unlists its world, or changes its capacity (S2.09).
@@ -546,6 +685,11 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
         const w = await worldById(o.db, worldId);
         if (w) send({ type: 'limits', maximum: w.capacity });
         send({ type: 'ice', iceServers: await ice.for(`world-${worldId}`, now(), 86_400) });
+        // Bans its owner reversed on appeal while it was away (S3.07).
+        for (const u of await pendingUnbans(o.db, worldId)) send({ type: 'unban', appeal: u.appeal, account: u.account });
+      },
+      async (m) => {
+        if (m['type'] === 'unbanned' && typeof m['appeal'] === 'string' && /^[0-9a-f-]{36}$/i.test(m['appeal'])) await unbanDelivered(o.db, worldId, m['appeal'], now());
       },
     );
   });
