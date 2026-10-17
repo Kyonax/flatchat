@@ -28,6 +28,24 @@ const BUNDLED = [
   { package: '@flatchat/content', note: 'FlatChat’s own content formats, Apache-2.0' },
   { package: 'smol-toml', note: 'world.toml, inside @flatchat/content' },
   { name: 'Basis Universal transcoder', version: 'three.js r186', licence: 'Apache-2.0', text: 'third_party/basis/LICENSE', note: 'KTX2 textures of downloaded worlds (shipped with three.js, by Binomial LLC)' },
+  // Offline mode (S2.13): the world server and the host tool's converter run in the main process.
+  { package: '@flatchat/world-server', note: 'FlatChat’s world server, MPL-2.0: offline worlds run in the client (S2.13)' },
+  { package: '@flatchat/converter', note: 'FlatChat’s converter, MPL-2.0: world folders opened offline' },
+  { package: '@gltf-transform/core', note: 'inside the converter, with @gltf-transform/extensions and @gltf-transform/functions under the same licence' },
+  { package: 'property-graph', note: 'inside glTF Transform' },
+  { package: 'ndarray-pixels', note: 'inside glTF Transform’s functions (never asked to resize here)' },
+  { package: 'ndarray-lanczos', note: 'inside glTF Transform’s functions' },
+  { package: 'ndarray', note: 'inside ndarray-pixels' },
+  { package: 'ndarray-ops', note: 'inside ndarray-pixels' },
+  { package: 'cwise-compiler', note: 'inside ndarray-ops' },
+  { package: 'iota-array', note: 'inside ndarray' },
+  { package: 'is-buffer', note: 'inside ndarray' },
+  { package: 'uniq', note: 'inside cwise-compiler' },
+  { package: 'ktx2-encoder', note: 'inside the converter (offline worlds skip KTX2)' },
+  { package: 'ktx-parse', note: 'inside ktx2-encoder' },
+  { name: 'Basis Universal encoder', version: 'inside ktx2-encoder 0.6.0', licence: 'Apache-2.0', text: 'third_party/basis/LICENSE', note: 'compiled to WebAssembly inside ktx2-encoder, by Binomial LLC' },
+  { package: 'pngjs', note: 'PNG textures of world folders opened offline' },
+  { package: 'jpeg-js', note: 'JPEG textures of world folders opened offline' },
 ];
 
 function packageDir(name) {

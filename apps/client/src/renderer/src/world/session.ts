@@ -95,6 +95,8 @@ export interface Ticket {
   spawn?: string;
   /** Only through a TURN relay (the client's --relay-only, S2.12). */
   relayOnly?: boolean;
+  /** An offline world in the client's own main process (S2.13). */
+  local?: boolean;
 }
 
 /** Where a portal leads (S2.11). */
@@ -222,15 +224,18 @@ export class WorldSession {
     await renderer.setAnimationLoop(() => this.frame(view.scene, view.camera));
 
     try {
-      this.conn = await WorldConnection.join({
-        signalUrl: ticket.address,
-        token: ticket.token,
-        iceServers: ticket.iceServers ?? [],
-        ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
-        ...(ticket.relayOnly ? { relayOnly: true } : {}),
-        height: Math.round(this.settings.avatar.height * 100),
-        onMessage: (m) => this.message(m),
-      });
+      const height = Math.round(this.settings.avatar.height * 100);
+      this.conn = ticket.local
+        ? await WorldConnection.joinLocal({ token: ticket.token, height, onMessage: (m) => this.message(m) })
+        : await WorldConnection.join({
+            signalUrl: ticket.address,
+            token: ticket.token,
+            iceServers: ticket.iceServers ?? [],
+            ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
+            ...(ticket.relayOnly ? { relayOnly: true } : {}),
+            height,
+            onMessage: (m) => this.message(m),
+          });
     } catch (err) {
       this.state.status = err instanceof JoinRefused ? 'refused' : 'lost';
       this.state.reason = err instanceof JoinRefused ? err.reason : 'unreachable';

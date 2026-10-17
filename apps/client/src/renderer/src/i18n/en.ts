@@ -12,11 +12,22 @@ export default {
     waiting: 'Finish signing in in your browser…',
     cancel: 'Cancel',
     invited: 'FlatChat is in a closed test: accounts are by invitation.',
+    offline: 'Play offline',
     errors: {
       unreachable: 'FlatChat’s server cannot be reached. Check your connection and try again.',
       expired: 'Your session ended. Sign in again.',
       failed: 'Signing in did not finish. Try again.',
     },
+  },
+  offline: {
+    title: 'Offline',
+    lead: 'Worlds on this computer, with no server: you play as a guest, alone. Nothing you do here is saved.',
+    loading: 'Looking for worlds on this computer…',
+    none: 'There are no worlds on this computer.',
+    play: 'Play',
+    starting: 'Starting…',
+    back: 'Back',
+    failed: 'The world could not start: {reason}',
   },
   home: {
     hello: 'Hello, {name}',

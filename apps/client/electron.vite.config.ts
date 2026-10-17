@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 // electron-vite builds the main process, the preload script and the renderer (Vite 8) into out/.
+import { fileURLToPath } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'electron-vite';
 
 export default defineConfig({
-  main: {},
+  // The converter runs in the main process for offline worlds (S2.13): `sharp` (a native module
+  // the packaged client does not carry) is replaced by a stub it never calls (src/main/no-sharp.ts).
+  main: { resolve: { alias: { sharp: fileURLToPath(new URL('./src/main/no-sharp.ts', import.meta.url)) } } },
   preload: {},
   renderer: {
     plugins: [vue()],

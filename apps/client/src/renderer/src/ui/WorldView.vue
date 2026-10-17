@@ -10,7 +10,7 @@ import MicQuestion from './MicQuestion.vue';
 
 const props = defineProps<{
   world: FlatchatWorld;
-  ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly?: boolean; spawn?: string };
+  ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly?: boolean; local?: boolean; spawn?: string };
   settings: Settings;
   paused: boolean;
   /** A portal's journey (S2.11): where to, or why it failed. */

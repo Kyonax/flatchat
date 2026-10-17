@@ -53,6 +53,14 @@ interface FlatchatBridge {
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
+  // Offline mode (S2.13): worlds in the client's own main process.
+  offlineWorlds(): Promise<Array<{ id: string; name: string }>>;
+  offlineJoin(id: string): Promise<FlatchatResult<{ token: Uint8Array; name: string }>>;
+  localOpen(): Promise<boolean>;
+  localSend(channel: 'reliable' | 'unreliable', bytes: Uint8Array): void;
+  localClose(): Promise<void>;
+  onLocal(listener: (channel: 'reliable' | 'unreliable', bytes: Uint8Array) => void): () => void;
+  onLocalEnd(listener: (reason: string) => void): () => void;
 }
 
 interface Window {

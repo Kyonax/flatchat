@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{ state: FlatchatAuthState }>();
-defineEmits<{ 'sign-in': []; cancel: [] }>();
+defineEmits<{ 'sign-in': []; cancel: []; offline: [] }>();
 const { t } = useI18n();
 
 const waiting = computed(() => props.state.status === 'waiting');
@@ -53,6 +53,15 @@ const error = computed(() => {
       </button>
       <p class="muted">
         {{ t('signin.invited') }}
+      </p>
+      <p>
+        <button
+          type="button"
+          data-test="offline"
+          @click="$emit('offline')"
+        >
+          {{ t('signin.offline') }}
+        </button>
       </p>
     </div>
   </div>

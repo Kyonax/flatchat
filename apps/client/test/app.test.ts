@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 // Stage 1's client without a window: settings and bindings, the controls, other players'
 // interpolation, the camera, the two languages, the core's API, the loopback port and signing in.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
 import { cleanIceServers, cleanWorlds, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
+import { listOffline } from '../src/main/offline';
 import en from '../src/renderer/src/i18n/en';
 import es from '../src/renderer/src/i18n/es';
 import { pickLocale } from '../src/renderer/src/i18n/index';
@@ -396,5 +400,26 @@ describe('signing in', () => {
     const refused = { ...fakeApi(), refresh: async () => Promise.reject(new CoreError(401, 'refresh-reused', 'no')) } as unknown as CoreApi;
     await new Auth(refused, store, async () => undefined).restore();
     expect(store.value).toBeUndefined();
+  });
+});
+
+describe('offline mode (S2.13)', () => {
+  it('lists the built-in worlds by their names, then the folders it was given', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fcoffline-'));
+    try {
+      for (const [kit, name] of [['park', 'The Park'], ['plaza', 'The Plaza']] as const) {
+        mkdirSync(join(dir, kit));
+        writeFileSync(join(dir, kit, 'world.json'), JSON.stringify({ manifest: { name } }));
+      }
+      mkdirSync(join(dir, 'broken'));
+      expect(listOffline(dir, ['/home/someone/worlds/my-cabin'])).toEqual([
+        { id: 'kit:park', name: 'The Park' },
+        { id: 'kit:plaza', name: 'The Plaza' },
+        { id: 'folder:0', name: 'my-cabin' },
+      ]);
+      expect(listOffline(join(dir, 'missing'), [])).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

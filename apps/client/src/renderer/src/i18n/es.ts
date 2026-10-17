@@ -16,11 +16,22 @@ const es: Shape<typeof en> = {
     waiting: 'Termina de iniciar sesión en tu navegador…',
     cancel: 'Cancelar',
     invited: 'FlatChat está en prueba cerrada: las cuentas son por invitación.',
+    offline: 'Jugar sin conexión',
     errors: {
       unreachable: 'No se puede llegar al servidor de FlatChat. Revisa tu conexión y vuelve a intentarlo.',
       expired: 'Tu sesión terminó. Inicia sesión de nuevo.',
       failed: 'El inicio de sesión no terminó. Vuelve a intentarlo.',
     },
+  },
+  offline: {
+    title: 'Sin conexión',
+    lead: 'Mundos en este computador, sin servidor: juegas como invitado, solo. Nada de lo que hagas aquí se guarda.',
+    loading: 'Buscando mundos en este computador…',
+    none: 'No hay mundos en este computador.',
+    play: 'Jugar',
+    starting: 'Iniciando…',
+    back: 'Volver',
+    failed: 'El mundo no pudo iniciar: {reason}',
   },
   home: {
     hello: 'Hola, {name}',

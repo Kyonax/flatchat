@@ -35,4 +35,20 @@ contextBridge.exposeInMainWorld('flatchat', {
   contentGet: (hash: string): Promise<Uint8Array | undefined> => ipcRenderer.invoke('flatchat:content-get', hash),
   contentPut: (hash: string, bytes: Uint8Array): Promise<boolean> => ipcRenderer.invoke('flatchat:content-put', hash, bytes),
   joinWorld: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:join', worldId),
+  // Offline mode (S2.13): a world in the main process, its messages over IPC.
+  offlineWorlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-worlds'),
+  offlineJoin: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-join', id),
+  localOpen: (): Promise<boolean> => ipcRenderer.invoke('flatchat:local-open'),
+  localSend: (channel: 'reliable' | 'unreliable', bytes: Uint8Array): void => ipcRenderer.send('flatchat:local-send', channel, bytes),
+  localClose: (): Promise<void> => ipcRenderer.invoke('flatchat:local-close'),
+  onLocal: (listener: (channel: 'reliable' | 'unreliable', bytes: Uint8Array) => void): (() => void) => {
+    const handler = (_event: unknown, channel: 'reliable' | 'unreliable', bytes: Uint8Array): void => listener(channel, bytes);
+    ipcRenderer.on('flatchat:local-recv', handler);
+    return () => ipcRenderer.removeListener('flatchat:local-recv', handler);
+  },
+  onLocalEnd: (listener: (reason: string) => void): (() => void) => {
+    const handler = (_event: unknown, reason: string): void => listener(reason);
+    ipcRenderer.on('flatchat:local-end', handler);
+    return () => ipcRenderer.removeListener('flatchat:local-end', handler);
+  },
 });

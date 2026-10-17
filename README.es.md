@@ -18,7 +18,7 @@ Después, el MVP etapa por etapa: mundos y viajes, plugins y moderación, avatar
 
 ## Probarlo
 
-Durante la prueba cerrada FlatChat es solo por invitación: un enlace de invitación crea la cuenta. El cliente para Linux (un AppImage o un .tar.gz) y Windows (un zip) sale de cada ejecución de la integración continua (`flatchat-linux` y `client-windows`), o del enlace que comparta el creador. Ábrelo, inicia sesión con el navegador y elige un mundo. En Configuración están los controles (cada tecla se puede cambiar), la voz (micrófono abierto o pulsar para hablar), el idioma y, para pruebas, la dirección del servidor.
+Durante la prueba cerrada FlatChat es solo por invitación: un enlace de invitación crea la cuenta. El cliente para Linux (un AppImage o un .tar.gz) y Windows (un zip) sale de cada ejecución de la integración continua (`flatchat-linux` y `client-windows`), o del enlace que comparta el creador. Ábrelo, inicia sesión con el navegador y elige un mundo. En Configuración están los controles (cada tecla se puede cambiar), la voz (micrófono abierto o pulsar para hablar), tu estatura, el volumen de los sonidos, el idioma y, para pruebas, la dirección del servidor. Sin cuenta o sin conexión, "Jugar sin conexión" en la primera pantalla abre los mundos que trae el cliente (ábrelo con `--offline-world=CARPETA` para añadir una carpeta de mundo propia, que convierte la primera vez).
 
 ## Las partes
 

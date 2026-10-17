@@ -6,6 +6,7 @@ import type { Settings } from '../../../shared/settings';
 import { type Locale, pickLocale } from '../i18n';
 import { setUiVolume, uiSound } from '../world/sounds';
 import HomeView from './HomeView.vue';
+import OfflineView from './OfflineView.vue';
 import { loadLayout } from './keys';
 import SettingsView from './SettingsView.vue';
 import SignIn from './SignIn.vue';
@@ -18,7 +19,9 @@ const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
 const systemLocale = ref('en');
 const showSettings = ref(false);
-const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly: boolean; spawn?: string }; visit: number } | undefined>(undefined);
+const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly: boolean; local?: boolean; spawn?: string }; visit: number } | undefined>(undefined);
+/** Offline mode (S2.13): no core, worlds on this computer. */
+const offline = ref(false);
 const joining = ref('');
 const joinError = ref('');
 const travel = ref<{ status: 'going' | 'failed'; text: string } | undefined>(undefined);
@@ -53,6 +56,26 @@ async function join(w: FlatchatWorld): Promise<void> {
     return;
   }
   world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, relayOnly: r.relayOnly }, visit: (visits += 1) };
+}
+
+/** An offline world: started in the main process, joined over IPC with a guest's token. */
+async function playOffline(w: { id: string; name: string }): Promise<void> {
+  if (!bridge) return;
+  joining.value = w.id;
+  joinError.value = '';
+  const r = await bridge.offlineJoin(w.id);
+  joining.value = '';
+  if (!r.ok) {
+    joinError.value = t('offline.failed', { reason: r.error });
+    return;
+  }
+  const local: FlatchatWorld = { id: w.id, name: r.name, online: true, players: 0, recommended: 1, capacity: 1 };
+  world.value = { world: local, ticket: { address: 'local', token: r.token, iceServers: [], relayOnly: false, local: true }, visit: (visits += 1) };
+}
+
+function leaveWorld(): void {
+  if (world.value?.ticket.local) void bridge?.localClose();
+  world.value = undefined;
 }
 
 function reason(code: string): string {
@@ -112,10 +135,11 @@ onBeforeUnmount(() => {
     </p>
   </div>
   <SignIn
-    v-else-if="auth.status !== 'signed-in'"
+    v-else-if="auth.status !== 'signed-in' && !offline"
     :state="auth"
     @sign-in="bridge?.signIn()"
     @cancel="bridge?.cancelSignIn()"
+    @offline="offline = true"
   />
   <template v-else>
     <WorldView
@@ -126,13 +150,20 @@ onBeforeUnmount(() => {
       :settings="settings"
       :paused="showSettings"
       :travel="travel"
-      @leave="world = undefined"
+      @leave="leaveWorld"
       @settings="showSettings = true"
       @change="change"
       @travel="goThrough"
     />
+    <OfflineView
+      v-else-if="offline && !showSettings"
+      :joining="joining"
+      :error="joinError"
+      @play="playOffline"
+      @back="offline = false"
+    />
     <HomeView
-      v-else-if="!showSettings"
+      v-else-if="!showSettings && auth.status === 'signed-in'"
       :account="auth.account"
       :remembered="auth.remembered"
       :joining="joining"

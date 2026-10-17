@@ -6,7 +6,8 @@
 // decodeMessage(…, 'server'), so nothing malformed reaches the game; each is sent on the channel its
 // type names. Signaling goes through the main process (the bridge's signal(): the page itself has no
 // network permission), which allows only a world server on this machine or the local network in
-// Stage 0; in Stage 1 it goes through the core.
+// Stage 0; in Stage 1 it goes through the core. Offline (S2.13) the world runs in the client's own
+// main process and the same messages travel over IPC (`joinLocal`); both joins share the handshake.
 import {
   decodeMessage,
   encodeMessage,
@@ -71,9 +72,12 @@ function within<T>(what: string, ms: number, start: (resolve: (v: T) => void) =>
   });
 }
 
+type ChannelName = 'reliable' | 'unreliable';
+
 export class WorldConnection {
-  readonly pc: RTCPeerConnection;
-  private readonly channels: Record<'reliable' | 'unreliable', RTCDataChannel>;
+  /** Sends on a channel; false when that channel is not open. */
+  private readonly out: (channel: ChannelName, bytes: Uint8Array<ArrayBuffer>) => boolean;
+  private readonly shut: () => void;
   private readonly handlers = new Set<(m: Message) => void>();
   private readonly counters: ConnectionStats = { sentBytes: 0, receivedBytes: 0, received: {}, malformed: 0 };
   /** Set once the server has welcomed this client. */
@@ -84,17 +88,31 @@ export class WorldConnection {
   private readonly closeHandlers = new Set<(reason: string) => void>();
   private ended = false;
 
-  private constructor(pc: RTCPeerConnection, reliable: RTCDataChannel, unreliable: RTCDataChannel) {
-    this.pc = pc;
-    this.channels = { reliable, unreliable };
+  private constructor(out: (channel: ChannelName, bytes: Uint8Array<ArrayBuffer>) => boolean, shut: () => void) {
+    this.out = out;
+    this.shut = shut;
+  }
+
+  /** A WebRTC connection's two channels feed and carry this connection. */
+  private static overRtc(pc: RTCPeerConnection, reliable: RTCDataChannel, unreliable: RTCDataChannel): WorldConnection {
+    const conn = new WorldConnection(
+      (channel, bytes) => {
+        const dc = channel === 'reliable' ? reliable : unreliable;
+        if (dc.readyState !== 'open') return false;
+        dc.send(bytes);
+        return true;
+      },
+      () => pc.close(),
+    );
     for (const dc of [reliable, unreliable]) {
       dc.binaryType = 'arraybuffer';
-      dc.onmessage = (ev: MessageEvent<ArrayBuffer>) => this.receive(new Uint8Array(ev.data));
+      dc.onmessage = (ev: MessageEvent<ArrayBuffer>) => conn.receive(new Uint8Array(ev.data));
     }
-    reliable.addEventListener('close', () => this.end('closed'));
+    reliable.addEventListener('close', () => conn.end('closed'));
     pc.addEventListener('connectionstatechange', () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.end(pc.connectionState);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') conn.end(pc.connectionState);
     });
+    return conn;
   }
 
   /** Called once when the connection ends: the server left, the network failed, or close() was called. */
@@ -118,7 +136,7 @@ export class WorldConnection {
     try {
       const reliable = pc.createDataChannel('reliable', { negotiated: true, id: 0 });
       const unreliable = pc.createDataChannel('unreliable', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 });
-      const conn = new WorldConnection(pc, reliable, unreliable);
+      const conn = WorldConnection.overRtc(pc, reliable, unreliable);
       if (options.onMessage) conn.onMessage(options.onMessage);
       await pc.setLocalDescription(await pc.createOffer());
       await within<void>('ICE gathering', 5000, (resolve) => {
@@ -139,15 +157,7 @@ export class WorldConnection {
           }),
         ),
       );
-      const reply = Promise.race([conn.next('welcome', () => true, timeout), conn.next('refuse', () => true, timeout)]);
-      const placed = conn.next('snapshot', (s) => s.correction?.seq === 0, timeout);
-      placed.catch(() => undefined); // a refused join never gets one
-      conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '', height: Math.max(0, Math.min(1023, Math.round(options.height ?? 0))) });
-      const first = await reply;
-      if (first.type === 'refuse') throw new JoinRefused(first.reason, first.detail);
-      conn.welcome = first;
-      conn.entity = first.entity;
-      conn.spawn = (await placed).correction;
+      await WorldConnection.handshake(conn, options, timeout);
       return conn;
     } catch (err) {
       pc.close();
@@ -155,12 +165,50 @@ export class WorldConnection {
     }
   }
 
+  /** Offline mode (S2.13): the world in the client's main process, over IPC. */
+  static async joinLocal(options: Omit<JoinOptions, 'signalUrl' | 'iceServers' | 'relayOnly'>): Promise<WorldConnection> {
+    const bridge = window.flatchat;
+    if (!bridge) throw new Error('no preload bridge');
+    const offs: Array<() => void> = [];
+    const conn = new WorldConnection(
+      (channel, bytes) => {
+        bridge.localSend(channel, bytes);
+        return true;
+      },
+      () => {
+        for (const off of offs) off();
+        void bridge.localClose();
+      },
+    );
+    offs.push(bridge.onLocal((_channel, bytes) => conn.receive(bytes)));
+    offs.push(bridge.onLocalEnd((reason) => conn.end(reason)));
+    if (options.onMessage) conn.onMessage(options.onMessage);
+    if (!(await bridge.localOpen())) throw new Error('no offline world is running');
+    try {
+      await WorldConnection.handshake(conn, options, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      return conn;
+    } catch (err) {
+      conn.shut();
+      throw err;
+    }
+  }
+
+  /** hello with the connect token, then welcome or refuse, then the spawn. */
+  private static async handshake(conn: WorldConnection, options: Pick<JoinOptions, 'token' | 'build' | 'spawn' | 'height'>, timeout: number): Promise<void> {
+    const reply = Promise.race([conn.next('welcome', () => true, timeout), conn.next('refuse', () => true, timeout)]);
+    const placed = conn.next('snapshot', (s) => s.correction?.seq === 0, timeout);
+    placed.catch(() => undefined); // a refused join never gets one
+    conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '', height: Math.max(0, Math.min(1023, Math.round(options.height ?? 0))) });
+    const first = await reply;
+    if (first.type === 'refuse') throw new JoinRefused(first.reason, first.detail);
+    conn.welcome = first;
+    conn.entity = first.entity;
+    conn.spawn = (await placed).correction;
+  }
+
   send(message: Message): void {
-    const dc = this.channels[messageDef(message.type).channel];
-    if (dc.readyState !== 'open') return;
     const bytes = encodeMessage(message);
-    dc.send(bytes);
-    this.counters.sentBytes += bytes.length;
+    if (this.out(messageDef(message.type).channel, bytes)) this.counters.sentBytes += bytes.length;
   }
 
   onMessage(handler: (m: Message) => void): () => void {
@@ -187,7 +235,7 @@ export class WorldConnection {
   /** Leaves: `travel` when the player went through a portal, `quit` otherwise. */
   close(detail = 'quit', reason: 'quit' | 'travel' = 'quit'): void {
     this.send({ type: 'leave', reason, detail });
-    setTimeout(() => this.pc.close(), 200);
+    setTimeout(() => this.shut(), 200);
   }
 
   private receive(bytes: Uint8Array): void {

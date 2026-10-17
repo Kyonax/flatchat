@@ -6,6 +6,8 @@
 //   --core=URL                                       the core to sign in to (https, or http on this
 //                                                    machine); else the settings' core, else the
 //                                                    built-in one (core-url.ts)
+//   --offline-world=DIR                              a world folder to offer in offline mode (S2.13),
+//                                                    converted when first played (repeatable)
 //   --relay-only                                     connect to worlds only through the TURN relays the
 //                                                    core hands out, as a player behind a NAT that lets
 //                                                    nothing else through would (S2.12; tests, support)
@@ -46,6 +48,8 @@ export interface ClientFlags {
   core?: string;
   /** Worlds only through a TURN relay (WebRTC's relay-only policy). */
   relayOnly?: boolean;
+  /** World folders offered in offline mode. */
+  offlineWorlds: string[];
   smoke: boolean;
   smokeOut?: string;
   /** The smoke test's network check: a loopback world server's signaling URL and a sealed token. */
@@ -109,7 +113,12 @@ export function parseSize(text: string): Size | undefined {
 
 export function parseFlags(argv: readonly string[]): { flags: ClientFlags; errors: string[] } {
   const errors: string[] = [];
-  const flags: ClientFlags = { smoke: argv.includes('--smoke'), benchSize: DEFAULT_BENCH_SIZE, ...(argv.includes('--relay-only') ? { relayOnly: true } : {}) };
+  const flags: ClientFlags = {
+    smoke: argv.includes('--smoke'),
+    benchSize: DEFAULT_BENCH_SIZE,
+    offlineWorlds: argv.filter((a) => a.startsWith('--offline-world=')).map((a) => a.slice('--offline-world='.length)).filter(Boolean).slice(0, 16),
+    ...(argv.includes('--relay-only') ? { relayOnly: true } : {}),
+  };
   const smokeOut = value(argv, 'smoke-out');
   if (smokeOut) flags.smokeOut = smokeOut;
   const core = value(argv, 'core');

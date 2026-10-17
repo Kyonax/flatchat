@@ -8,8 +8,15 @@ describe('parseFlags', () => {
   it('reads nothing from a plain start', () => {
     const { flags, errors } = parseFlags(argv());
     expect(errors).toEqual([]);
-    expect(flags).toEqual({ smoke: false, benchSize: DEFAULT_BENCH_SIZE });
+    expect(flags).toEqual({ smoke: false, benchSize: DEFAULT_BENCH_SIZE, offlineWorlds: [] });
     expect(rendererQuery(flags)).toEqual({});
+  });
+
+  it('takes world folders for offline mode, and relay-only (S2.12, S2.13)', () => {
+    const { flags, errors } = parseFlags(argv('--offline-world=/w/one', '--offline-world=/w/two', '--offline-world=', '--relay-only'));
+    expect(errors).toEqual([]);
+    expect(flags.offlineWorlds).toEqual(['/w/one', '/w/two']);
+    expect(flags.relayOnly).toBe(true);
   });
 
   it('reads the smoke mode and its output file', () => {

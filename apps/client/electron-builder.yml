@@ -10,7 +10,12 @@ directories:
   output: release
 files:
   - out/**
+  - "!out/offline/**"
   - package.json
+# Offline mode's built-in worlds (S2.13), outside the archive: the world server reads them as files.
+extraResources:
+  - from: out/offline
+    to: offline
 asar: true
 # The licences of the bundled third-party code (scripts/notices.mjs), next to the executable.
 extraFiles:

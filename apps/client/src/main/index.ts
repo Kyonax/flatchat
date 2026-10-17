@@ -22,6 +22,7 @@ import { CoreApi, coreBase, CoreError } from './core-api';
 import { DEFAULT_CORE } from './core-url';
 import { crowdPass } from './crowd-pass';
 import { exitCodeFor, parseFlags, rendererQuery } from './flags';
+import { listOffline, OfflineHost } from './offline';
 import { SettingsFile } from './settings-file';
 import { signal } from './signal';
 
@@ -176,6 +177,41 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   } catch (err) {
     return failure(err);
   }
+});
+
+// Offline mode (S2.13): the built-in worlds sit beside the app (extraResources), or in out/ while
+// developing; folders given with --offline-world are converted into the app's data folder.
+let offline: OfflineHost | undefined;
+const offlineKits = (): string => (app.isPackaged ? join(process.resourcesPath, 'offline') : join(__dirname, '..', 'offline'));
+ipcMain.handle('flatchat:offline-worlds', () => listOffline(offlineKits(), flags.offlineWorlds));
+ipcMain.handle('flatchat:offline-join', async (_event, id: unknown) => {
+  if (typeof id !== 'string' || !/^(kit:[a-z0-9-]{1,40}|folder:\d{1,2})$/.test(id)) return { ok: false, error: 'bad-world' };
+  offline ??= new OfflineHost(offlineKits(), flags.offlineWorlds, join(app.getPath('userData'), 'offline'));
+  try {
+    const r = await offline.start(id);
+    return { ok: true, token: r.token, name: r.name };
+  } catch (err) {
+    return { ok: false, error: 'failed', detail: err instanceof Error ? err.message.slice(0, 160) : '' };
+  }
+});
+ipcMain.handle('flatchat:local-open', (event) => {
+  if (!offline) return false;
+  const page = event.sender;
+  offline.open(
+    (channel, bytes) => {
+      if (!page.isDestroyed()) page.send('flatchat:local-recv', channel, bytes);
+    },
+    (reason) => {
+      if (!page.isDestroyed()) page.send('flatchat:local-end', reason);
+    },
+  );
+  return true;
+});
+ipcMain.on('flatchat:local-send', (_event, channel: unknown, bytes: unknown) => {
+  if ((channel === 'reliable' || channel === 'unreliable') && bytes instanceof Uint8Array && bytes.length <= 65_536) offline?.receive(channel, bytes);
+});
+ipcMain.handle('flatchat:local-close', async () => {
+  await offline?.stop();
 });
 
 ipcMain.handle('flatchat:signal', async (_event, url: unknown, offer: unknown) => {

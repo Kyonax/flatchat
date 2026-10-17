@@ -18,7 +18,7 @@ Then the MVP, stage by stage: worlds and travel, plugins and moderation, avatars
 
 ## Trying it
 
-FlatChat is invitation-only during the closed test: an invitation link creates the account. The client for Linux (an AppImage or a .tar.gz) and Windows (a zip) comes from each CI run (`flatchat-linux` and `client-windows`), or from the link the creator shares. Run it, sign in with the browser, and pick a world. Settings has the controls (every key can be changed), the voice (open microphone or push-to-talk), the language and, for tests, the server's address.
+FlatChat is invitation-only during the closed test: an invitation link creates the account. The client for Linux (an AppImage or a .tar.gz) and Windows (a zip) comes from each CI run (`flatchat-linux` and `client-windows`), or from the link the creator shares. Run it, sign in with the browser, and pick a world. Settings has the controls (every key can be changed), the voice (open microphone or push-to-talk), your height, the sound volumes, the language and, for tests, the server's address. With no account or no connection, "Play offline" on the first screen opens the worlds built into the client (start it with `--offline-world=FOLDER` to add a world folder of your own, which it converts the first time).
 
 ## The parts
 

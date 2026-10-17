@@ -8,7 +8,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && node scripts/notices.mjs",
+    "build": "electron-vite build && node scripts/notices.mjs && node scripts/offline-worlds.ts",
     "start": "electron-vite preview",
     "smoke": "electron-vite build && electron . --smoke",
     "bench": "electron-vite build && electron . --bench=10 --bench-out=out/bench.json",
@@ -21,8 +21,10 @@
   "devDependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",
     "@flatchat/content": "*",
+    "@flatchat/converter": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "^0.0.0",
+    "@flatchat/world-server": "*",
     "@pixiv/three-vrm": "3.5.5",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-vue": "^6.0.10",
