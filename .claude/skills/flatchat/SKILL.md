@@ -1,9 +1,9 @@
 ---
 name: flatchat
-description: "The engine skill for this repository, FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU with its WebGL2 fallback, smoke and bench modes); the world server run as TypeScript by Node, its transports (WebRTC data channels via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds and the crowd bench; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T17); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement in this repository, and before calling work done."
+description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, PostgreSQL); the world server, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds and the crowd bench; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T19); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   verified: "2026-10-17"
 ---
 
@@ -25,6 +25,7 @@ Everything that can be decided without a GPU is decided in pure modules and prov
 | The client, live | `npm run client` |
 | The client draws (needs a display) | `npm run client:smoke` |
 | A world server | `npm run server -- --port 0 --ticks 100` |
+| The core on this machine (read `core-service` first) | `npm run core:db -- start`, then `npm run core` with its environment |
 | Bots on both transports, 4 s (part of the harness) | `npm run bots -- smoke` |
 | A measured load test (read `bots-and-load-tests` first) | `npm run bots -- run --transport rtc --bots 200 --minutes 30 --server-cpus 0-1 --bot-cpus 2-7` |
 | The protocol's golden files up to date | `npm run golden -w @flatchat/protocol` |
@@ -39,6 +40,7 @@ Reference these guidelines when:
 *   Touching the client's main process, preload, IPC, window settings, content security policy or menu.
 *   Drawing anything, choosing a three.js entry point, or quoting a frame rate.
 *   Changing the world server, its tick loop, flags or log lines.
+*   Touching the core: accounts, sign-up, sign-in, sessions, worlds, connect tokens, its database or pages.
 *   Changing how programs connect: the transports, joins, interest management, snapshots, voice forwarding or chat.
 *   Running bots, load-testing a world server, or quoting a bandwidth, tick or capacity number.
 *   Touching voice: capture, the codec, the playout buffer, spatial sound or mouth shapes.
@@ -65,6 +67,7 @@ Reference these guidelines when:
 | Voice: capture, Opus, the playout buffer, distance, HRTF, mouth shapes, the S0.08 tests | `rules/voice-chain.md` + `rules/client-electron.md` |
 | Avatars: VRM loading, merged materials, texture budgets, levels of detail, proxies, crowds, the S0.09 bench | `rules/avatars-and-crowds.md` + `rules/rendering-three-webgpu.md` + `rules/security-untrusted-input.md` |
 | The protocol: messages, codecs, connect tokens, the version handshake, golden packets | `rules/protocol-and-codecs.md` + `rules/security-untrusted-input.md` |
+| The core: accounts, invitations, the age rule, sign-in, sessions, worlds and their keys, connect tokens, SQL, its pages, the admin command line | `rules/core-service.md` + `rules/security-untrusted-input.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -87,6 +90,7 @@ A trap-linter finding names its rule; read that rule.
 | `voice-chain` | The client's voice: Opus as WebAssembly (why not WebCodecs), the capture and playout worklets, the playout buffer's rules, distance and HRTF, mouth shapes, the voice and load tests. |
 | `avatars-and-crowds` | VRM on the WebGPU renderer (MToon node materials, shared textures, VRM 0.x poses), what the converter must do (merge materials, texture budgets), paced swaps, the crowd bench and S0.09's pass lines, the test-avatar sets. |
 | `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
+| `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
 | `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
 | `security-untrusted-input` | Never run, render as HTML or load raw what strangers made: eval, innerHTML/v-html, raw loaders, node:vm, exec (T05, T06, T11–T13). |
 | `offline-testing` | Pure modules, scene-graph and recorder tests, inline sources, process tests, test conventions. |
