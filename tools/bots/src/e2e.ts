@@ -11,14 +11,13 @@
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--keep]
 //
 // One JSON line: { event: 'e2e', ok, steps, server } ; exit 0 when every step passed.
-import { type ChildProcess, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { _electron as electron } from 'playwright-core';
+import { children, freePort, run, start, stop, waitFor } from './procs.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
@@ -36,81 +35,7 @@ if (!client) {
 }
 
 const steps: Record<string, unknown> = {};
-const children: ChildProcess[] = [];
 const say = (event: string, fields: Record<string, unknown>): void => void process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = createServer();
-    s.on('error', reject);
-    s.listen(0, '127.0.0.1', () => {
-      const a = s.address();
-      s.close(() => resolve(typeof a === 'object' && a ? a.port : 0));
-    });
-  });
-}
-
-/** Runs a command to its end and returns its output. */
-function run(cmd: string[], env: Record<string, string> = {}): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(cmd[0]!, cmd.slice(1), { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    p.stdout.on('data', (d: Buffer) => (out += d.toString()));
-    p.stderr.on('data', (d: Buffer) => (err += d.toString()));
-    p.on('exit', (code) => (code === 0 ? resolve(out) : reject(new Error(`${cmd.slice(0, 3).join(' ')} exited ${code}: ${err.trim().slice(0, 300)}`))));
-  });
-}
-
-/** Starts a program that writes JSON lines; resolves with its lines once `event` appears. */
-function start(cmd: string[], env: Record<string, string>, event: string): Promise<{ proc: ChildProcess; lines: Array<Record<string, unknown>> }> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd[0]!, cmd.slice(1), { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
-    children.push(proc);
-    const lines: Array<Record<string, unknown>> = [];
-    let buffer = '';
-    const timer = setTimeout(() => reject(new Error(`no ${event} line from ${cmd[1]}`)), 30_000);
-    proc.stdout!.on('data', (d: Buffer) => {
-      buffer += d.toString();
-      let nl: number;
-      while ((nl = buffer.indexOf('\n')) >= 0) {
-        const text = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        try {
-          const line = JSON.parse(text) as Record<string, unknown>;
-          lines.push(line);
-          if (line['event'] === event) {
-            clearTimeout(timer);
-            resolve({ proc, lines });
-          }
-        } catch {
-          // not a JSON line
-        }
-      }
-    });
-    proc.stderr!.on('data', (d: Buffer) => process.stderr.write(d));
-    proc.on('exit', (code) => reject(new Error(`${cmd[1]} exited ${code} before ${event}`)));
-  });
-}
-
-function stop(proc: ChildProcess): Promise<void> {
-  return new Promise((resolve) => {
-    if (proc.exitCode !== null) return resolve();
-    proc.on('exit', () => resolve());
-    proc.stdin?.end('stop\n');
-    setTimeout(() => proc.kill('SIGKILL'), 10_000).unref();
-  });
-}
-
-async function waitFor<T>(what: string, ms: number, probe: () => Promise<T | undefined>): Promise<T> {
-  const end = Date.now() + ms;
-  for (;;) {
-    const v = await probe();
-    if (v !== undefined) return v;
-    if (Date.now() > end) throw new Error(`timed out: ${what}`);
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
 
 const dir = mkdtempSync('/tmp/fce2e-');
 let ok = false;
@@ -183,14 +108,16 @@ try {
     steps['redirect'] = callback.replace(/code=[^&]+/, 'code=…');
     const back = await fetch(callback);
     steps['callback'] = back.status;
-    // The client: signed in, the world list, join.
-    await page.locator('[data-test=join]').first().click({ timeout: 20_000 });
-    steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
-    await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
-    await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
     const snap = async (name: string): Promise<void> => {
       if (values.shots) await page.screenshot({ path: join(values.shots, `${name}.png`) });
     };
+    // The client: signed in, the world browser (S2.09), join.
+    await page.locator('[data-test=public] [data-test=join]').first().waitFor({ timeout: 20_000 });
+    await snap('0-home');
+    await page.locator('[data-test=public] [data-test=join]').first().click({ timeout: 20_000 });
+    steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
+    await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
+    await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
     await page.waitForTimeout(500);
     await snap('1-joined');
     // Walk forward for a second and jump, then chat.
