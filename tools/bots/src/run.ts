@@ -323,7 +323,10 @@ async function smokeOne(transport: 'udp' | 'rtc', bots: number, seconds: number)
   const tick = ((stopped?.['summary'] as Record<string, unknown> | undefined)?.['tickMs'] ?? {}) as { p99?: number };
   const joined = summary.filter((b) => b.entity !== undefined);
   const problems: string[] = [];
-  if (joined.length !== bots) problems.push(`${joined.length} of ${bots} joined`);
+  if (joined.length !== bots) {
+    const why = [...new Set(summary.filter((b) => b.entity === undefined).map((b) => `${b.state}${b.refuseReason || b.lostReason ? `: ${b.refuseReason || b.lostReason}` : ''}`))].slice(0, 3);
+    problems.push(`${joined.length} of ${bots} joined (${why.join('; ')})`);
+  }
   const lost = joined.filter((b) => b.lostReason !== '');
   if (lost.length > 0) problems.push(`${lost.length} lost (${lost[0]?.lostReason})`);
   if (joined.some((b) => (b.downMessages['snapshot'] ?? 0) === 0)) problems.push('a bot got no snapshot');

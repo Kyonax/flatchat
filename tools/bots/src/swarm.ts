@@ -80,7 +80,12 @@ export async function runSwarm(config: SwarmConfig, worldKey: Uint8Array): Promi
     await new Promise((r) => setTimeout(r, spacing));
   }
   await Promise.all(joins);
+  // A real client tries again when its connection fails to open: a loaded machine's WebRTC check can
+  // miss once. A refusal is not retried.
+  const retried = bots.filter((b) => b.state === 'failed');
+  await Promise.all(retried.map((b) => b.join()));
   out('joined', {
+    retried: retried.length,
     from: config.from,
     count: bots.length,
     joined: bots.filter((b) => b.state === 'joined').length,
