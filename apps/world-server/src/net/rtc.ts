@@ -14,7 +14,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Channel } from '@flatchat/protocol';
-import { type DataChannel, PeerConnection, type RtcConfig } from 'node-datachannel';
+import { type DataChannel, type IceServer, PeerConnection, type RtcConfig } from 'node-datachannel';
 import { emptyStats, type Link, type LinkStats, type ServerTransport } from './types.ts';
 
 const MAX_SIGNAL_BYTES = 64 * 1024;
@@ -185,6 +185,38 @@ export interface RtcServerOptions {
   /** Restricts ICE to one local address, for example 127.0.0.1 in an isolated network. */
   iceBind?: string;
   maxSessions?: number;
+  /** STUN and TURN servers, in the browser's RTCIceServer form: STUN finds the world's public
+   *  address (a mapped port is announced that way), TURN relays when nothing else gets through. */
+  iceServers?: IceServerSpec[];
+}
+
+/** One ICE server as browsers describe it (RTCIceServer). */
+export interface IceServerSpec {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+/** The browser's form into node-datachannel's: one entry per URL; TURN credentials go as fields,
+ *  so a username with colons (the core's time-limited ones) survives. */
+export function toDatachannelIce(specs: readonly IceServerSpec[]): Array<string | IceServer> {
+  const out: Array<string | IceServer> = [];
+  for (const spec of specs) {
+    for (const url of Array.isArray(spec.urls) ? spec.urls : [spec.urls]) {
+      const m = /^(stun|stuns|turn|turns):([^:?/]+|\[[0-9a-f:]+\])(?::(\d+))?(?:\?transport=(udp|tcp))?$/i.exec(url.trim());
+      if (!m) continue;
+      const scheme = m[1]!.toLowerCase();
+      const hostname = m[2]!.replace(/^\[|\]$/g, '');
+      const port = Number(m[3] ?? (scheme.endsWith('s') ? 5349 : 3478));
+      if (scheme.startsWith('stun')) {
+        out.push(`stun:${hostname}:${port}`);
+      } else {
+        const relayType = scheme === 'turns' ? 'TurnTls' : m[4]?.toLowerCase() === 'tcp' ? 'TurnTcp' : 'TurnUdp';
+        out.push({ hostname, port, relayType, ...(spec.username ? { username: spec.username } : {}), ...(spec.credential ? { password: spec.credential } : {}) });
+      }
+    }
+  }
+  return out;
 }
 
 export class RtcServer implements ServerTransport {
@@ -238,9 +270,14 @@ export class RtcServer implements ServerTransport {
     await new Promise<void>((resolve) => this.http.close(() => resolve()));
   }
 
+  /** New peer connections use these (the core hands out fresh TURN credentials now and then). */
+  setIceServers(specs: readonly IceServerSpec[]): void {
+    this.options.iceServers = [...specs];
+  }
+
   private config(): RtcConfig {
     return {
-      iceServers: [],
+      iceServers: toDatachannelIce(this.options.iceServers ?? []),
       enableIceUdpMux: true,
       portRangeBegin: this.options.icePort,
       portRangeEnd: this.options.icePort,
@@ -283,29 +320,60 @@ export class RtcServer implements ServerTransport {
       reply(400, { error: 'bad offer' });
       return;
     }
+    try {
+      reply(200, await this.answer(offer.sdp, `${req.socket.remoteAddress ?? '?'}:${req.socket.remotePort ?? 0}`));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'failed';
+      if (!res.headersSent) reply(message === 'full' ? 503 : 500, { error: message });
+    }
+  }
+
+  /** Answers one offer, from the signaling port or relayed by the core: resolves with the answer
+   *  once ICE has gathered, and opens the link in the background (onLink when both channels open). */
+  async answer(sdp: string, label: string): Promise<{ type: string; sdp: string }> {
+    if (this.links.size + this.pending >= (this.options.maxSessions ?? 512)) {
+      this.refused += 1;
+      throw new Error('full');
+    }
     this.pending += 1;
     let pc: PeerConnection | undefined;
+    let dc: ReturnType<typeof channels> | undefined;
+    let link: RtcLink | undefined;
     try {
       pc = new PeerConnection(`world-${nextLinkId}`, this.config());
-      pc.setRemoteDescription(offer.sdp, 'offer');
-      const dc = channels(pc);
-      const link = new RtcLink(pc, dc, `${req.socket.remoteAddress ?? '?'}:${req.socket.remotePort ?? 0}`);
+      pc.setRemoteDescription(sdp, 'offer');
+      dc = channels(pc);
+      link = new RtcLink(pc, dc, label);
       await gathered(pc, GATHER_MS);
       const answer = pc.localDescription();
       if (!answer) throw new Error('no answer');
-      reply(200, { type: answer.type, sdp: answer.sdp });
-      await opened([dc.reliable, dc.unreliable], OPEN_MS);
-      this.links.add(link);
-      link.onEnded = () => this.links.delete(link);
-      this.linkHandler(link);
+      void this.open(pc, dc, link);
+      return { type: answer.type, sdp: answer.sdp };
     } catch (err) {
       this.refused += 1;
+      this.pending -= 1;
       try {
         pc?.close();
       } catch {
         // already closed
       }
-      if (!res.headersSent) reply(500, { error: err instanceof Error ? err.message : 'failed' });
+      throw err;
+    }
+  }
+
+  private async open(pc: PeerConnection, dc: ReturnType<typeof channels>, link: RtcLink): Promise<void> {
+    try {
+      await opened([dc.reliable, dc.unreliable], OPEN_MS);
+      this.links.add(link);
+      link.onEnded = () => this.links.delete(link);
+      this.linkHandler(link);
+    } catch {
+      this.refused += 1;
+      try {
+        pc.close();
+      } catch {
+        // already closed
+      }
     } finally {
       this.pending -= 1;
     }

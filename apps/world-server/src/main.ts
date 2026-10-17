@@ -9,7 +9,12 @@
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
 //                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
 //                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
+//                    [--core URL --relay] [--ice-server URL]… [--map-port]
 //
+// Hosting from home (S1.13): --relay takes players' WebRTC offers through the core at --core (an
+// outbound WebSocket, so no TCP port is opened; the world proves it holds its key), --ice-server adds
+// STUN or TURN servers (the core adds its own over the relay), and --map-port asks the router to
+// forward the WebRTC UDP port (PCP, NAT-PMP or UPnP; it changes the router, so it is opt-in).
 // --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
 // spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
@@ -21,6 +26,8 @@ import { createWriteStream } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { fingerprintHex, fromHex, PROTOCOL_VERSION, WORLD_KEY_BYTES } from '@flatchat/protocol';
 import { PLAZA } from '@flatchat/sim';
+import { PortMapper } from './net/portmap.ts';
+import { CoreRelay } from './net/relay.ts';
 import { RtcServer } from './net/rtc.ts';
 import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
@@ -64,6 +71,10 @@ const { values } = parseArgs({
     seed: { type: 'string', default: '1' },
     spawn: { type: 'string' },
     map: { type: 'string', default: 'flat' },
+    core: { type: 'string' },
+    relay: { type: 'boolean', default: false },
+    'ice-server': { type: 'string', multiple: true },
+    'map-port': { type: 'boolean', default: false },
   },
   strict: true,
 });
@@ -104,6 +115,10 @@ if (keyHex !== undefined) {
   if (worldKey.length !== WORLD_KEY_BYTES) fail(`FLATCHAT_WORLD_KEY must be ${WORLD_KEY_BYTES} bytes`);
 }
 
+if (values.relay && (!values.core || !transports.includes('rtc') || !worldKey)) fail('--relay needs --core URL, the rtc transport and FLATCHAT_WORLD_KEY');
+if (values.core !== undefined && !/^https?:\/\/[^\s/]+(\/.*)?$/.test(values.core)) fail(`--core must be an http(s) URL, got ${values.core}`);
+if (values['map-port'] && !transports.includes('rtc')) fail('--map-port maps the WebRTC port: it needs the rtc transport');
+
 const listening: ServerTransport[] = [];
 try {
   if (transports.includes('udp')) listening.push(await UdpServer.listen({ port, ...(values.bind ? { host: values.bind } : {}), maxSessions: capacity + 16 }));
@@ -115,6 +130,7 @@ try {
         ...(values.bind ? { host: values.bind } : {}),
         ...(values['rtc-bind'] ? { iceBind: values['rtc-bind'] } : {}),
         maxSessions: capacity + 16,
+        iceServers: (values['ice-server'] ?? []).map((urls) => ({ urls })),
       }),
     );
   }
@@ -160,14 +176,24 @@ log('ready', {
   voiceHz,
   capacity,
   worldSize,
+  map: values.map,
+  relay: values.relay,
   node: process.version,
   pid: process.pid,
 });
+
+const rtc = listening.find((t): t is RtcServer => t instanceof RtcServer);
+const relay = values.relay && rtc && worldKey && values.core ? new CoreRelay({ core: values.core, worldId, worldKey, rtc, log }) : undefined;
+relay?.start();
+const mapper = values['map-port'] ? new PortMapper(rtcPort, log) : undefined;
+void mapper?.start();
 
 let stopping = false;
 const shutdown = async (reason: string): Promise<void> => {
   if (stopping) return;
   stopping = true;
+  relay?.stop();
+  await mapper?.stop();
   const summary = await server.stop(reason);
   traceOut?.end();
   const tickMs = summary['tickMs'] as { max: number } | undefined;
