@@ -11,7 +11,7 @@ import SignIn from './SignIn.vue';
 import './theme.css';
 import WorldView from './WorldView.vue';
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
 const bridge = window.flatchat;
 const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
@@ -39,7 +39,7 @@ async function join(w: FlatchatWorld): Promise<void> {
   const r = await bridge.joinWorld(w.id);
   joining.value = '';
   if (!r.ok) {
-    joinError.value = t('home.joinFailed', { reason: r.error });
+    joinError.value = t('home.joinFailed', { reason: te(`home.reasons.${r.error}`) ? t(`home.reasons.${r.error}`) : r.error });
     return;
   }
   world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers } };

@@ -21,6 +21,9 @@ type FlatchatAuthState =
 interface FlatchatWorld {
   id: string;
   name: string;
+  online: boolean;
+  players: number;
+  recommended: number;
   capacity: number;
 }
 
@@ -43,6 +46,9 @@ interface FlatchatBridge {
   signOut(): Promise<FlatchatAuthState>;
   onAuth(listener: (state: FlatchatAuthState) => void): () => void;
   worlds(): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;
+  world(worldId: string): Promise<FlatchatResult<{ world: FlatchatWorld }>>;
+  favourites(): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;
+  setFavourite(worldId: string, on: boolean): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;
   contentHas(hashes: string[]): Promise<string[]>;
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;

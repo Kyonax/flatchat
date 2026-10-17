@@ -5,7 +5,7 @@ import { request } from 'node:http';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
-import { cleanIceServers, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
+import { cleanIceServers, cleanWorlds, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
 import en from '../src/renderer/src/i18n/en';
 import es from '../src/renderer/src/i18n/es';
@@ -171,6 +171,42 @@ describe("the core's API", () => {
     const ticket = await api.join('a', '00000000-0000-4000-8000-000000000001');
     expect([...ticket.token]).toEqual([1, 2, 3]);
     await expect(api.join('a', '../../me')).rejects.toBeInstanceOf(CoreError);
+  });
+});
+
+describe('the world browser on the client side', () => {
+  it('keeps only well-formed worlds, with their counts', () => {
+    expect(
+      cleanWorlds([
+        { id: '00000000-0000-4000-8000-0000000000AA', name: 'Plaza', online: true, players: 3, recommended: 4, capacity: 6 },
+        { id: 'not-an-id', name: 'Bad' },
+        { id: '00000000-0000-4000-8000-000000000002', name: 'N'.repeat(80), online: 'yes', players: -1, recommended: 2.5, capacity: 9 },
+        null,
+      ]),
+    ).toEqual([
+      { id: '00000000-0000-4000-8000-0000000000aa', name: 'Plaza', online: true, players: 3, recommended: 4, capacity: 6 },
+      { id: '00000000-0000-4000-8000-000000000002', name: 'N'.repeat(48), online: false, players: 0, recommended: 0, capacity: 9 },
+    ]);
+    expect(cleanWorlds('junk')).toEqual([]);
+  });
+
+  it('marks favourites with PUT and DELETE, and finds a world by its id', async () => {
+    const calls: string[] = [];
+    const fetchFake: Fetch = async (url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
+      if (init?.method === 'PUT' || init?.method === 'DELETE') return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ id: '00000000-0000-4000-8000-000000000001', name: 'Hidden', online: true, players: 1, recommended: 5, capacity: 10 }), { status: 200 });
+    };
+    const api = new CoreApi(coreBase('https://core.example.org')!, fetchFake);
+    await api.setFavourite('a', '00000000-0000-4000-8000-000000000001', true);
+    await api.setFavourite('a', '00000000-0000-4000-8000-000000000001', false);
+    expect(await api.world('00000000-0000-4000-8000-000000000001')).toMatchObject({ name: 'Hidden', players: 1 });
+    await expect(api.world('../me')).rejects.toBeInstanceOf(CoreError);
+    expect(calls).toEqual([
+      'PUT /api/v1/me/favourites/00000000-0000-4000-8000-000000000001',
+      'DELETE /api/v1/me/favourites/00000000-0000-4000-8000-000000000001',
+      'GET /api/v1/worlds/00000000-0000-4000-8000-000000000001',
+    ]);
   });
 });
 

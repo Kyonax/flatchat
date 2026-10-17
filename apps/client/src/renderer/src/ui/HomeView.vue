@@ -1,29 +1,69 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import WorldRow from './WorldRow.vue';
 
-const props = defineProps<{ account: FlatchatAccount; remembered: boolean; joining: string; joinError: string }>();
+// The world browser (S2.09, Q-L4, Q-L11): join by a world's ID, the account's favourites, and the
+// public list (open worlds below their recommended count, busiest first).
+defineProps<{ account: FlatchatAccount; remembered: boolean; joining: string; joinError: string }>();
 const emit = defineEmits<{ join: [world: FlatchatWorld]; settings: []; 'sign-out': [] }>();
 const { t } = useI18n();
 
+const WORLD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const worlds = ref<FlatchatWorld[] | undefined>(undefined);
+const favourites = ref<FlatchatWorld[]>([]);
 const listError = ref('');
+const byId = ref('');
+const byIdError = ref('');
+const looking = ref(false);
+const starred = computed(() => new Set(favourites.value.map((w) => w.id)));
+
+function failed(error: string): string {
+  return error === 'unreachable' ? t('signin.errors.unreachable') : t('signin.errors.failed');
+}
 
 async function load(): Promise<void> {
   worlds.value = undefined;
   listError.value = '';
-  const r = await window.flatchat?.worlds();
-  if (!r || !r.ok) {
-    listError.value = r?.error === 'unreachable' ? t('signin.errors.unreachable') : t('signin.errors.failed');
+  const [list, favs] = await Promise.all([window.flatchat?.worlds(), window.flatchat?.favourites()]);
+  if (favs?.ok) favourites.value = favs.worlds;
+  if (!list || !list.ok) {
+    listError.value = failed(list?.error ?? '');
     worlds.value = [];
     return;
   }
-  worlds.value = r.worlds;
+  worlds.value = list.worlds;
+}
+
+async function toggle(w: FlatchatWorld): Promise<void> {
+  const r = await window.flatchat?.setFavourite(w.id, !starred.value.has(w.id));
+  if (r?.ok) favourites.value = r.worlds;
+}
+
+async function joinById(): Promise<void> {
+  byIdError.value = '';
+  const id = byId.value.trim().toLowerCase();
+  if (!WORLD_ID.test(id)) {
+    byIdError.value = t('home.badId');
+    return;
+  }
+  looking.value = true;
+  const r = await window.flatchat?.world(id);
+  looking.value = false;
+  if (!r || !r.ok) {
+    byIdError.value = r?.error === 'no-world' ? t('home.noSuchWorld') : failed(r?.error ?? '');
+    return;
+  }
+  if (!r.world.online) {
+    byIdError.value = t('home.worldOffline');
+    return;
+  }
+  emit('join', r.world);
 }
 
 onMounted(load);
-void props;
 </script>
 
 <template>
@@ -44,12 +84,67 @@ void props;
       <p class="muted">
         {{ remembered ? t('home.remembered') : t('home.notRemembered') }}
       </p>
+
+      <h2>{{ t('home.byId') }}</h2>
+      <form
+        class="row"
+        @submit.prevent="joinById"
+      >
+        <input
+          v-model="byId"
+          type="text"
+          class="grow"
+          spellcheck="false"
+          autocomplete="off"
+          :placeholder="t('home.idPlaceholder')"
+          data-test="world-id"
+        >
+        <button
+          type="submit"
+          :disabled="joining !== '' || looking"
+          data-test="join-id"
+        >
+          {{ t('home.go') }}
+        </button>
+      </form>
+      <p
+        v-if="byIdError"
+        class="error"
+        role="alert"
+      >
+        {{ byIdError }}
+      </p>
+
+      <h2>{{ t('home.favourites') }}</h2>
+      <p
+        v-if="favourites.length === 0"
+        class="muted"
+      >
+        {{ t('home.noFavourites') }}
+      </p>
+      <ul
+        v-else
+        class="plain"
+        data-test="favourites"
+      >
+        <WorldRow
+          v-for="w in favourites"
+          :key="w.id"
+          :world="w"
+          :favourite="true"
+          :joining="joining"
+          @join="emit('join', $event)"
+          @toggle="toggle"
+        />
+      </ul>
+
       <div class="row">
         <h2 class="grow">
           {{ t('home.worlds') }}
         </h2>
         <button
           type="button"
+          data-test="refresh"
           @click="load"
         >
           {{ t('home.refresh') }}
@@ -75,24 +170,18 @@ void props;
       </p>
       <ul
         v-else
-        class="plain worlds"
+        class="plain"
+        data-test="public"
       >
-        <li
+        <WorldRow
           v-for="w in worlds"
           :key="w.id"
-          class="row world"
-        >
-          <span class="grow"><strong>{{ w.name }}</strong> <span class="muted">· {{ t('home.capacity', { n: w.capacity }) }}</span></span>
-          <button
-            type="button"
-            class="primary"
-            :disabled="joining !== ''"
-            data-test="join"
-            @click="emit('join', w)"
-          >
-            {{ joining === w.id ? t('home.joining') : t('home.join') }}
-          </button>
-        </li>
+          :world="w"
+          :favourite="starred.has(w.id)"
+          :joining="joining"
+          @join="emit('join', $event)"
+          @toggle="toggle"
+        />
       </ul>
       <p
         v-if="joinError"
@@ -118,10 +207,5 @@ void props;
 h2 {
   font-size: 1.05rem;
   margin: 16px 0 8px;
-}
-
-.world {
-  padding: 8px 0;
-  border-top: 1px solid var(--line);
 }
 </style>

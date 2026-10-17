@@ -143,6 +143,30 @@ ipcMain.handle('flatchat:worlds', async () => {
     return failure(err);
   }
 });
+// The world browser (S2.09): a world by its id, and the account's favourites.
+ipcMain.handle('flatchat:world', async (_event, worldId: unknown) => {
+  if (typeof worldId !== 'string' || !auth) return { ok: false, error: 'bad-world' };
+  try {
+    return { ok: true, world: await auth.world(worldId) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:favourites', async () => {
+  try {
+    return { ok: true, worlds: (await auth?.favourites()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:favourite', async (_event, worldId: unknown, on: unknown) => {
+  if (typeof worldId !== 'string' || typeof on !== 'boolean' || !auth) return { ok: false, error: 'bad-world' };
+  try {
+    return { ok: true, worlds: await auth.setFavourite(worldId, on) };
+  } catch (err) {
+    return failure(err);
+  }
+});
 ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   if (typeof worldId !== 'string' || !auth) return { ok: false, error: 'bad-world' };
   try {

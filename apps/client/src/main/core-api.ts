@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // The client's side of the core's API (apps/core): sign-in requests, the code exchange, refresh,
-// sign-out, the account, the world list and connect tokens. Only the main process talks to the
+// sign-out, the account, the world browser (the public list, a world by its id, favourites) and
+// connect tokens. Only the main process talks to the
 // core; the page never holds an account token. `fetch` is injected so tests need no network.
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -18,10 +19,26 @@ export interface CoreTokens {
   account: Account;
 }
 
+/** A world as the world browser shows it (S2.09). */
 export interface WorldSummary {
   id: string;
   name: string;
+  online: boolean;
+  players: number;
+  recommended: number;
   capacity: number;
+}
+
+const count = (v: unknown): number => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 1000 ? v : 0);
+
+/** Keeps only well-formed worlds from the core's answer. */
+export function cleanWorlds(raw: unknown): WorldSummary[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 500).flatMap((w: Partial<WorldSummary> | null) =>
+    w && typeof w.id === 'string' && /^[0-9a-f-]{36}$/i.test(w.id) && typeof w.name === 'string'
+      ? [{ id: w.id.toLowerCase(), name: w.name.slice(0, 48), online: w.online === true, players: count(w.players), recommended: count(w.recommended), capacity: count(w.capacity) }]
+      : [],
+  );
 }
 
 /** One ICE server, as browsers take it (RTCIceServer). */
@@ -96,7 +113,7 @@ export class CoreApi {
     return new URL(path.replace(/^\//, ''), this.base.href.endsWith('/') ? this.base.href : `${this.base.href}/`).href;
   }
 
-  private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown, access?: string): Promise<T> {
+  private async call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, access?: string): Promise<T> {
     const headers: Record<string, string> = { accept: 'application/json' };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (access) headers['authorization'] = `Bearer ${access}`;
@@ -165,12 +182,26 @@ export class CoreApi {
     await this.call('POST', '/api/v1/sessions/revoke', {}, access);
   }
 
+  /** The public list: open worlds below their recommended count, busiest first. */
   async worlds(): Promise<WorldSummary[]> {
-    const r = await this.call<{ worlds?: unknown }>('GET', '/api/v1/worlds');
-    if (!Array.isArray(r.worlds)) return [];
-    return r.worlds.flatMap((w: Partial<WorldSummary>) =>
-      typeof w.id === 'string' && typeof w.name === 'string' && typeof w.capacity === 'number' ? [{ id: w.id, name: w.name.slice(0, 48), capacity: w.capacity }] : [],
-    );
+    return cleanWorlds((await this.call<{ worlds?: unknown }>('GET', '/api/v1/worlds')).worlds);
+  }
+
+  /** One world by its id, listed or not. */
+  async world(worldId: string): Promise<WorldSummary> {
+    if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
+    const [w] = cleanWorlds([await this.call('GET', `/api/v1/worlds/${worldId}`)]);
+    if (!w) throw new CoreError(502, 'bad-answer', 'the core sent no world');
+    return w;
+  }
+
+  async favourites(access: string): Promise<WorldSummary[]> {
+    return cleanWorlds((await this.call<{ worlds?: unknown }>('GET', '/api/v1/me/favourites', undefined, access)).worlds);
+  }
+
+  async setFavourite(access: string, worldId: string, on: boolean): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
+    await this.call(on ? 'PUT' : 'DELETE', `/api/v1/me/favourites/${worldId}`, undefined, access);
   }
 
   async join(access: string, worldId: string): Promise<JoinTicket> {

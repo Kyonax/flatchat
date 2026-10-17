@@ -150,6 +150,20 @@ export class Auth {
     return this.api.worlds();
   }
 
+  world(worldId: string): Promise<WorldSummary> {
+    return this.api.world(worldId);
+  }
+
+  async favourites(): Promise<WorldSummary[]> {
+    return this.api.favourites(await this.access());
+  }
+
+  async setFavourite(worldId: string, on: boolean): Promise<WorldSummary[]> {
+    const access = await this.access();
+    await this.api.setFavourite(access, worldId, on);
+    return this.api.favourites(access);
+  }
+
   async join(worldId: string): Promise<JoinTicket> {
     return this.api.join(await this.access(), worldId);
   }

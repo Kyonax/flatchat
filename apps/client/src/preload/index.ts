@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('flatchat', {
     return () => ipcRenderer.removeListener('flatchat:auth', handler);
   },
   worlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:worlds'),
+  world: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:world', worldId),
+  favourites: (): Promise<unknown> => ipcRenderer.invoke('flatchat:favourites'),
+  setFavourite: (worldId: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('flatchat:favourite', worldId, on),
   contentHas: (hashes: string[]): Promise<string[]> => ipcRenderer.invoke('flatchat:content-has', hashes),
   contentGet: (hash: string): Promise<Uint8Array | undefined> => ipcRenderer.invoke('flatchat:content-get', hash),
   contentPut: (hash: string, bytes: Uint8Array): Promise<boolean> => ipcRenderer.invoke('flatchat:content-put', hash, bytes),
