@@ -90,5 +90,7 @@ describe('host push', () => {
     } finally {
       await server.stop('test over');
     }
-  });
+    // Two megabytes over raw UDP within a window: seconds on a loaded machine (the harness runs
+    // every workspace's tests at once).
+  }, 30_000);
 });
