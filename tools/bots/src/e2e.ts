@@ -155,6 +155,8 @@ try {
     steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
     await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
+    // The fountain's sound plays (S2.14): one emitter, from the downloaded world.
+    steps['sounds'] = await page.locator('[data-test=sounds]').getAttribute('data-playing', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
     await snap('1-joined');
     // Walk forward for a second and jump, then chat.
@@ -208,7 +210,8 @@ try {
     (received['fetch']?.messages ?? 0) >= 3 &&
     (events['portal']?.messages ?? 0) >= 1 &&
     (events['leave:travel']?.messages ?? 0) === 1 &&
-    (garden2['join']?.messages ?? 0) === 1;
+    (garden2['join']?.messages ?? 0) === 1 &&
+    steps['sounds'] === '1';
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);
