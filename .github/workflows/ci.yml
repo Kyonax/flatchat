@@ -100,7 +100,7 @@ jobs:
       - run: cat smoke-linux.json
       # The runner's PostgreSQL (its programs only; the test runs its own private cluster).
       - name: End to end, sign in, join the plaza, walk and chat
-        run: xvfb-run -a node tools/bots/src/e2e.ts apps/client/release/linux-unpacked/flatchat --shot e2e-linux.png
+        run: xvfb-run -a node tools/bots/src/e2e.ts apps/client/release/linux-unpacked/flatchat --shot e2e-linux.png --shots e2e-steps
       # S2.12: the same path with the client relay-only, as a player behind a NAT that lets nothing
       # through but a TURN relay: no join without coturn, then the join goes through it.
       - run: sudo apt-get update -q && sudo apt-get install -y -q coturn
@@ -114,7 +114,9 @@ jobs:
         if: always()
         with:
           name: e2e-linux
-          path: e2e-*.png
+          path: |
+            e2e-*.png
+            e2e-steps/*.png
           if-no-files-found: ignore
           retention-days: 7
       # The same build with no way to draw must fail its smoke test, or a blank client could pass.
