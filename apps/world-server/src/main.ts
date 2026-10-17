@@ -12,7 +12,8 @@
 //
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
 // world's key comes from the environment, FLATCHAT_WORLD_KEY (64 hexadecimal characters), never
-// from a flag a process listing would show; without it the world takes no joins.
+// from a flag a process listing would show; without it the world takes no joins. Its id comes from
+// --world-id or FLATCHAT_WORLD_ID (both printed by the core when it approves the world).
 import { randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -81,7 +82,8 @@ if (values.spawn !== undefined) {
 }
 const transports = values.transport === 'both' ? ['udp', 'rtc'] : [values.transport];
 if (!transports.every((t) => t === 'udp' || t === 'rtc')) fail(`--transport must be udp, rtc or both, got ${values.transport}`);
-const worldId = values['world-id'] ?? randomUUID();
+// The core's `admin world approve` prints FLATCHAT_WORLD_ID beside the key; a flag overrides it.
+const worldId = values['world-id'] ?? process.env['FLATCHAT_WORLD_ID'] ?? randomUUID();
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(worldId)) fail('--world-id must be a lowercase UUID');
 
 let worldKey: Uint8Array | undefined;
