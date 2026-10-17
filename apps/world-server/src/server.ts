@@ -26,6 +26,7 @@
 // put on a seat within 3 m, or on a clicked spot within 40 m, at most once a second; a spot must be
 // walkable (on a built world's navigation mesh, or above a code-made map's ground) unless the world
 // allows flying. The answer is `placed`, accepted or not.
+import { performance } from 'node:perf_hooks';
 import { type BuiltPortal, insideBox } from '@flatchat/content';
 import {
   type Channel,

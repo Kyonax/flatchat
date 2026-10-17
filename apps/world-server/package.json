@@ -11,8 +11,11 @@
   },
   "exports": {
     "./net": "./src/net/index.ts",
+    "./local": "./src/net/local.ts",
     "./metrics": "./src/metrics.ts",
     "./server": "./src/server.ts",
+    "./content": "./src/world/content.ts",
+    "./navigation": "./src/world/navigation.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

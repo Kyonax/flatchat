@@ -6,7 +6,8 @@
 // encryption.
 import type { Channel } from '@flatchat/protocol';
 
-export type TransportName = 'udp' | 'rtc';
+/** `local`: inside one program, the client's offline mode (S2.13). */
+export type TransportName = 'udp' | 'rtc' | 'local';
 
 export interface LinkStats {
   /** Application bytes and messages, per channel and direction. */
