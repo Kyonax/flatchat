@@ -101,6 +101,10 @@ jobs:
       - run: sudo apt-get update -q && sudo apt-get install -y -q coturn
       - name: End to end through a TURN relay only
         run: xvfb-run -a node tools/bots/src/e2e.ts apps/client/release/linux-unpacked/flatchat --relay --shot e2e-relay.png
+      # S2.13: offline, with the core unreachable: the park built into the client, then a world
+      # folder the client converts itself, each played as a guest.
+      - name: Offline mode, with no core
+        run: xvfb-run -a node tools/bots/src/offline-check.ts apps/client/release/linux-unpacked/flatchat
       - uses: actions/upload-artifact@v7
         if: always()
         with:
