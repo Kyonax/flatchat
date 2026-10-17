@@ -92,3 +92,8 @@ contextBridge.exposeInMainWorld('flatchat', { accessToken: () => ipcRenderer.inv
 contextBridge.exposeInMainWorld('flatchat', { joinWorld: (id: string) => ipcRenderer.invoke('flatchat:join', id) });
 ```
 **Why:** anything the page holds, a hostile world's content could read; a connect token is good for one world for 60 seconds, an account token for everything.
+
+## Avatars (S4.01, S4.04)
+
+`ui/AvatarsPanel.vue` (on the home screen): upload (the main process's file dialog, `flatchat:avatars:upload`; `FLATCHAT_E2E_AVATAR` names a file in its place for the end-to-end test), the list polled every 3 s while one converts, the rank or the converter's reasons, Wear, Take off, Delete. `main/core-api.ts`: `cleanAvatars`, `avatarSlot`, `sendAvatar`, `wearAvatar`, `deleteAvatar`, `avatarFiles`, `file` (at most `FILE_MAX`, 128 MB); every link must be on the core's origin (`onCore`, checked before the fetch so a refusal says `bad-answer`). `flatchat:avatar-file` (manifest, level) answers bytes from `ContentCache` (by hash, checked on the way in, 2 GB, least recently used out), fetching through the delivery links once (kept 50 minutes; downloads of one file shared).
+
