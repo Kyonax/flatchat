@@ -3,7 +3,7 @@
 // shows and changes them). Pure: no Node.js, no Electron, no DOM. Anything malformed falls back to
 // its default field by field, so a damaged file never stops the client.
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'people', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -27,6 +27,8 @@ export const DEFAULT_KEYS: Bindings = {
   chat: ['Enter'],
   talk: ['KeyT'],
   mute: ['KeyM'],
+  // Who is here, with their roles (S3.06), and later what one can do about them.
+  people: ['Tab'],
   menu: ['Escape'],
 };
 

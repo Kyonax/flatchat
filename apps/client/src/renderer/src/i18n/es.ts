@@ -116,6 +116,7 @@ const es: Shape<typeof en> = {
     chat: 'Chat',
     talk: 'Pulsar para hablar',
     mute: 'Silenciarte',
+    people: 'Personas aquí',
     menu: 'Menú',
   },
   keys: {
@@ -167,6 +168,8 @@ const es: Shape<typeof en> = {
     menu: 'Menú',
     resume: 'Volver al mundo',
     travelling: 'Viajando a {world}…',
+    updating: 'El mundo se está actualizando. Volviendo a entrar…',
+    updateFailed: 'El mundo no volvió después de actualizarse. Inténtalo más tarde.',
     portalOpening: 'El portal se está abriendo…',
     portalOffline: 'El portal lleva a {world}, que ahora mismo está desconectado.',
     portalNowhere: 'Este portal no lleva a ningún lado: su mundo no existe.',
@@ -190,6 +193,19 @@ const es: Shape<typeof en> = {
       closing: 'Este mundo está cerrando.',
       error: 'El mundo tuvo un problema. Vuelve a intentarlo.',
     },
+  },
+  people: {
+    title: 'Personas aquí ({n})',
+    you: 'tú',
+    giveRole: 'Rol de {name}',
+    close: '{key} cierra esta lista',
+  },
+  roles: {
+    visitor: 'Visitante',
+    builder: 'Constructor',
+    moderator: 'Moderador',
+    admin: 'Administrador',
+    owner: 'Propietario',
   },
   chat: {
     placeholder: 'Escribe algo… (Enter para enviar, Esc para cerrar)',

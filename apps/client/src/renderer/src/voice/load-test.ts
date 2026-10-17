@@ -69,7 +69,7 @@ export async function runVoiceLoad(seconds: number, speakers = 16): Promise<Voic
     timer = setInterval(() => {
       chain!.receive({
         type: 'voiceBundle',
-        frames: [...around.keys()].map((from, s) => ({ from, seq: (n + 1) & 0xffff, start: n === 0, mouth, opus: packets[(n + s * 7) % packets.length]! })),
+        frames: [...around.keys()].map((from, s) => ({ from, seq: (n + 1) & 0xffff, start: n === 0, mouth, gain: 8, opus: packets[(n + s * 7) % packets.length]! })),
       });
       if (n % 5 === 0) chain!.place({ x: 0, y: 1.6, z: 0 }, 0, around);
       n += 1;

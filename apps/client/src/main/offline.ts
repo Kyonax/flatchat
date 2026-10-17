@@ -91,7 +91,7 @@ export class OfflineHost {
     );
     this.server.start();
     const token = await sealToken(
-      { account: randomUUID(), name: 'Guest', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0 },
+      { account: randomUUID(), name: 'Guest', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0, owner: true, contact: 'everyone', friends: [], blocks: [] },
       { key: this.key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 },
     );
     return { token, name: loaded.world.manifest.name };

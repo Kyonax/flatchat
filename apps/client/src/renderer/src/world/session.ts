@@ -22,6 +22,7 @@ import { Controls } from './controls';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
 import { Navigation } from './navigation';
+import { type Person, type Role, sortPeople } from './people';
 import { buildParts } from './parts';
 import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
@@ -75,6 +76,10 @@ export interface WorldState {
   parts: number;
   /** A short notice the page words in its language ('' for none). */
   notice: '' | 'noFlying' | 'noSeat' | 'teleportRefused' | 'nothingThere';
+  /** Everyone here with their roles (S3.06), this player first. */
+  people: Person[];
+  /** This player's role here. */
+  role: Role;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -113,6 +118,7 @@ export class WorldSession {
   private readonly controls: Controls;
   private readonly remotes = new Remotes();
   private readonly names = new Map<number, string>();
+  private readonly people = new Map<number, Person>();
   private renderer: THREE.WebGPURenderer | undefined;
   private crowd: CrowdView | undefined;
   private conn: WorldConnection | undefined;
@@ -184,6 +190,8 @@ export class WorldSession {
       sounds: 0,
       parts: 0,
       notice: '',
+      people: [],
+      role: 'visitor',
     });
   }
 
@@ -547,11 +555,15 @@ export class WorldSession {
   }
 
   private roster(r: MessageOf<'roster'>): void {
-    if (r.full) this.names.clear();
+    if (r.full) {
+      this.names.clear();
+      this.people.clear();
+    }
     for (const p of r.players) {
-      // A change lists a player again (a new height): only a new entity is an arrival.
+      // A change lists a player again (a new height, a role): only a new entity is an arrival.
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
+      this.people.set(p.entity, { entity: p.entity, account: p.account, name: p.name, role: p.role, me: p.entity === this.entity });
       this.heights.set(p.entity, p.height / 100);
       if (arriving && this.rosterSeen && p.entity !== this.entity) {
         this.chatLine({ from: '', text: p.name, notice: 'joined' });
@@ -562,6 +574,7 @@ export class WorldSession {
       const name = this.names.get(id);
       if (name !== undefined && id !== this.entity) this.chatLine({ from: '', text: name, notice: 'left' });
       this.names.delete(id);
+      this.people.delete(id);
       this.heights.delete(id);
       this.stances.delete(id);
       this.strides.delete(id);
@@ -569,6 +582,13 @@ export class WorldSession {
     }
     this.rosterSeen = true;
     this.state.players = this.names.size;
+    this.state.people = sortPeople(this.people.values());
+    this.state.role = this.people.get(this.entity)?.role ?? 'visitor';
+  }
+
+  /** Asks the world to give someone a role (S3.06); the world checks it and the roster answers. */
+  giveRole(account: string, role: Role): void {
+    if (this.state.status === 'joined') this.conn?.send({ type: 'role', account, role });
   }
 
   private chatLine(line: Omit<ChatLine, 'id'>): void {

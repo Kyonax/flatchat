@@ -24,7 +24,7 @@ const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint
 const offline = ref(false);
 const joining = ref('');
 const joinError = ref('');
-const travel = ref<{ status: 'going' | 'failed'; text: string } | undefined>(undefined);
+const travel = ref<{ status: 'going' | 'failed' | 'updating'; text: string } | undefined>(undefined);
 let visits = 0;
 let travelling = false;
 let offAuth: (() => void) | undefined;
@@ -108,6 +108,30 @@ async function goThrough(to: { world: string; spawn: string }): Promise<void> {
   }
 }
 
+/** A world that took a new build restarts on it (S3.06): once it is online again, back in. */
+async function rejoin(): Promise<void> {
+  const current = world.value;
+  if (!bridge || !current || current.ticket.local || travelling) return;
+  travelling = true;
+  travel.value = { status: 'updating', text: '' };
+  try {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      if (world.value !== current) return;
+      const info = await bridge.world(current.world.id);
+      if (!info.ok || !info.world.online) continue;
+      const r = await bridge.joinWorld(current.world.id);
+      if (!r.ok) continue;
+      world.value = { world: info.world, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, relayOnly: r.relayOnly }, visit: (visits += 1) };
+      travel.value = undefined;
+      return;
+    }
+    travel.value = { status: 'failed', text: t('world.updateFailed') };
+  } finally {
+    travelling = false;
+  }
+}
+
 onMounted(async () => {
   if (!bridge) return;
   document.addEventListener('click', onClick);
@@ -154,6 +178,7 @@ onBeforeUnmount(() => {
       @settings="showSettings = true"
       @change="change"
       @travel="goThrough"
+      @rejoin="rejoin"
     />
     <OfflineView
       v-else-if="offline && !showSettings"

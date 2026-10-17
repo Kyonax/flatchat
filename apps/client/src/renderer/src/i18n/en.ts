@@ -112,6 +112,7 @@ export default {
     chat: 'Chat',
     talk: 'Push to talk',
     mute: 'Mute yourself',
+    people: 'People here',
     menu: 'Menu',
   },
   keys: {
@@ -163,6 +164,8 @@ export default {
     menu: 'Menu',
     resume: 'Back to the world',
     travelling: 'Travelling to {world}…',
+    updating: 'The world is updating. Coming back in…',
+    updateFailed: 'The world did not come back after its update. Try again later.',
     portalOpening: 'The portal is opening…',
     portalOffline: 'The portal leads to {world}, which is offline right now.',
     portalNowhere: 'This portal leads nowhere: its world does not exist.',
@@ -186,6 +189,19 @@ export default {
       closing: 'This world is closing.',
       error: 'The world had a problem. Try again.',
     },
+  },
+  people: {
+    title: 'People here ({n})',
+    you: 'you',
+    giveRole: 'Role for {name}',
+    close: '{key} closes this list',
+  },
+  roles: {
+    visitor: 'Visitor',
+    builder: 'Builder',
+    moderator: 'Moderator',
+    admin: 'Admin',
+    owner: 'Owner',
   },
   chat: {
     placeholder: 'Say something… (Enter to send, Esc to close)',
