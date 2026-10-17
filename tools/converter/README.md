@@ -1,6 +1,6 @@
 # Converter
 
-Turns content into what FlatChat's programs serve and draw. Stage 2 built the world converter (S2.03); avatar uploads (VRM, GLB, then FBX and the rest), their levels of detail, impostors and ranks come in Stage 4.
+Turns content into what FlatChat's programs serve and draw. Stage 2 built the world converter (S2.03): validation, optimized and compressed scenes with levels of detail for dense meshes, KTX2 textures, the solids and the navigation mesh. Avatar uploads (VRM, GLB, then FBX and the rest), their levels of detail, impostors and ranks come in Stage 4.
 
 - Licence: MPL-2.0 ([LICENSE](LICENSE))
 - Status: Stage 2. World folders into built worlds.

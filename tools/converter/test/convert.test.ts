@@ -57,6 +57,60 @@ function cube(): MeshSpec {
   return m;
 }
 
+/** A UV sphere: segments × rings × 2 triangles (64 × 32: 4,096, dense enough for levels of detail). */
+function ball(segments = 64, rings = 32): MeshSpec {
+  const m: MeshSpec = { name: 'ball', positions: [], normals: [], indices: [], colour: [0.8, 0.3, 0.2, 1] };
+  for (let r = 0; r <= rings; r++) {
+    const phi = (r / rings) * Math.PI;
+    for (let s = 0; s <= segments; s++) {
+      const theta = (s / segments) * Math.PI * 2;
+      const n = [Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)];
+      m.normals.push(...n);
+      m.positions.push(n[0]! * 2, n[1]! * 2 + 2, n[2]! * 2);
+    }
+  }
+  for (let r = 0; r < rings; r++) {
+    for (let s = 0; s < segments; s++) {
+      const a = r * (segments + 1) + s;
+      const b = a + segments + 1;
+      m.indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  return m;
+}
+
+describe('levels of detail', () => {
+  it('gives a dense mesh two simpler copies as marked child nodes, and a small one none', async () => {
+    const files = world([ball(), cube()], [
+      { name: 'ball', mesh: 0, translation: [10, 0, 5] },
+      { name: 'cube', mesh: 1, translation: [4, 0, 4] },
+      { name: 'spawn', translation: [0, 0, 0], extensions: { OMI_spawn_point: {} } },
+    ]);
+    const { world: w, out } = await convertWorld(files, { ktx2: false });
+    await MeshoptDecoder.ready;
+    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+    const doc = await io.readBinary(out.get(`content/${w.scenes[0]!.glb}`)!);
+    const nodes = doc.getRoot().listNodes();
+    const triangles = (name: string): number => {
+      const mesh = nodes.find((x) => x.getName() === name)!.getMesh()!;
+      return mesh.listPrimitives().reduce((t, p) => t + p.getIndices()!.getCount() / 3, 0);
+    };
+    const ballNode = nodes.find((x) => x.getName() === 'ball')!;
+    expect(ballNode.getMesh()).toBeNull();
+    expect(ballNode.listChildren().map((c) => [c.getName(), c.getExtras()])).toEqual([
+      ['ball.lod0', { flatchatLod: 0 }],
+      ['ball.lod1', { flatchatLod: 1 }],
+      ['ball.lod2', { flatchatLod: 2 }],
+    ]);
+    const [full, one, two] = [triangles('ball.lod0'), triangles('ball.lod1'), triangles('ball.lod2')];
+    expect(full).toBe(4096);
+    expect(one).toBeLessThan(full * 0.5);
+    expect(two).toBeLessThan(one);
+    expect(two).toBeGreaterThan(50);
+    expect(nodes.find((x) => x.getName() === 'cube')!.listChildren()).toEqual([]);
+  });
+});
+
 describe('a world with no solids marked', () => {
   it('makes every mesh a static triangle mesh at its place, and says so', async () => {
     const files = world([cube()], [

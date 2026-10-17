@@ -3,7 +3,9 @@
 // (packages/content/src/built.ts): world.json and content files named by their SHA-256. It
 // validates the folder first and refuses it on any error, reads every marker with
 // packages/content (glTF-Transform drops extensions it does not know), and then:
-//   - optimizes each scene's visuals (dedup, prune, weld, meshopt compression);
+//   - optimizes each scene's visuals (dedup, prune, weld, meshopt compression), and gives every
+//     dense mesh two simpler copies, its levels of detail, as child nodes the client switches
+//     between by distance;
 //   - fits every texture to 2048 px and a 128 MB budget for the whole world, and encodes it to KTX2
 //     (ETC1S for colour, UASTC for normal maps; Basis Universal compiled to WebAssembly);
 //   - collects every solid in world space (the OMI physics markers; or, in a world that marks
@@ -32,12 +34,13 @@ import {
   type WorldReport,
 } from '@flatchat/content';
 import { BODY } from '@flatchat/sim';
-import { type Document, Logger, NodeIO, type Texture } from '@gltf-transform/core';
+import { type Document, Logger, type Mesh, NodeIO, type Texture } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
-import { dedup, meshopt, prune, weld } from '@gltf-transform/functions';
+import { dedup, meshopt, prune, simplifyPrimitive, weld } from '@gltf-transform/functions';
 import jpeg from 'jpeg-js';
 import { encodeToKTX2 } from 'ktx2-encoder';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
+import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { PNG } from 'pngjs';
 import { exportNavMesh, init as initRecast } from 'recast-navigation';
 import { generateSoloNavMesh } from 'recast-navigation/generators';
@@ -344,6 +347,47 @@ async function navmesh(colliders: readonly Collider[], warn: (w: string) => void
 
 // ---------------------------------------------------------------------------- the pipeline
 
+/** Levels of detail (S2.03): a mesh of at least LOD_MIN_TRIANGLES triangles gets these simpler
+ *  copies (the share of its triangles to keep, and the error allowed as a share of its radius). */
+export const LODS = [
+  { ratio: 0.35, error: 0.01 },
+  { ratio: 0.1, error: 0.05 },
+] as const;
+export const LOD_MIN_TRIANGLES = 2000;
+
+function trianglesIn(mesh: Mesh): number {
+  return mesh.listPrimitives().reduce((n, p) => n + Math.floor((p.getIndices()?.getCount() ?? p.getAttribute('POSITION')?.getCount() ?? 0) / 3), 0);
+}
+
+/** Gives each dense mesh its levels of detail: every node that draws it hands the mesh to a child
+ *  marked `extras.flatchatLod: 0` and gets two more children with the simpler copies (1 and 2), so
+ *  the levels are siblings (meshopt's quantization moves a mesh off a node that has children).
+ *  Skinned or morphed nodes are left alone. Returns how many meshes got levels. Run after weld (the
+ *  simplifier needs shared vertices) and before compression. */
+export function addLevelsOfDetail(doc: Document): number {
+  const levelsOf = new Map<Mesh, Mesh[]>();
+  for (const mesh of doc.getRoot().listMeshes()) {
+    // Triangles only (mode 4), and no morph targets: a simplified copy would not follow them.
+    if (trianglesIn(mesh) < LOD_MIN_TRIANGLES || mesh.listPrimitives().some((p) => p.getMode() !== 4 || p.listTargets().length > 0)) continue;
+    levelsOf.set(
+      mesh,
+      LODS.map((lod, k) => {
+        const copy = doc.createMesh(`${mesh.getName()}.lod${k + 1}`);
+        for (const prim of mesh.listPrimitives()) copy.addPrimitive(simplifyPrimitive(prim.clone(), { simplifier: MeshoptSimplifier, ...lod }));
+        return copy;
+      }),
+    );
+  }
+  for (const node of doc.getRoot().listNodes()) {
+    const mesh = node.getMesh();
+    const levels = mesh ? levelsOf.get(mesh) : undefined;
+    if (!mesh || !levels || node.getSkin() || node.getWeights().length > 0) continue;
+    node.setMesh(null);
+    [mesh, ...levels].forEach((m, k) => node.addChild(doc.createNode(`${node.getName()}.lod${k}`).setMesh(m).setExtras({ flatchatLod: k })));
+  }
+  return levelsOf.size;
+}
+
 export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: ConvertOptions = {}): Promise<ConvertResult> {
   const report = validateWorld(files);
   if (!report.ok || !report.manifest) throw new ConvertError(report);
@@ -354,6 +398,7 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
   const io = new NodeIO().setLogger(new Logger(Logger.Verbosity.ERROR)).registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
   await MeshoptEncoder.ready;
   await MeshoptDecoder.ready;
+  await MeshoptSimplifier.ready;
   const out = new Map<string, Uint8Array>();
   const listed: BuiltWorld['files'] = [];
   const put = (bytes: Uint8Array, kind: BuiltWorld['files'][number]['kind']): string => {
@@ -391,7 +436,10 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
   for (const [i, doc] of docs.entries()) {
     const { info, json, base } = parsed[i]!;
     doc.setLogger(new Logger(Logger.Verbosity.ERROR));
-    await doc.transform(dedup(), prune(), weld(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+    await doc.transform(dedup(), prune(), weld());
+    const lods = addLevelsOfDetail(doc);
+    if (lods > 0) o.log?.('levels-of-detail', { scene: info.file, meshes: lods });
+    await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
     const glb = await io.writeBinary(doc);
     const emitters: BuiltEmitter[] = [];
     const audio = (json.extensions?.['KHR_audio_emitter'] ?? {}) as { audio?: Array<{ uri?: string }>; sources?: Array<{ audio?: number; gain?: number; loop?: boolean; autoPlay?: boolean }>; emitters?: Array<{ type?: string; gain?: number; sources?: number[]; positional?: { refDistance?: number; maxDistance?: number } }> };
