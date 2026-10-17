@@ -28,6 +28,19 @@ if (!report.ok) for (const p of report.problems) console.log(p.severity, p.code,
 
 `report.scenes[i]` holds the markers (`spawns`, `seats`, `shapes`, `bodies`, `emitters`, `portals`, `zones`), `triangles` and the files it `needs`. Tests build GLBs byte by byte (`packages/content/test/world.test.ts` has the `glb()` helper).
 
+## The Converter (`tools/converter`, S2.03)
+
+| Step | Rule |
+|---|---|
+| Input | `readFolder(dir)` (relative paths with forward slashes; symbolic links refused; the size limits), then `validateWorld`: any error refuses the world (`ConvertError` carries the report) |
+| Markers | Read by `packages/content` before glTF-Transform touches the scene, because glTF-Transform drops extensions it does not know: the built GLB carries visuals only, and `world.json` carries the markers in world space |
+| Visuals | `dedup`, `prune`, `weld`, `meshopt` (EXT_meshopt_compression: the client needs three.js's `MeshoptDecoder`) |
+| Textures | PNG and JPEG decoded in plain JavaScript (pngjs, jpeg-js), halved until 2048 px a side and the whole world fits 128 MB of compressed GPU memory, then KTX2 through ktx2-encoder (Basis Universal as WebAssembly; ETC1S for colour, UASTC for normal maps; the decoded pixels go in through its `imageDecoder` option). Other formats stay as they are, with a warning |
+| Solids | `collision.bin` (`packages/content/src/collision.ts`): boxes, spheres, capsules, cylinders and triangle meshes in world space, from `OMI_physics_body`; a world that marks none gets every mesh as a static triangle mesh, with a warning |
+| Navigation mesh | Recast through recast-navigation-js at 20 cm cells (15 cm runs its WebAssembly memory out on a 128 m world), the player's height, radius and step from `packages/sim` |
+| Output | `world.json` (`packages/content/src/built.ts`; `parseBuiltWorld` checks every field of one read from elsewhere) and `content/<sha256>`; deterministic, pinned by `test/golden/plaza.world.json` |
+| Typing | The converter's tsconfig uses Bundler resolution: recast-navigation's declaration files use extensionless imports that NodeNext cannot follow |
+
 ## Correct vs. Incorrect
 
 **Incorrect:** joining a scene's URI to the folder as given.
