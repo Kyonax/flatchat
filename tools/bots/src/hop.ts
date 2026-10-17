@@ -18,9 +18,9 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { newWorldKey, toHex } from '@flatchat/protocol';
 import { PLAZA } from '@flatchat/sim';
-import { Bot } from './bot.ts';
 import { DEFAULT_BRAIN } from './brain.ts';
 import { children, run, start, stop } from './procs.ts';
+import { type Journey, type TravelWorld, Travellers } from './travel.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
@@ -37,17 +37,10 @@ if (!Number.isInteger(bots) || bots < 1 || bots > 200 || !Number.isInteger(loops
 const say = (event: string, fields: Record<string, unknown>): void => void process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-interface Journey {
-  hops: number;
-  arrivals: Array<{ x: number; z: number }>;
-  error: string;
-}
-
 const dir = mkdtempSync(join(tmpdir(), 'fchop-'));
 const ids = [randomUUID(), randomUUID()] as const;
 const keys = [newWorldKey(), newWorldKey()] as const;
-const active = new Set<Bot>();
-let ticker: ReturnType<typeof setInterval> | undefined;
+const travellers = new Travellers();
 let ok = false;
 const result: Record<string, unknown> = { bots, loops };
 try {
@@ -71,55 +64,11 @@ try {
   const ports = servers.map((s) => Number(s.lines.find((l) => l['event'] === 'ready')?.['port']));
 
   // 2. The bots: join, walk into the portal, leave with `travel`, join the other world, again.
-  let slot = 0;
-  ticker = setInterval(() => {
-    slot += 1;
-    const now = performance.now();
-    for (const b of active) b.tick(slot, now);
-  }, 10);
+  travellers.start();
   const portal = { x: made.portal[0], z: made.portal[2] };
-  const journey = async (i: number): Promise<Journey> => {
-    const j: Journey = { hops: 0, arrivals: [], error: '' };
-    let at = i % 2;
-    let spawn = '';
-    while (j.hops < loops * 2) {
-      let through!: (to: { world: string; spawn: string }) => void;
-      const went = new Promise<{ world: string; spawn: string }>((resolve) => (through = resolve));
-      const bot = new Bot({
-        index: i,
-        seed: 9000 + i * 131 + j.hops,
-        target: { transport: 'udp', host: '127.0.0.1', udpPort: ports[at]!, signalUrl: '', worldId: ids[at]!, worldKey: keys[at]! },
-        brain: { ...DEFAULT_BRAIN, size: PLAZA.size, scenario: 'plaza' },
-        voice: false,
-        chat: false,
-        spawn,
-        goal: portal,
-        onPortal: (to) => through(to),
-      });
-      active.add(bot);
-      await bot.join();
-      if (bot.state !== 'joined') {
-        active.delete(bot);
-        j.error = `hop ${j.hops}: ${bot.refuseReason || bot.lostReason || bot.state}`;
-        return j;
-      }
-      const to = await Promise.race([went, sleep(40_000).then(() => undefined)]);
-      // Every join after the first came through a portal: it must land on the arrival spawn.
-      if (spawn && bot.spawnAt) j.arrivals.push(bot.spawnAt);
-      if (!to || to.world !== ids[1 - at]) {
-        bot.stop();
-        active.delete(bot);
-        j.error = `hop ${j.hops}: ${to ? `a portal to ${to.world}` : 'no portal within 40 s'}`;
-        return j;
-      }
-      bot.stop('travel');
-      active.delete(bot);
-      j.hops += 1;
-      at = 1 - at;
-      spawn = to.spawn;
-    }
-    return j;
-  };
+  const brain = { ...DEFAULT_BRAIN, size: PLAZA.size, scenario: 'plaza' as const };
+  const pair = [0, 1].map((k) => ({ id: ids[k]!, key: keys[k]!, udpPort: ports[k]!, portal, brain })) as [TravelWorld, TravelWorld];
+  const journey = (i: number): Promise<Journey> => travellers.journey(i, pair, loops * 2);
   const started = performance.now();
   const journeys = await Promise.all(Array.from({ length: bots }, (_, i) => journey(i)));
   result['seconds'] = Math.round((performance.now() - started) / 100) / 10;
@@ -144,8 +93,7 @@ try {
 } catch (err) {
   result['error'] = err instanceof Error ? err.message : String(err);
 } finally {
-  if (ticker) clearInterval(ticker);
-  for (const b of active) b.stop();
+  travellers.stop();
   for (const c of children) if (c.exitCode === null) c.kill('SIGKILL');
   if (!values.keep) rmSync(dir, { recursive: true, force: true });
 }

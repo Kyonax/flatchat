@@ -44,6 +44,8 @@ export interface BotOptions {
   spawn?: string;
   /** The height to ask for, in centimetres (S2.07); the platform's default when left out. */
   height?: number;
+  /** The account its token names; a new one at each join when left out (a returning player keeps one). */
+  account?: string;
   /** Walk straight here once placed (a portal), instead of mingling. */
   goal?: { x: number; z: number };
   /** Called when the world says the bot walked into a portal. */
@@ -151,7 +153,7 @@ export class Bot {
       this.settle?.();
     });
     const token = await sealToken(
-      { account: randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30 },
+      { account: this.options.account ?? randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30 },
       { key: t.worldKey, world: t.worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 },
     );
     const answered = new Promise<void>((resolve) => {
