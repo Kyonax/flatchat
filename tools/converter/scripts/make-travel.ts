@@ -7,6 +7,7 @@
 // library's, so the park still carries no geometry and no sound.
 //
 //   node tools/converter/scripts/make-travel.ts OUT --worlds ID_A,ID_B [--names "A,B"] [--kits plaza,park]
+//        [--modes reset,persistent]   (each world's persistence; the kits' own when left out)
 //
 // Writes OUT/a and OUT/b (world folders) and OUT/a.built and OUT/b.built. One JSON line names each
 // world's portal centre and arrival point, in its metres (and the first world's at the top).
@@ -22,14 +23,23 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
 const names = values.names.split(',');
 const kits = values.kits.split(',');
+const modes = values.modes?.split(',');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-if (!out || ids.length !== 2 || !ids.every((id) => UUID.test(id)) || names.length !== 2 || kits.length !== 2 || !kits.every((k) => k === 'plaza' || k === 'park')) {
+if (
+  !out ||
+  ids.length !== 2 ||
+  !ids.every((id) => UUID.test(id)) ||
+  names.length !== 2 ||
+  kits.length !== 2 ||
+  !kits.every((k) => k === 'plaza' || k === 'park') ||
+  (modes && (modes.length !== 2 || !modes.every((m) => m === 'reset' || m === 'persistent')))
+) {
   process.stderr.write('usage: make-travel.ts OUT --worlds ID_A,ID_B [--names "A,B"] [--kits plaza|park,plaza|park]\n');
   process.exit(2);
 }
@@ -114,7 +124,8 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
   cpSync(join(ROOT, 'kits', 'worlds', kit), dir, { recursive: true });
   writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!));
   if (kit === 'plaza') writeFileSync(join(dir, 'scenes', 'fountain.wav'), fountainWav());
-  const toml = readFileSync(join(dir, 'world.toml'), 'utf8').replace(/^name = ".*"$/m, `name = ${JSON.stringify(names[k])}`);
+  let toml = readFileSync(join(dir, 'world.toml'), 'utf8').replace(/^name = ".*"$/m, `name = ${JSON.stringify(names[k])}`);
+  if (modes) toml = toml.replace(/^mode = ".*"$/m, `mode = "${modes[k]}"`);
   writeFileSync(join(dir, 'world.toml'), `${toml.trimEnd()}\n\n[[scenes]]\nid = "travel"\nfile = "scenes/travel.glb"\n`);
   const built = await convertWorld(readFolder(dir), { ktx2: false });
   writeBuilt(join(out, `${label}.built`), built.out);
