@@ -81,7 +81,7 @@ class Client {
 
 async function token(options: { world?: string; expiresAt?: number; nonce?: Uint8Array; name?: string; account?: string; trust?: number } = {}): Promise<Uint8Array> {
   return sealToken(
-    { account: options.account ?? randomUUID(), name: options.name ?? 'bot', trust: options.trust ?? 1, tester: true, emailVerified: true, under18: false, ageDays: 3 },
+    { account: options.account ?? randomUUID(), name: options.name ?? 'bot', trust: options.trust ?? 1, tester: true, emailVerified: true, under18: false, ageDays: 3, owner: false, contact: 'everyone', friends: [], blocks: [] },
     { key: KEY, world: options.world ?? WORLD, expiresAt: options.expiresAt ?? NOW + 60, ...(options.nonce ? { nonce: options.nonce } : {}) },
   );
 }
@@ -162,7 +162,7 @@ describe('a joined player', () => {
 
     a.send({ type: 'voice', seq: 5, start: true, mouth, opus: new Uint8Array(60).fill(7) });
     const bundle = await b.next('voiceBundle');
-    expect(bundle.frames).toEqual([{ from: wa.entity, seq: 5, start: true, mouth, opus: new Uint8Array(60).fill(7) }]);
+    expect(bundle.frames).toEqual([{ from: wa.entity, seq: 5, start: true, mouth, gain: 8, opus: new Uint8Array(60).fill(7) }]);
 
     b.send({ type: 'say', text: 'hola' });
     expect(await a.next('chat')).toMatchObject({ from: wb.entity, text: 'hola' });

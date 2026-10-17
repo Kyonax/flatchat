@@ -47,6 +47,7 @@ import {
   PROTOCOL_VERSION,
   ProtocolError,
   type Refusal,
+  ROLES,
   TokenError,
   toHex,
   type VersionPolicy,
@@ -61,7 +62,8 @@ import type { PluginPlayer, Plugins, PluginWorld } from './plugins.ts';
 import type { WalkableSurface } from './world/navigation.ts';
 import { STORE_LIMITS } from './world/store-limits.ts';
 import type { WorldStore } from './world/store.ts';
-import { VoiceRouter, type VoiceConfig } from './world/voice.ts';
+import { type BuildUploads, UploadError } from './world/uploads.ts';
+import { GAIN_UNITY, VoiceRouter, type VoiceConfig } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
 
 export type LogFn = (event: string, fields?: Record<string, unknown>) => void;
@@ -74,6 +76,21 @@ export type EntryRule = (claims: Claims, world: { players: number; capacity: num
 
 /** The built-in rule until plugins arrive (S3.05): everyone with a valid token gets in. */
 export const OPEN_RULE: EntryRule = () => ({ admit: true });
+
+/** A player's role in this world (S3.06). */
+export type Role = (typeof ROLES)[number];
+
+/** The lowest role holding each right (S3.06, Q-M7): replacing the world's files, kicking,
+ *  banning and muting, and giving the roles below one's own. */
+export const RIGHTS = { build: 'builder', moderate: 'moderator', roles: 'admin' } as const satisfies Record<string, Role>;
+
+export function roleRank(role: Role): number {
+  return ROLES.indexOf(role);
+}
+
+export function can(role: Role, right: keyof typeof RIGHTS): boolean {
+  return roleRank(role) >= roleRank(RIGHTS[right]);
+}
 
 export interface WorldServerOptions {
   /** This world's ID (a UUID), the one its connect tokens name. */
@@ -119,6 +136,10 @@ export interface WorldServerOptions {
   seats?: ReadonlyArray<{ position: [number, number, number]; yaw: number }>;
   /** A built world's walkable surface: where a teleport may land (S2.06). */
   walkable?: WalkableSurface;
+  /** New builds from the people with build rights (S3.06); `onPublished` runs once one is in place,
+   *  and the program restarts on it. */
+  uploads?: BuildUploads;
+  onPublished?: (world: { name: string; files: number }) => void;
   log: LogFn;
   /** Unix time in seconds, for token expiry. */
   unixNow: () => number;
@@ -173,6 +194,8 @@ interface Conn {
   claims?: Claims;
   /** Silenced by a moderator or a plugin: the world forwards none of this player's voice. */
   forceMuted: boolean;
+  /** The player's role here (S3.06): the owner from the token, the others from the world. */
+  role: Role;
   /** The zones (their indices) the player stands in. */
   zones: Set<number>;
 }
@@ -374,6 +397,7 @@ export class WorldServer implements PluginWorld {
       teleportAt: -Infinity,
       appearanceAt: -Infinity,
       forceMuted: false,
+      role: 'visitor',
       zones: new Set(),
     };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
@@ -456,6 +480,15 @@ export class WorldServer implements PluginWorld {
       case 'teleport':
         this.events.add(`teleport:${this.teleport(conn, message, now)}`, 0);
         break;
+      case 'role':
+        this.events.add(`role:${this.giveRole(conn, message.account, message.role) ? 'given' : 'refused'}`, 0);
+        break;
+      case 'put':
+        this.put(conn, message);
+        break;
+      case 'publish':
+        void this.publish(conn, message.world);
+        break;
       case 'leave':
         conn.link.close(`leave: ${message.reason}`);
         break;
@@ -490,13 +523,14 @@ export class WorldServer implements PluginWorld {
     if (this.byEntity.size - (earlier ? 1 : 0) >= this.capacity) return this.refuse(conn, { reason: 'full', ...base, detail: '' });
     const ban = this.banOf(opened.claims.account);
     if (ban !== undefined) return this.refuse(conn, { reason: 'banned', ...base, detail: ban.slice(0, 160) });
+    const role: Role = opened.claims.owner ? 'owner' : this.storedRole(opened.claims.account);
     for (const rule of this.options.entryRules) {
       const verdict = rule(opened.claims, { players: this.byEntity.size, capacity: this.capacity });
       if (!verdict.admit) return this.refuse(conn, { reason: 'rule', ...base, detail: verdict.detail.slice(0, 160) });
     }
     if (this.plugins) {
       const c = opened.claims;
-      const verdict = this.plugins.joinRequest({ account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18, players: this.byEntity.size, capacity: this.capacity });
+      const verdict = this.plugins.joinRequest({ account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18, role, players: this.byEntity.size, capacity: this.capacity });
       if (!verdict.admit) return this.refuse(conn, { reason: 'rule', ...base, detail: verdict.reason.slice(0, 160) });
     }
     if (earlier) this.kick(earlier, 'kicked', 'joined again from somewhere else');
@@ -509,6 +543,7 @@ export class WorldServer implements PluginWorld {
     conn.account = opened.claims.account;
     conn.name = opened.claims.name;
     conn.claims = opened.claims;
+    conn.role = role;
     conn.joinedAt = performance.now();
     const size = this.world.config.size;
     const sp = this.options.spawn;
@@ -528,7 +563,7 @@ export class WorldServer implements PluginWorld {
     conn.portal = this.options.portals?.findIndex((b) => insideBox(b, at)) ?? -1;
     conn.height = this.fitHeight(hello.height);
     this.byEntity.set(entity, conn);
-    const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust, height: conn.height };
+    const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust, height: conn.height, role };
     this.roster.set(entity, player);
     this.joinedThisTick.push(player);
     this.peakPlayers = Math.max(this.peakPlayers, this.byEntity.size);
@@ -631,7 +666,7 @@ export class WorldServer implements PluginWorld {
   private pluginPlayer(conn: Conn): PluginPlayer | undefined {
     const c = conn.claims;
     if (conn.entity === undefined || !c) return undefined;
-    return { entity: conn.entity, account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18 };
+    return { entity: conn.entity, account: c.account, name: c.name, trust: c.trust, tester: c.tester, emailVerified: c.emailVerified, ageDays: c.ageDays, under18: c.under18, role: conn.role };
   }
 
   pluginPlayers(): PluginPlayer[] {
@@ -663,6 +698,72 @@ export class WorldServer implements PluginWorld {
   pluginUnban(account: string): void {
     this.options.store?.unban(account);
     this.bans.delete(account);
+  }
+
+  private readonly roles = new Map<string, Role>();
+
+  /** An account's role as this world keeps it (the owner's comes from its token). */
+  private storedRole(account: string): Role {
+    return this.options.store?.role(account) ?? this.roles.get(account) ?? 'visitor';
+  }
+
+  /** Gives an account a role here (S3.06): only someone holding the roles right, only a role below
+   *  their own, never over someone at or above it, never to themselves; the owner is the core's. */
+  private giveRole(by: Conn, account: string, role: Role): boolean {
+    const here = [...this.byEntity.values()].filter((c) => c.account === account);
+    const current = here[0]?.role ?? this.storedRole(account);
+    const mine = roleRank(by.role);
+    if (!can(by.role, 'roles') || account === by.account || role === 'owner' || current === 'owner' || roleRank(role) >= mine || roleRank(current) >= mine) return false;
+    if (this.options.store) this.options.store.setRole(account, role);
+    else if (role === 'visitor') this.roles.delete(account);
+    else this.roles.set(account, role);
+    for (const c of here) {
+      c.role = role;
+      const player = c.entity === undefined ? undefined : this.roster.get(c.entity);
+      if (!player) continue;
+      player.role = role;
+      this.joinedThisTick.push(player);
+    }
+    return true;
+  }
+
+  /** A piece of a new build, from someone with build rights (S3.06). */
+  private put(conn: Conn, m: MessageOf<'put'>): void {
+    const uploads = this.options.uploads;
+    if (!uploads || conn.entity === undefined) return this.published(conn, false, 'this world takes no builds: it was not started from a built folder');
+    if (!can(conn.role, 'build')) return this.published(conn, false, 'only a builder, an admin or the owner may change this world');
+    try {
+      const at = uploads.put(conn.entity, m.hash, m.offset, m.total, m.data);
+      this.send(conn, 'got', encodeMessage({ type: 'got', hash: m.hash, offset: at }));
+    } catch (err) {
+      if (!(err instanceof UploadError)) throw err;
+      uploads.forget(conn.entity);
+      this.published(conn, false, err.message);
+    }
+  }
+
+  /** Checks an uploaded build and puts it in place; the program then restarts on it. */
+  private async publish(conn: Conn, world: Uint8Array): Promise<void> {
+    const uploads = this.options.uploads;
+    if (!uploads || conn.entity === undefined) return this.published(conn, false, 'this world takes no builds: it was not started from a built folder');
+    if (!can(conn.role, 'build')) return this.published(conn, false, 'only a builder, an admin or the owner may change this world');
+    const entity = conn.entity;
+    try {
+      const built = await uploads.publish(entity, world);
+      this.published(conn, true, '');
+      this.options.log('build-published', { name: built.name, files: built.files, role: conn.role });
+      this.events.add('build:published', 0);
+      this.options.onPublished?.(built);
+    } catch (err) {
+      if (!(err instanceof UploadError)) throw err;
+      uploads.forget(entity);
+      this.published(conn, false, err.message);
+    }
+  }
+
+  private published(conn: Conn, ok: boolean, detail: string): void {
+    this.events.add(`build:${ok ? 'ok' : 'refused'}`, 0);
+    this.send(conn, 'published', encodeMessage({ type: 'published', ok, detail: fitBytes(detail, 160) }));
   }
 
   /** Why an account is banned here, if it is. */
@@ -783,6 +884,7 @@ export class WorldServer implements PluginWorld {
     this.roster.delete(entity);
     if (leaving) this.plugins?.notify('on_leave', leaving, reason.startsWith('leave: ') ? reason.slice(7) : reason);
     if (conn.sink) this.options.content?.forget(conn.sink);
+    this.options.uploads?.forget(entity);
     const p = this.world.players.get(entity);
     if (p && conn.account) this.options.store?.savePlace(conn.account, { x: p.x, y: p.y, z: p.z, yaw: p.yaw });
     this.world.remove(entity);
@@ -867,7 +969,7 @@ export class WorldServer implements PluginWorld {
       this.events.add('voice:muted', 0);
       return;
     }
-    this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, opus: message.opus });
+    this.voice.push({ from: conn.entity!, seq: message.seq, start: message.start, mouth: message.mouth, gain: GAIN_UNITY, opus: message.opus });
   }
 
   /** World-wide: everyone here reads it (S1.10). */

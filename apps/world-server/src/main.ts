@@ -23,7 +23,9 @@
 // download over their connection (S2.04): its bounds, spawn points, solids, flying and maximum
 // capacity come from it (--capacity still overrides; --map, --world-size and --spawn do not apply).
 // --plugins loads every plugin folder in DIR (S3.01: plugin.toml and its module; a broken one is
-// refused with a `plugin-refused` line). --data is the world's database (S2.08; default ~/.local/share/flatchat/worlds/WORLD_ID.db for a
+// refused with a `plugin-refused` line). A world served from --world takes new builds from the
+// people with build rights there (S3.06, `host push`): once one is in place it stops with exit code
+// 75, players told it is `updating`, and whoever started it starts it again (`host run` does). --data is the world's database (S2.08; default ~/.local/share/flatchat/worlds/WORLD_ID.db for a
 // built world, none otherwise): a persistent world keeps its state and where each player left.
 // --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
 // spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
@@ -47,6 +49,7 @@ import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
 import { builtOptions, DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
 import { ContentServer, loadBuiltWorld } from './world/content.ts';
+import { BuildUploads } from './world/uploads.ts';
 import { WalkableSurface } from './world/navigation.ts';
 import { WorldStore } from './world/store.ts';
 
@@ -163,7 +166,10 @@ try {
 
 let built: ReturnType<typeof builtOptions> | undefined;
 let walkable: WalkableSurface | undefined;
+let uploads: BuildUploads | undefined;
 if (values.world !== undefined) {
+  uploads = new BuildUploads(values.world);
+  uploads.tidy();
   if (values.map !== 'flat' || values['world-size'] !== undefined || values.spawn !== undefined) fail('--world brings its own size, spawn points and solids: leave out --map, --world-size and --spawn');
   try {
     const loaded = await loadBuiltWorld(values.world);
@@ -207,6 +213,7 @@ const server = new WorldServer(
     ...(recommendedFlag !== undefined ? { recommended: recommendedFlag } : {}),
     ...(walkable ? { walkable } : {}),
     ...(store ? { store } : {}),
+    ...(uploads ? { uploads, onPublished: () => void shutdown('updating', 75) } : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),
   },
@@ -260,7 +267,7 @@ const mapper = values['map-port'] ? new PortMapper(rtcPort, log) : undefined;
 void mapper?.start();
 
 let stopping = false;
-const shutdown = async (reason: string): Promise<void> => {
+const shutdown = async (reason: string, code = 0): Promise<void> => {
   if (stopping) return;
   stopping = true;
   relay?.stop();
@@ -271,7 +278,7 @@ const shutdown = async (reason: string): Promise<void> => {
   traceOut?.end();
   const tickMs = summary['tickMs'] as { max: number } | undefined;
   log('stopped', { reason, ticks: summary['ticks'], uptimeMs: Math.round(performance.now() - started), slowestTickMs: tickMs?.max ?? 0, summary });
-  process.exit(0);
+  process.exit(code);
 };
 process.once('SIGINT', () => void shutdown('SIGINT'));
 process.once('SIGTERM', () => void shutdown('SIGTERM'));

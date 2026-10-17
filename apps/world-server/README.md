@@ -4,7 +4,7 @@ The server for one world: joins and entry rules, movement checks, replication, c
 
 - Licence: MPL-2.0 ([LICENSE](LICENSE))
 - Stack: Node.js 24 LTS running TypeScript directly (provisional until the Stage 0 bake-off; a .NET server in C# is the alternative)
-- Status: joins with connect tokens and the version handshake, poses checked and corrected, interest management in 32 m cells, snapshots, proximity voice forwarding and chat, over WebRTC data channels or raw UDP with our own encryption (Stages 0 and 1); built worlds with their files, seats, portals and zones, persistence and the host channel to the core (Stage 2); plugins and entry rules (S3.01, S3.05: [plugins.md](../../docs/plugins.md)). Moderation tools and minors' protections come with the rest of Stage 3.
+- Status: joins with connect tokens and the version handshake, poses checked and corrected, interest management in 32 m cells, snapshots, proximity voice forwarding and chat, over WebRTC data channels or raw UDP with our own encryption (Stages 0 and 1); built worlds with their files, seats, portals and zones, persistence and the host channel to the core (Stage 2); plugins and entry rules (S3.01, S3.05: [plugins.md](../../docs/plugins.md)); roles and builds by others (S3.06). Moderation tools and minors' protections come with the rest of Stage 3.
 
 ```sh
 npm run server -- --port 0 --ticks 100                    # raw UDP on any free port, 100 ticks
@@ -28,7 +28,7 @@ FLATCHAT_WORLD_KEY=<64 hex> npm run server -- --transport both   # joins open, b
 | `--world-id`, `--seed` | random, 1 | The world its tokens name; spawn positions |
 | `--spawn X,Z,R` | anywhere | Players appear within R metres of (X, Z) |
 | `--map` | `flat` | `flat` (an empty square for load tests) or `plaza` (Stage 1's greybox plaza) |
-| `--world DIR` | none | Serves a built world (the converter's output); players download its files over their connection |
+| `--world DIR` | none | Serves a built world (the converter's output); players download its files over their connection. The people with build rights there may send a new build into DIR (S3.06): the world then stops with exit code 75, to be started again on it |
 | `--data FILE` | the world's own, for a built world | The world's database: its state and where each player left |
 | `--core URL`, `--relay` | none | Keeps a channel to the core (players' counts for the world browser); `--relay` also takes players' offers through it |
 | `--ice-server URL`, `--map-port` | none | Adds STUN or TURN servers; asks the router to forward the WebRTC UDP port |

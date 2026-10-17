@@ -149,7 +149,7 @@ describe('voice routing', () => {
     for (let i = 2; i <= 20; i++) world.add(i, { x: 100 + i, y: 0, z: 100 }, 0, 0);
     world.add(30, { x: 140, y: 0, z: 100 }, 0, 0);
     const router = new VoiceRouter();
-    for (const from of [1, 30, ...Array.from({ length: 19 }, (_, k) => k + 2)]) router.push({ from, seq: 1, start: true, mouth, opus: new Uint8Array(60) });
+    for (const from of [1, 30, ...Array.from({ length: 19 }, (_, k) => k + 2)]) router.push({ from, seq: 1, start: true, mouth, gain: 8, opus: new Uint8Array(60) });
     const { bundles, stats } = router.step(world);
     const heard = (decodeMessage(bundles.get(1)!, 'server') as MessageOf<'voiceBundle'>).frames.map((f) => f.from);
     expect(heard).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
@@ -161,8 +161,8 @@ describe('voice routing', () => {
     world.add(1, { x: 10, y: 0, z: 10 }, 0, 0);
     world.add(2, { x: 12, y: 0, z: 10 }, 0, 0);
     const router = new VoiceRouter();
-    router.push({ from: 2, seq: 7, start: true, mouth, opus: new Uint8Array(10) });
-    router.push({ from: 2, seq: 8, start: false, mouth, opus: new Uint8Array(10) });
+    router.push({ from: 2, seq: 7, start: true, mouth, gain: 8, opus: new Uint8Array(10) });
+    router.push({ from: 2, seq: 8, start: false, mouth, gain: 8, opus: new Uint8Array(10) });
     const first = decodeMessage(router.step(world).bundles.get(1)!, 'server') as MessageOf<'voiceBundle'>;
     const second = decodeMessage(router.step(world).bundles.get(1)!, 'server') as MessageOf<'voiceBundle'>;
     expect([first.frames[0]?.seq, second.frames[0]?.seq]).toEqual([7, 8]);

@@ -20,7 +20,7 @@ const world: PluginWorld = {
   pluginStore: () => ({ get: () => undefined, set: () => true, delete: () => undefined, keys: () => [] }),
 };
 
-const person = (over: Partial<JoinRequest> = {}): JoinRequest => ({ account: 'a', name: 'Ana', trust: 0, tester: false, emailVerified: false, ageDays: 0, under18: false, players: 0, capacity: 10, ...over });
+const person = (over: Partial<JoinRequest> = {}): JoinRequest => ({ account: 'a', name: 'Ana', trust: 0, tester: false, emailVerified: false, ageDays: 0, under18: false, role: 'visitor', players: 0, capacity: 10, ...over });
 
 async function rule(name: string): Promise<Plugins> {
   const plugins = new Plugins(world, () => undefined);

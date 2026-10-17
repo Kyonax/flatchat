@@ -20,7 +20,7 @@ describe('the local link', () => {
         (_channel, bytes) => got.push(decodeMessage(bytes, 'server')),
         (reason) => (ended = reason),
       );
-      const token = await sealToken({ account: randomUUID(), name: 'Guest', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0 }, { key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 });
+      const token = await sealToken({ account: randomUUID(), name: 'Guest', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0, owner: false, contact: 'everyone', friends: [], blocks: [] }, { key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 });
       const hello: Message = { type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn: '', height: 0 };
       link.receive(messageDef('hello').channel, encodeMessage(hello));
       const until = async (what: (m: Message) => boolean): Promise<void> => {

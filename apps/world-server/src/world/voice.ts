@@ -19,6 +19,9 @@ export interface VoiceConfig {
 
 export const DEFAULT_VOICE: VoiceConfig = { rangeM: 25, maxSpeakers: 16, maxQueued: 3 };
 
+/** A frame's `gain` (protocol version 5) for a voice as spoken: eighths, 0 to 15. */
+export const GAIN_UNITY = 8;
+
 export interface VoiceStepStats {
   speakers: number;
   bundles: number;

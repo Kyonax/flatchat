@@ -81,7 +81,7 @@ class Client {
 async function enter(udp: UdpServer, claims: { account?: string; name?: string; tester?: boolean } = {}): Promise<Client> {
   const c = new Client(await connectUdp({ host: '127.0.0.1', port: udp.port }));
   const token = await sealToken(
-    { account: claims.account ?? randomUUID(), name: claims.name ?? 'Ana', trust: 1, tester: claims.tester ?? false, emailVerified: true, under18: false, ageDays: 3 },
+    { account: claims.account ?? randomUUID(), name: claims.name ?? 'Ana', trust: 1, tester: claims.tester ?? false, emailVerified: true, under18: false, ageDays: 3, owner: false, contact: 'everyone', friends: [], blocks: [] },
     { key: KEY, world: WORLD, expiresAt: Math.floor(Date.now() / 1000) + 60 },
   );
   c.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn: '', height: 0 });

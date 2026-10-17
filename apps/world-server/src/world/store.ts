@@ -93,6 +93,23 @@ export class WorldStore {
     this.db.prepare('insert into places (account, x, y, z, yaw, seen_at) values (?, ?, ?, ?, ?, ?) on conflict (account) do update set x = excluded.x, y = excluded.y, z = excluded.z, yaw = excluded.yaw, seen_at = excluded.seen_at').run(account, p.x, p.y, p.z, p.yaw, now);
   }
 
+  /** An account's role here (S3.06), when it has one besides visitor. Never reset. */
+  role(account: string): 'builder' | 'moderator' | 'admin' | undefined {
+    const row = this.db.prepare('select role from roles where account = ?').get(account) as { role: string } | undefined;
+    return row?.role === 'builder' || row?.role === 'moderator' || row?.role === 'admin' ? row.role : undefined;
+  }
+
+  /** Gives a role; `visitor` removes it. The owner's role is never kept here: it comes from the core. */
+  setRole(account: string, role: 'visitor' | 'builder' | 'moderator' | 'admin', now = Date.now()): void {
+    if (role === 'visitor') this.db.prepare('delete from roles where account = ?').run(account);
+    else this.db.prepare('insert into roles (account, role, granted_at) values (?, ?, ?) on conflict (account) do update set role = excluded.role, granted_at = excluded.granted_at').run(account, role, now);
+  }
+
+  /** Every role given here. */
+  roles(): Array<{ account: string; role: string }> {
+    return this.db.prepare('select account, role from roles order by granted_at').all() as Array<{ account: string; role: string }>;
+  }
+
   /** Bans an account in this world (S3.01, S3.07): until a time (ms), or until lifted. Never reset. */
   ban(account: string, until: number | undefined, reason: string, now = Date.now()): void {
     this.db.prepare('insert into bans (account, until, reason, banned_at) values (?, ?, ?, ?) on conflict (account) do update set until = excluded.until, reason = excluded.reason, banned_at = excluded.banned_at').run(account, until ?? null, reason.slice(0, 500), now);

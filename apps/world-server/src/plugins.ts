@@ -14,6 +14,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { ROLES } from '@flatchat/protocol';
 import { parse } from 'smol-toml';
 
 export const HOST_API_VERSION = 1;
@@ -44,6 +45,8 @@ export interface PluginPlayer {
   emailVerified: boolean;
   ageDays: number;
   under18: boolean;
+  /** The player's role in this world (S3.06). */
+  role: (typeof ROLES)[number];
 }
 
 export type JoinRequest = Omit<PluginPlayer, 'entity'> & { players: number; capacity: number };
