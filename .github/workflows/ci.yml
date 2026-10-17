@@ -32,6 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run harness
+      # S1.15: 10 bots for 2 minutes on each transport (the harness's own bot check runs 4 s).
+      - name: Bots, 10 for 2 minutes on each transport
+        run: npm run bots -- smoke --bots 10 --seconds 120
 
   client-linux:
     name: Client on Linux
