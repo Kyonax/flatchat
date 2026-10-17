@@ -58,11 +58,11 @@ Markers use the open extensions of the [OMI group](https://github.com/omigroup/g
 
 | Marker | Extension (on a node unless said) | Meaning |
 |---|---|---|
-| Spawn point | `OMI_spawn_point`: `{ title?, team?, group? }` | Where players appear, facing the node's -z. At least one per world (in its first scene) |
+| Spawn point | `OMI_spawn_point`: `{ title?, team?, group? }` | Where players appear, facing the node's -z. At least one per world (in its first scene): players who join from the browser appear at the first scene's. Any scene may add more with a `group`, the group a portal in another world names; a portal's arrivals appear there |
 | Seat | `OMI_seat`: `{ back: [x,y,z], foot: [x,y,z], knee: [x,y,z], angle }` | Where an avatar sits (Q-F1); points in the node's space |
 | Solid | `OMI_physics_shape` (on the document: `shapes`) and `OMI_physics_body` (on a node: `{ motion?, collider?: { shape }, trigger?: { shape } }`) | What players collide with (Q-F2): box, sphere, capsule, cylinder, convex or trimesh shapes; a `trigger` detects without blocking |
 | Sound | `KHR_audio_emitter` (document: `audio`, `sources`, `emitters`; node: `{ emitter }`) | Ambience, music, positional sounds (Q-H1) |
-| Portal | `FLATCHAT_world`: `{ portal: { world, spawn?, size: [x,y,z] } }` | Walking into the box (`size` in metres, centred on the node) takes a player to another world (Q-L11): `world` is its id, `spawn` an optional spawn group there |
+| Portal | `FLATCHAT_world`: `{ portal: { world, spawn?, size: [x,y,z] } }` | Walking into the box (`size` in metres, centred on the node) takes a player to another world (Q-L11): `world` is its id, `spawn` an optional spawn group there. The world server checks the player's feet, so let the box reach a little below the floor |
 | Zone | `FLATCHAT_world`: `{ zone: { kind, size: [x,y,z], range?, gain? } }` | A box where voice changes: `kind` is `voice` (`range` and `gain` for everyone inside, a stage), `quiet` (no voice heard or sent: Q-L18), or `private` (voice only among those inside); reverb and screen effects come in Stage 6 |
 
 A scene may use any other extension the converter accepts (`KHR_materials_*`, `KHR_texture_transform`, `KHR_mesh_quantization`, `EXT_meshopt_compression`, `KHR_texture_basisu`); one listed in `extensionsRequired` that FlatChat does not know refuses the world.
