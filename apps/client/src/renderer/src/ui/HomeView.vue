@@ -24,6 +24,8 @@ const friends = ref<FlatchatPerson[]>([]);
 const incoming = ref<FlatchatPerson[]>([]);
 /** The address waits for its confirmation link (S3.03). */
 const unverified = ref(false);
+/** A teen sees its supervision, always (S3.04): pending until its guardian authorizes. */
+const supervision = ref('none');
 const resent = ref('');
 
 async function resend(): Promise<void> {
@@ -55,6 +57,7 @@ async function load(): Promise<void> {
     friends.value = social.friends;
     incoming.value = social.incoming;
     unverified.value = !social.verified;
+    supervision.value = social.supervision;
   }
   if (!list || !list.ok) {
     listError.value = failed(list?.error ?? '');
@@ -216,6 +219,14 @@ onMounted(load);
         role="alert"
       >
         {{ joinError }}
+      </p>
+      <p
+        v-if="supervision === 'authorized' || supervision === 'pending'"
+        class="notice"
+        data-test="supervision"
+        :data-state="supervision"
+      >
+        {{ supervision === 'authorized' ? t('home.supervised') : t('home.supervisionPending') }}
       </p>
       <p
         v-if="unverified"

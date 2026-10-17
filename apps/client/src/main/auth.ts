@@ -168,7 +168,7 @@ export class Auth {
     return this.api.join(await this.access(), worldId);
   }
 
-  async standing(): Promise<{ under18: boolean; verified: boolean }> {
+  async standing(): Promise<{ under18: boolean; verified: boolean; supervision: string }> {
     return this.api.standing(await this.access());
   }
 

@@ -245,9 +245,9 @@ export class CoreApi {
 
   /** Whether this account is under 18 (S3.10; its client keeps a minor's defaults too) and
    *  whether its address is verified (S3.03). */
-  async standing(access: string): Promise<{ under18: boolean; verified: boolean }> {
-    const r = await this.call<{ under18?: unknown; emailVerified?: unknown }>('GET', '/api/v1/me', undefined, access);
-    return { under18: r.under18 === true, verified: r.emailVerified === true };
+  async standing(access: string): Promise<{ under18: boolean; verified: boolean; supervision: string }> {
+    const r = await this.call<{ under18?: unknown; emailVerified?: unknown; supervision?: unknown }>('GET', '/api/v1/me', undefined, access);
+    return { under18: r.under18 === true, verified: r.emailVerified === true, supervision: typeof r.supervision === 'string' ? r.supervision.slice(0, 16) : 'none' };
   }
 
   /** Asks the core to mail a new verification link (S3.03); false when one went out lately. */

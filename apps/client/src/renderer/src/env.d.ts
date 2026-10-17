@@ -59,7 +59,7 @@ interface FlatchatBridge {
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
   // Friends and blocks (S3.10, S3.11), and whether this account is a minor.
-  social(): Promise<FlatchatResult<{ under18: boolean; verified: boolean; friends: FlatchatPerson[]; incoming: FlatchatPerson[]; outgoing: FlatchatPerson[]; blocks: string[] }>>;
+  social(): Promise<FlatchatResult<{ under18: boolean; verified: boolean; supervision: string; friends: FlatchatPerson[]; incoming: FlatchatPerson[]; outgoing: FlatchatPerson[]; blocks: string[] }>>;
   resendVerification(): Promise<FlatchatResult<{ sent: boolean }>>;
   befriend(account: string, on: boolean): Promise<FlatchatResult<{ status: string }>>;
   setBlock(account: string, on: boolean): Promise<FlatchatResult<object>>;
