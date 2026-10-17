@@ -88,7 +88,7 @@ async function token(options: { world?: string; expiresAt?: number; nonce?: Uint
 async function connect(udp: UdpServer, hello: Partial<MessageOf<'hello'>> = {}): Promise<Client> {
   const client = new Client(await connectUdp({ host: '127.0.0.1', port: udp.port }));
   clients.push(client);
-  client.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token: hello.token ?? (await token()), ...hello });
+  client.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token: hello.token ?? (await token()), spawn: '', ...hello });
   return client;
 }
 
@@ -262,5 +262,69 @@ describe('Stage 1: entry rules, one session per account, world-wide chat, the pl
     a.send({ type: 'pose', seq: 2, position: { ...spawn.position, y: spawn.position.y + 5 }, yaw: 0, look: 0, stance: 'jumping' });
     const fixed = await a.next('snapshot', (s) => s.correction?.seq === 2);
     expect(fixed.correction!.position.y).toBeCloseTo(spawn.position.y + 0.8, 1);
+  });
+});
+
+describe('portals and spawn groups (S2.11)', () => {
+  const portal = { center: [20, 1.4, 30] as [number, number, number], half: [2, 1.5, 1] as [number, number, number], yaw: 0, world: '00000000-0000-4000-8000-0000000000b2', spawn: 'arrival' };
+  const spawnPoints = [
+    { x: 20, y: 0, z: 20, yaw: 0, group: 'start', main: true },
+    { x: 26, y: 0, z: 24, yaw: Math.PI, group: 'arrival', main: false },
+  ];
+
+  it('lands a hello that names a group on that group, and anyone else on the main spawn points', async () => {
+    const udp = await start({ world: { size: 64 }, spawnPoints, portals: [portal] });
+    const arriving = await connect(udp, { spawn: 'arrival' });
+    const there = (await arriving.next('snapshot', (s) => s.correction?.seq === 0)).correction!;
+    expect([there.position.x, there.position.z]).toEqual([26, 24]);
+    const walkIn = await connect(udp);
+    const here = (await walkIn.next('snapshot', (s) => s.correction?.seq === 0)).correction!;
+    expect([here.position.x, here.position.z]).toEqual([20, 20]);
+    // A group the world does not have: the main spawn points.
+    const lost = await connect(udp, { spawn: 'nowhere' });
+    expect((await lost.next('snapshot', (s) => s.correction?.seq === 0)).correction!.position.z).toBe(20);
+  });
+
+  it('sends portal once on entering its box, and again only after leaving it', async () => {
+    const udp = await start({ world: { size: 64 }, spawnPoints, portals: [portal] });
+    const c = await connect(udp);
+    await c.next('snapshot', (s) => s.correction?.seq === 0);
+    let seq = 0;
+    const walk = async (z: number): Promise<void> => {
+      for (let step = 0; step < 6; step++) {
+        c.send({ type: 'pose', seq: (seq += 1), position: { x: 20, y: 0, z }, yaw: 0, look: 0, stance: 'standing' });
+        await new Promise((r) => setTimeout(r, 60));
+      }
+    };
+    // Walk south in short steps, as a player would, into the box at z 29 to 31.
+    for (let z = 20.5; z <= 29.5; z += 0.25) {
+      c.send({ type: 'pose', seq: (seq += 1), position: { x: 20, y: 0, z }, yaw: 0, look: 0, stance: 'standing' });
+      await new Promise((r) => setTimeout(r, 55));
+    }
+    await walk(29.5);
+    expect(await c.next('portal')).toEqual({ type: 'portal', world: portal.world, spawn: 'arrival' });
+    expect(c.got.filter((m) => m.type === 'portal')).toHaveLength(1);
+    // Out and back in: a second one.
+    for (let z = 29.25; z >= 27.5; z -= 0.25) {
+      c.send({ type: 'pose', seq: (seq += 1), position: { x: 20, y: 0, z }, yaw: 0, look: 0, stance: 'standing' });
+      await new Promise((r) => setTimeout(r, 55));
+    }
+    for (let z = 27.75; z <= 29.5; z += 0.25) {
+      c.send({ type: 'pose', seq: (seq += 1), position: { x: 20, y: 0, z }, yaw: 0, look: 0, stance: 'standing' });
+      await new Promise((r) => setTimeout(r, 55));
+    }
+    await c.next('portal', () => c.got.filter((m) => m.type === 'portal').length >= 2);
+    expect(c.got.filter((m) => m.type === 'portal')).toHaveLength(2);
+  });
+
+  it('does not send a player arriving inside a portal straight back', async () => {
+    const udp = await start({ world: { size: 64 }, spawnPoints: [{ x: 20, y: 0, z: 30, yaw: 0, group: 'start', main: true }], portals: [portal] });
+    const c = await connect(udp);
+    await c.next('snapshot', (s) => s.correction?.seq === 0);
+    for (let i = 1; i <= 8; i++) {
+      c.send({ type: 'pose', seq: i, position: { x: 20, y: 0, z: 30 }, yaw: 0, look: 0, stance: 'standing' });
+      await new Promise((r) => setTimeout(r, 55));
+    }
+    expect(c.got.some((m) => m.type === 'portal')).toBe(false);
   });
 });

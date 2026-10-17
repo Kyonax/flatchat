@@ -62,7 +62,7 @@ describe('a persistent world', () => {
       const got: Message[] = [];
       link.onMessage((_c, b) => got.push(decodeMessage(b, 'server')));
       const token = await sealToken({ account, name: 'back', trust: 1, tester: false, emailVerified: true, under18: false, ageDays: 1 }, { key, world, expiresAt: Math.floor(Date.now() / 1000) + 60 });
-      link.send('reliable', encodeMessage({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 't', token }));
+      link.send('reliable', encodeMessage({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 't', token, spawn: '' }));
       for (let i = 0; i < 200 && !got.some((m) => m.type === 'snapshot' && m.correction?.seq === 0); i++) await new Promise((r) => setTimeout(r, 10));
       const spawn = (got.find((m) => m.type === 'snapshot' && m.correction?.seq === 0) as Extract<Message, { type: 'snapshot' }>).correction!.position;
       if (move) {

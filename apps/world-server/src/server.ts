@@ -14,6 +14,12 @@
 // An account joins once: joining again from somewhere else ends the older connection. Chat (S1.10)
 // is world-wide, cleaned of control and direction characters, at most 280 characters, and limited
 // to a burst of 5 lines and then one every 1.5 s per player.
+//
+// Portals (S2.11): a built world's portal boxes; a player whose applied pose enters one gets
+// `portal` (the world it leads to and a spawn group there) once, and again only after leaving it.
+// The client gets its connect token for that world from the core, as for any join. A `hello` that
+// names a spawn group lands on that group's spawn points, when the world has them.
+import { type BuiltPortal, insideBox } from '@flatchat/content';
 import {
   type Channel,
   checkVersion,
@@ -82,8 +88,11 @@ export interface WorldServerOptions {
   content?: ContentServer;
   /** The world's database (S2.08): a persistent world puts a returning account where it left. */
   store?: WorldStore;
-  /** Spawn points of a built world: each join picks one (overrides `spawn`). */
-  spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number }>;
+  /** Spawn points of a built world: each join picks one of the first scene's (`main`), or of the
+   *  group its hello names (overrides `spawn`). */
+  spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number; group?: string; main?: boolean }>;
+  /** A built world's portals (S2.11). */
+  portals?: readonly BuiltPortal[];
   log: LogFn;
   /** Unix time in seconds, for token expiry. */
   unixNow: () => number;
@@ -128,6 +137,8 @@ interface Conn {
   chatAt: number;
   spokeAt: number;
   badMessages: number;
+  /** The portal the player stands in (its index), -1 for none: `portal` goes out on entering. */
+  portal: number;
 }
 
 type RosterPlayer = MessageBody<'roster'>['players'][number];
@@ -151,14 +162,23 @@ export function cleanChat(text: string): string {
   return [...cleaned].slice(0, CHAT_MAX).join('');
 }
 
+/** Cuts text to at most `max` UTF-8 bytes, on a character boundary. */
+export function fitBytes(text: string, max: number): string {
+  const encoder = new TextEncoder();
+  let out = text;
+  while (encoder.encode(out).length > max) out = [...out].slice(0, -1).join('');
+  return out;
+}
+
 /** A world server's options for a built world (S2.03): its bounds, solids, flying, capacity and
  *  spawn points, and the content players download. */
-export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'content' | 'capacity' | 'recommended'> {
+export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'portals' | 'content' | 'capacity' | 'recommended'> {
   const w = loaded.world;
   const size = Math.max(16, Math.ceil(Math.max(w.bounds.max[0], w.bounds.max[2])));
   return {
     world: { size, solids: boundsOf(loaded.colliders), flying: w.manifest.flying },
-    spawnPoints: w.scenes[0]!.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw })),
+    spawnPoints: w.scenes.flatMap((scene, i) => scene.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw, group: s.group, main: i === 0 }))),
+    portals: w.scenes.flatMap((scene) => scene.portals),
     content,
     capacity: w.manifest.capacity.maximum,
     recommended: w.manifest.capacity.recommended,
@@ -294,7 +314,7 @@ export class WorldServer {
   // ------------------------------------------------------------------ links
 
   private accept(link: Link, transport: TransportName): void {
-    const conn: Conn = { link, state: 'hello', voiceWindowStart: -Infinity, voiceInWindow: 0, chatTokens: CHAT_BURST, chatAt: performance.now(), spokeAt: -Infinity, badMessages: 0 };
+    const conn: Conn = { link, state: 'hello', voiceWindowStart: -Infinity, voiceInWindow: 0, chatTokens: CHAT_BURST, chatAt: performance.now(), spokeAt: -Infinity, badMessages: 0, portal: -1 };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
     this.conns.add(conn);
     this.events.add(`link:${transport}`, 0);
@@ -331,6 +351,7 @@ export class WorldServer {
     switch (message.type) {
       case 'pose':
         this.events.add(`pose:${this.world.applyPose(conn.entity, message, now)}`, 0);
+        if (this.options.portals?.length) this.portalCheck(conn);
         break;
       case 'voice':
         this.voiceIn(conn, message, now);
@@ -407,9 +428,9 @@ export class WorldServer {
     const sp = this.options.spawn;
     const angle = this.random() * Math.PI * 2;
     const radius = sp ? Math.sqrt(this.random()) * sp.r : 0;
-    const points = this.options.spawnPoints;
-    const returning = this.options.store?.place(opened.claims.account);
-    const point = returning ?? (points && points.length > 0 ? points[Math.floor(this.random() * points.length)] : undefined);
+    const points = this.spawnChoices(hello.spawn);
+    const returning = hello.spawn ? undefined : this.options.store?.place(opened.claims.account);
+    const point = returning ?? (points.length > 0 ? points[Math.floor(this.random() * points.length)] : undefined);
     const at = point
       ? { x: point.x, y: point.y, z: point.z }
       : sp
@@ -417,6 +438,8 @@ export class WorldServer {
         : { x: this.random() * size, y: 0, z: this.random() * size };
     const yaw = point?.yaw ?? sp?.yaw ?? this.random() * Math.PI * 2 - Math.PI;
     this.world.add(entity, at, yaw, performance.now());
+    // Arriving inside a portal does not send the player straight back: only entering one counts.
+    conn.portal = this.options.portals?.findIndex((b) => insideBox(b, at)) ?? -1;
     this.byEntity.set(entity, conn);
     const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust };
     this.roster.set(entity, player);
@@ -430,6 +453,29 @@ export class WorldServer {
     if (conn.sink) this.options.content?.announce(conn.sink);
     this.joinMs.add(performance.now() - started);
     this.events.add('join', 0);
+  }
+
+  /** The spawn points a join may use: the named group's when it has any, else the main ones. */
+  private spawnChoices(group: string): ReadonlyArray<{ x: number; y: number; z: number; yaw: number }> {
+    const all = this.options.spawnPoints ?? [];
+    const named = group ? all.filter((p) => p.group === group) : [];
+    if (named.length > 0) return named;
+    const main = all.filter((p) => p.main !== false);
+    return main.length > 0 ? main : all;
+  }
+
+  /** Sends `portal` when the player's position has just entered a portal's box. */
+  private portalCheck(conn: Conn): void {
+    const p = conn.entity === undefined ? undefined : this.world.players.get(conn.entity);
+    if (!p) return;
+    const portals = this.options.portals!;
+    const inside = portals.findIndex((b) => insideBox(b, p));
+    if (inside === conn.portal) return;
+    conn.portal = inside;
+    if (inside < 0) return;
+    const to = portals[inside]!;
+    this.send(conn, 'portal', encodeMessage({ type: 'portal', world: to.world, spawn: fitBytes(to.spawn, 32) }));
+    this.events.add('portal', 0);
   }
 
   /** Ends a joined player's connection with a reason it is shown. */

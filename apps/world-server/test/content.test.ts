@@ -49,7 +49,8 @@ describe('a built world on disk', () => {
     expect(loaded.files.size).toBe(3);
     expect(boundsOf(loaded.colliders)).toEqual([{ min: { x: 0, y: -1, z: 0 }, max: { x: 20, y: 0, z: 20 } }]);
     const o = builtOptions(loaded, new ContentServer(loaded));
-    expect(o.spawnPoints).toEqual([{ x: 5, y: 0, z: 6, yaw: 1 }]);
+    expect(o.spawnPoints).toEqual([{ x: 5, y: 0, z: 6, yaw: 1, group: '', main: true }]);
+    expect(o.portals).toEqual([]);
     expect(o.capacity).toBe(6);
     expect(o.world?.size).toBe(20);
   });
@@ -76,7 +77,7 @@ describe('downloads over the world connection', () => {
       link.onMessage((_ch, bytes) => got.push(decodeMessage(bytes, 'server')));
       const send = (m: Message, ch: 'reliable' | 'unreliable' = 'reliable'): void => link.send(ch, encodeMessage(m));
       const token = await sealToken({ account: randomUUID(), name: 'dl', trust: 1, tester: false, emailVerified: true, under18: false, ageDays: 1 }, { key, world, expiresAt: Math.floor(Date.now() / 1000) + 60 });
-      send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token });
+      send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn: '' });
       const until = async (pred: () => boolean): Promise<void> => {
         for (let i = 0; i < 300 && !pred(); i++) await new Promise((r) => setTimeout(r, 10));
       };
