@@ -45,7 +45,9 @@ form{background:var(--card);border:1px solid var(--line);border-radius:4px;paddi
 input,select{width:100%;font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:2px;background:var(--bg);color:var(--fg)}
 .row{display:flex;gap:8px}.row>*{flex:1}.check{display:flex;gap:8px;align-items:flex-start;font-weight:400}.check input{width:auto;margin-top:.3rem}
 button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:#121214;cursor:pointer}
-.error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}`;
+.error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}
+main.wide{max-width:72rem}table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}table.list th,table.list td{text-align:left;padding:8px;border-top:1px solid var(--line);vertical-align:top}
+table.list form{background:none;border:0;padding:0;display:inline}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}`;
 
 function page(lang: Lang, title: string, body: Raw): string {
   const s = STRINGS[lang];

@@ -2,9 +2,11 @@
 // The core's HTTP service (DR-05): the sign-in and sign-up pages, and the JSON API the client uses.
 // Built as a function so tests run every route in-process (Fastify's inject) against a real
 // PostgreSQL database, and main.ts only adds the socket, the migrations and the signals.
+import { timingSafeEqual } from 'node:crypto';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
+import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import type { AgePolicy } from './age.ts';
 import type { Db } from './db.ts';
 import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
@@ -25,7 +27,7 @@ import {
   validPort,
 } from './sessions.ts';
 import { type Lang, pickLang, STRINGS } from './strings.ts';
-import { cleanAddress, cleanWorldName, connectToken, listWorlds, registerWorld, worldById } from './worlds.ts';
+import { approveWorld, cleanAddress, cleanWorldName, connectToken, listWorlds, registerWorld, revokeWorld, worldById } from './worlds.ts';
 
 export const CORE_VERSION = '0.1.0';
 
@@ -268,6 +270,65 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     return htmlPage(reply.code(400), signupPage(lang, invitation, { ...values, error: signupProblem(lang, result.problem) }));
   });
 
+  // --------------------------------------------------------------------- the admin page (S2.10)
+
+  const secureCookie = publicUrl.startsWith('https:') ? '; Secure' : '';
+  const sameToken = (a: string, b: string): boolean => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+  async function adminWorlds(): Promise<AdminWorld[]> {
+    const rows = await o.db.query<{ id: string; name: string; status: string; email: string; address: string; capacity: number; created_at: Date }>(
+      'select w.id, w.name, w.status, a.email, w.address, w.capacity, w.created_at from worlds w join accounts a on a.id = w.owner_id order by w.created_at desc limit 500',
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, owner: r.email, address: r.address, capacity: r.capacity, created: r.created_at }));
+  }
+
+  app.get('/admin', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const done = str((req.query as Record<string, unknown>)['done'], 16);
+    const notice = done === 'approved' ? 'Approved. Its host fetches the world key with the host tool.' : done === 'revoked' ? 'Revoked: no new connect tokens, and its key is gone.' : undefined;
+    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), notice));
+  });
+
+  app.get('/admin/signin', async (_req, reply) => htmlPage(reply, adminSigninPage()));
+
+  app.post('/admin/signin', async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const email = str(b['email'], 254);
+    const t = now().getTime();
+    if (!limits.signinByAddress.take(req.ip, t) || !limits.signinByEmail.take(`admin:${email.trim().toLowerCase()}`, t)) {
+      return htmlPage(reply.code(429), adminSigninPage('Too many tries. Wait a minute.'));
+    }
+    const result = await checkSignIn(o.db, email, str(b['password'], 1024), decoy);
+    const isAdmin = result.ok && (await o.db.query<{ admin: boolean }>('select admin from accounts where id = $1', [result.account.id]))[0]?.admin === true;
+    if (!result.ok || !isAdmin) return htmlPage(reply.code(401), adminSigninPage('That is not an admin account.'));
+    const session = await startAdminSession(o.db, result.account.id, now());
+    o.log?.('admin-signin', { account: result.account.id });
+    return reply
+      .code(303)
+      .header('set-cookie', `${ADMIN_COOKIE}=${session.cookie}; Max-Age=${ADMIN_SESSION_MS / 1000}; Path=/admin; HttpOnly; SameSite=Strict${secureCookie}`)
+      .header('location', '/admin')
+      .send();
+  });
+
+  app.get('/admin/signout', async (req, reply) => {
+    await endAdminSession(o.db, req.headers.cookie);
+    return reply.code(303).header('set-cookie', `${ADMIN_COOKIE}=; Max-Age=0; Path=/admin; HttpOnly; SameSite=Strict${secureCookie}`).header('location', '/admin/signin').send();
+  });
+
+  app.post('/admin/worlds/:id/:action', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const { id, action } = req.params as { id: string; action: string };
+    if (!sameToken(str(((req.body ?? {}) as Record<string, unknown>)['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const world = await worldById(o.db, id);
+    if (!world || (action !== 'approve' && action !== 'revoke')) return reply.code(404).send();
+    if (action === 'approve') await approveWorld(o.db, sealing, id, `admin:${admin.accountId}`, 'admin page', now());
+    else await revokeWorld(o.db, id, `admin:${admin.accountId}`, 'admin page', now());
+    o.log?.(`world-${action}d`, { world: id });
+    return reply.code(303).header('location', `/admin?done=${action}d`).send();
+  });
+
   // -------------------------------------------------------------------------------- API
 
   app.get('/api/v1/health', async () => ({ ok: true, version: CORE_VERSION }));
@@ -340,6 +401,25 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (limited(limits.apiByAddress, req.ip, reply)) return reply;
     const worlds = await listWorlds(o.db, 'approved');
     return { worlds: worlds.map((w) => ({ id: w.id, name: w.name, capacity: w.capacity })) };
+  });
+
+  // A host's own worlds, and an approved world's key (S2.10): only for the account that registered it.
+  app.get('/api/v1/my/worlds', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const rows = await o.db.query<{ id: string; name: string; status: string; address: string; capacity: number }>('select id, name, status, address, capacity from worlds where owner_id = $1 order by created_at', [who.accountId]);
+    return { worlds: rows };
+  });
+
+  app.get('/api/v1/worlds/:id/key', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const id = (req.params as { id: string }).id;
+    const [w] = /^[0-9a-f-]{36}$/i.test(id) ? await o.db.query<{ owner_id: string; status: string; key_sealed: Buffer | null }>('select owner_id, status, key_sealed from worlds where id = $1', [id]) : [];
+    if (!w || w.owner_id !== who.accountId) return sendProblem(reply, problem(404, 'no-world', 'no such world of yours'));
+    if (w.status !== 'approved' || !w.key_sealed) return sendProblem(reply, problem(403, 'not-approved', 'the world is not approved'));
+    o.log?.('world-key', { world: id });
+    return { world: id, key: Buffer.from(openWorldKey(sealing, id, w.key_sealed)).toString('hex') };
   });
 
   app.get('/api/v1/worlds/:id', async (req, reply) => {

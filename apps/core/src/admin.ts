@@ -7,7 +7,7 @@
 //   node --env-file=PATH src/admin.ts invite [--email E] [--note N] [--days 14]
 //   node --env-file=PATH src/admin.ts invites                      every invitation and its state
 //   node --env-file=PATH src/admin.ts accounts
-//   node --env-file=PATH src/admin.ts account EMAIL [--tester on|off] [--trust 0-7] [--status active|suspended|banned]
+//   node --env-file=PATH src/admin.ts account EMAIL [--tester on|off] [--trust 0-7] [--status active|suspended|banned] [--admin on|off]
 //   node --env-file=PATH src/admin.ts worlds [--status pending|approved|revoked]
 //   node --env-file=PATH src/admin.ts world register --name N --owner EMAIL --address URL [--capacity 50]
 //   node --env-file=PATH src/admin.ts world approve ID [--note N]  prints the world's key, once
@@ -32,6 +32,7 @@ const { values, positionals } = parseArgs({
     tester: { type: 'string' },
     trust: { type: 'string' },
     status: { type: 'string' },
+    admin: { type: 'string' },
     name: { type: 'string' },
     owner: { type: 'string' },
     address: { type: 'string' },
@@ -106,6 +107,10 @@ try {
         const t = Number(values.trust);
         if (!Number.isInteger(t) || t < 0 || t > 7) fail('--trust 0 to 7');
         await db.query('update accounts set trust = $2 where id = $1', [a.id, t]);
+      }
+      if (values.admin !== undefined) {
+        if (!['on', 'off'].includes(values.admin)) fail('--admin on|off');
+        await db.query('update accounts set admin = $2 where id = $1', [a.id, values.admin === 'on']);
       }
       if (values.status !== undefined) {
         if (!['active', 'suspended', 'banned'].includes(values.status)) fail('--status active|suspended|banned');
