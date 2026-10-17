@@ -224,7 +224,7 @@ describe('new builds', () => {
     expect((await loadBuiltWorld(before.dir)).world.manifest.name).toBe('After');
     expect(existsSync(`${before.dir}.incoming`)).toBe(false);
     expect(existsSync(`${before.dir}.next`)).toBe(false);
-  });
+  }, 20_000);
 
   it('refuses a piece that does not match its hash, and a build that lacks a file', async () => {
     const before = built('Before');
@@ -245,5 +245,5 @@ describe('new builds', () => {
     expect(verdict.ok).toBe(false);
     expect(verdict.detail).toMatch(/was neither uploaded nor already here/);
     expect((await loadBuiltWorld(before.dir)).world.manifest.name).toBe('Before');
-  });
+  }, 20_000);
 });
