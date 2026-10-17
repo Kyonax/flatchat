@@ -2,7 +2,7 @@
 title: Roles, Builds by Others and Moderation — Who May Do What in One World, Checked by the World
 impact: HIGH
 impactDescription: A role taken from what a client claims, an admin able to crown another admin or touch the owner, a build swapped in before it is checked, or an upload with no window that silently drops pieces turns a host's world over to whoever asks first.
-tags: roles, owner, admin, moderator, builder, visitor, ROLES, RIGHTS, can, roleRank, giveRole, storedRole, role message, roster role, People panel, rolesToGive, canGiveTo, host push, pushBuild, put, publish, published, got, window, BuildUploads, uploads.ts, UploadError, .built.incoming, .built.next, exit code 75, updating, rejoin, WorldStore roles, setRole, S3.06, Q-M7, Q-L10
+tags: roles, owner, admin, moderator, builder, visitor, moderation, moderate, kick, ban, mute, unmute, unban, muted, heldMute, statement of reasons, appeal, appeals, BanAppeal, moderation_actions, world_unbans, liftBanOnAppeal, unban message, host agreement, HOST_AGREEMENT_VERSION, agreement-required, revokedFor, host bans, host unban, host appeals, S3.07, G-11, ROLES, RIGHTS, can, roleRank, giveRole, storedRole, role message, roster role, People panel, rolesToGive, canGiveTo, host push, pushBuild, put, publish, published, got, window, BuildUploads, uploads.ts, UploadError, .built.incoming, .built.next, exit code 75, updating, rejoin, WorldStore roles, setRole, S3.06, Q-M7, Q-L10
 ---
 
 Each world has five roles (S3.06), rights growing along `ROLES` in `packages/protocol/src/schema.ts`: `visitor`, `builder` (replace the world's files), `moderator` (kick, ban, mute: S3.07), `admin` (give the roles below its own), `owner`. The world decides every right itself; a client only asks.
@@ -40,6 +40,29 @@ Do not log account IDs with roles (token claims stay out of logs); the store kee
 3. `publish` names world.json's hash. The world assembles `DIR.next` (uploaded files, plus files it already holds, hard-linked or copied), runs `loadBuiltWorld` on it (the same check as at start), then renames `DIR` → `DIR.old` and `DIR.next` → `DIR`.
 4. `published { ok: true }`, then `onPublished`: the program stops with leave `closing` / detail `updating` and exit code 75. `host run` starts it again; the client's `rejoin()` waits for the world to be online (every 3 s, 20 tries) and joins again.
 5. Any failure answers `published { ok: false, detail }` and drops that uploader's staging (`forget`); a closed connection drops it too. One uploader at a time.
+
+## Moderation in a World (S3.07)
+
+| Rule | Where |
+|---|---|
+| `moderate` needs the `moderate` right, a target below the actor's role, never the owner (remembered in the store's `meta.owner` once it joins, so it is protected while away) and never oneself | `server.ts` `moderate` |
+| Kick, ban and mute need a reason; the player is told it: `leave { kicked\|banned, detail }`, `refuse { banned, detail }` at every later try, `muted { on, reason }` | the statement of reasons |
+| Bans and mutes are kept in the world's store (`bans`, `mutes`; never cleared by a reset), so a rejoin does not shake them off; `minutes` 0 lasts until lifted, at most a year | `store.ts` |
+| Every action goes into the store's `moderation` record (actor, target, action, minutes, reason); never into stdout logs with account ids | `logModeration` |
+| A plugin's `forceMute` tells the player too (`muted`, no reason) | `pluginForceMute` |
+| A reversed appeal arrives over the host channel as `{ type: 'unban', appeal, account }`; the world lifts it (`liftBanOnAppeal`) and answers `unbanned`; the core repeats it on every reconnection until then | `net/relay.ts`, core `hosts.ts` |
+
+## Moderation in the Core (S3.07, G-11)
+
+| Piece | Rule |
+|---|---|
+| Platform decisions | `apps/core/src/moderation.ts` `moderateAccount` (suspend, ban, lift) with a reason, recorded in `moderation_actions` (migration 0005); suspend and ban end the sessions; a banned account fails sign-in and joining (uploads and gallery from Stage 4) |
+| The statement and the appeal | `checkSignIn` returns the account id only after the password checked; the sign-in page then shows `standingPage` (decision, date, reason) and a one-time appeal form (`appeal_tokens`, an hour); one appeal per decision; the admin page decides (`decidePlatformAppeal`: reverse lifts, uphold shows the note at the next sign-in) |
+| World-ban appeals | `appealWorldBan` (one pending per player and world), the owner's `worldAppeals` / `decideWorldAppeal` (via `host appeals` / `host appeal`), `world_unbans` until `unbanned` |
+| The host agreement | `HOST_AGREEMENT_VERSION` (1); `POST /api/v1/worlds` refuses without `agreement: 1` (`agreement-required`); `/host-agreement` in both languages; the admin CLI's `world register` counts it accepted; a revocation carries a reason the host reads (`revokedFor` in `/api/v1/my/worlds`) |
+| The client | `BanAppeal.vue` on a banned card (online worlds), `state.heldMute` banner and the microphone stopped, the People panel's moderation form (`MODERATION`, a reason required except for unmute) |
+
+The report triage queue and the underage-report suspension come with reports (S3.02).
 
 ## Correct vs. Incorrect
 
