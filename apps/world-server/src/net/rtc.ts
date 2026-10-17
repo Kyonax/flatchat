@@ -383,15 +383,22 @@ export class RtcServer implements ServerTransport {
 // ----------------------------------------------------------------------- client
 
 export interface RtcConnectOptions {
-  /** The world server's signaling URL, for example http://127.0.0.1:7779/rtc. */
+  /** The world server's signaling URL, for example http://127.0.0.1:7779/rtc, or the core's relay. */
   signalUrl: string;
   iceBind?: string;
   timeoutMs?: number;
+  /** STUN and TURN servers (the core's, with their credentials). */
+  iceServers?: readonly IceServerSpec[];
+  /** Extra headers for the signalling request (the core's relay wants the account's token). */
+  headers?: Record<string, string>;
 }
 
 /** Connects to an RtcServer; resolves once both data channels are open. */
 export async function connectRtc(options: RtcConnectOptions): Promise<Link> {
-  const pc = new PeerConnection(`bot-${nextLinkId}`, { iceServers: [], ...(options.iceBind ? { bindAddress: options.iceBind } : {}) });
+  const pc = new PeerConnection(`bot-${nextLinkId}`, {
+    iceServers: toDatachannelIce(options.iceServers ?? []),
+    ...(options.iceBind ? { bindAddress: options.iceBind } : {}),
+  });
   try {
     const dc = channels(pc);
     const link = new RtcLink(pc, dc, new URL(options.signalUrl).host);
@@ -401,7 +408,7 @@ export async function connectRtc(options: RtcConnectOptions): Promise<Link> {
     if (!offer) throw new Error('no offer');
     const res = await fetch(options.signalUrl, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...options.headers },
       body: JSON.stringify({ type: offer.type, sdp: offer.sdp }),
       signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     });
