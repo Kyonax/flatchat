@@ -2,7 +2,7 @@
 title: Reports and Safety — Reports With Evidence and the Voice Clip, the Public Form, the Triage Queue, Under-Age Reports, Keeping and Purging Evidence
 impact: CRITICAL
 impactDescription: A voice clip that leaves a player's computer without a report, a report queue that hides threats behind spam, evidence kept forever or lost too soon, or an under-age report that changes nothing breaks the promises the platform makes to minors and to the people who report.
-tags: reports, report, friends, friend requests, blocks, block, hidden, minors, under18, contact, tokenLists, befriend, setBlock, S3.10, S3.11, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
+tags: reports, report, guardian, guardian link, guardians.ts, guardian_links, guardian-pending, FLATCHAT_CORE_MINORS, S3.04, friends, friend requests, blocks, block, hidden, minors, under18, contact, tokenLists, befriend, setBlock, S3.10, S3.11, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
 ---
 
 Reports (S3.02) carry evidence to the core's owner, who decides on the admin page's triage queue (S3.07). The player is told a receipt at once and the decision later.
@@ -39,6 +39,17 @@ Reports (S3.02) carry evidence to the core's owner, who decides on the admin pag
 | The connect token carries `blocks` (blocked or blocking, newest 100) and, for a minor only, `friends` (100) with `contact` `friends`; an adult's friends never reach a world | `tokenLists`, `claimsFor` |
 | The world keeps blocked pairs apart (voice, chat, `hidden`) and lets a minor reach and be reached only within `contact` | rule `world-networking` (`apart`, `mayReach`) |
 | Sign-up still refuses minors until Stage 3's gate opens (OQ-16): tests make a minor by moving a test account's birth year | `apps/core/test/social.test.ts` |
+
+## The Guardian Link (S3.04)
+
+| Rule | Where |
+|---|---|
+| Minors sign up only with `FLATCHAT_CORE_MINORS=on` (`policy.minors`; off until the owner opens Stage 3's gate, OQ-16); the age rule keeps Australia at 16+ and Brazil's minors out (`age.ts`) | `config.ts`, `age.ts` |
+| A minor's sign-up ends on `guardianAskPage` (a one-time step token, an hour): the guardian's address and the teen's own agreement → `askGuardian`, the invitation mailed (a week) | `guardians.ts`, `/guardian/ask` |
+| The guardian authorizes on `/guardian/invite` → `/guardian/authorize`: an existing account or a new one (adult only: the age rule with minors off), the address the teen named, both boxes (`authorize`, `abroad`) or nothing; the proof (`authorized_at`, `method`, `summary_version`, `abroad`, `teen_agreed_at`) and a consent row | `authorize` |
+| `connectToken` refuses a minor without an authorized link (`guardian-pending`); the token's `contact` is the guardian's choice | `worlds.ts` |
+| `/guardian`: its own session (`guardian_sessions`, cookie on `/guardian`, CSRF per form), the teens' friends with Remove, contact friends/everyone/none | `guardianPage` |
+| Tests make a minor by moving a test account's birth year and inserting an authorized `guardian_links` row | `test/social.test.ts`, `test/guardian.test.ts` |
 
 ## Correct vs. Incorrect
 
