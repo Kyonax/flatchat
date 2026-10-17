@@ -2,7 +2,8 @@
 // Stage 1's path end to end, with every real program: a private PostgreSQL, the core, an invited
 // account, a world registered and approved through the admin command line, a world server on the
 // plaza hosted the way a home PC hosts it (its WebRTC offers relayed by the core over the world's
-// own WebSocket, S1.13), and the packaged client driven by Playwright. The test plays the system browser over HTTP
+// own WebSocket, S1.13; the plaza converted from kits/worlds/plaza and downloaded by the client
+// over its connection, S2.03 and S2.04), and the packaged client driven by Playwright. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
 // client's loopback port); everything else is the client's own: the world list, joining, the
 // microphone question, walking, chat. It needs a display (Xvfb in CI) and PostgreSQL's programs.
@@ -22,6 +23,8 @@ import { _electron as electron } from 'playwright-core';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
+const CONVERT = join(ROOT, 'tools', 'converter', 'src', 'cli.ts');
+const PLAZA_WORLD = join(ROOT, 'kits', 'worlds', 'plaza');
 const EMAIL = 'e2e@example.org';
 const PASSWORD = 'an end-to-end password';
 
@@ -133,12 +136,14 @@ try {
 
   // 2. A world on the plaza, registered and approved, taking its offers through the core.
   const [icePort, signalPort] = [await freePort(), await freePort()];
+  const built = join(dir, 'built');
+  await run([process.execPath, CONVERT, PLAZA_WORLD, built]);
   const worldId = (await admin('world', 'register', '--name', 'E2E Plaza', '--owner', EMAIL, '--address', 'relay')).match(/registered (\S+)/)?.[1];
   const approved = await admin('world', 'approve', worldId ?? '');
   const key = approved.match(/FLATCHAT_WORLD_KEY=(\S+)/)?.[1];
   if (!worldId || !key) throw new Error('no approved world');
   const world = await start(
-    [process.execPath, SERVER_MAIN, '--transport', 'rtc', '--map', 'plaza', '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--metrics-every', '0', '--world-id', worldId, '--core', coreUrl, '--relay', '--stop-on-stdin'],
+    [process.execPath, SERVER_MAIN, '--transport', 'rtc', '--world', built, '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--metrics-every', '0', '--world-id', worldId, '--core', coreUrl, '--relay', '--stop-on-stdin'],
     { FLATCHAT_WORLD_KEY: key },
     'ready',
   );
@@ -208,8 +213,10 @@ try {
   await stop(world.proc);
   serverSummary = world.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined;
   const events = (serverSummary?.['events'] ?? {}) as Record<string, { messages: number }>;
-  steps['server'] = { joins: events['join']?.messages ?? 0, poses: events['pose:applied']?.messages ?? 0, corrected: events['pose:corrected']?.messages ?? 0, chat: events['chat']?.messages ?? 0 };
-  ok = (events['join']?.messages ?? 0) === 1 && (events['pose:applied']?.messages ?? 0) > 10 && (events['chat']?.messages ?? 0) === 1;
+  const received = (serverSummary?.['received'] ?? {}) as Record<string, { messages: number }>;
+  steps['server'] = { joins: events['join']?.messages ?? 0, poses: events['pose:applied']?.messages ?? 0, corrected: events['pose:corrected']?.messages ?? 0, chat: events['chat']?.messages ?? 0, fetches: received['fetch']?.messages ?? 0 };
+  // The world's content came down: world.json, the scene, the collision file and the navigation mesh.
+  ok = (events['join']?.messages ?? 0) === 1 && (events['pose:applied']?.messages ?? 0) > 10 && (events['chat']?.messages ?? 0) === 1 && (received['fetch']?.messages ?? 0) >= 3;
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);
