@@ -161,17 +161,23 @@ export async function worldEvents(db: Sql, id: string): Promise<Array<{ kind: st
 }
 
 /** What a world learns about a player: never the birth date or the email (S3.10, dp-006); the
- *  trust level it earned or was given (S3.09). */
-export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST): TokenClaims {
+ *  trust level it earned or was given (S3.09); whether it owns the world (S3.06); who may reach
+ *  it (a minor: friends until a guardian changes it, S3.10). */
+export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST, world?: { ownerId: string }): TokenClaims {
   const ageDays = Math.max(0, Math.floor((now.getTime() - account.createdAt.getTime()) / 86_400_000));
+  const under18 = isMinor(account.birthYear, account.birthMonth, now);
   return {
     account: account.id,
     name: account.displayName,
     trust: trustOf(account, now, rules),
     tester: account.tester,
     emailVerified: account.emailVerified,
-    under18: isMinor(account.birthYear, account.birthMonth, now),
+    under18,
     ageDays: Math.min(ageDays, 65_535),
+    owner: world?.ownerId === account.id,
+    contact: under18 ? 'friends' : 'everyone',
+    friends: [],
+    blocks: [],
   };
 }
 
@@ -198,6 +204,6 @@ export async function connectToken(
     'update accounts set active_days = active_days + 1, last_active_day = $2::date where id = $1 and (last_active_day is null or last_active_day < $2::date) returning active_days',
     [account.id, today],
   );
-  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules), { key, world: row.id, expiresAt });
+  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }), { key, world: row.id, expiresAt });
   return { ok: true, token, address: row.address, expiresAt };
 }

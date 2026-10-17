@@ -317,7 +317,7 @@ describe('worlds and connect tokens (S1.05, S1.06)', () => {
     const sealed = new Uint8Array(Buffer.from(body.token, 'base64url'));
     const nowS = Math.floor(clock.getTime() / 1000);
     const opened = await openToken(sealed, { key, world: world.id, now: nowS });
-    expect(opened.claims).toEqual({ account: owner, name: 'hal', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0 });
+    expect(opened.claims).toEqual({ account: owner, name: 'hal', trust: 0, tester: false, emailVerified: false, under18: false, ageDays: 0, owner: true, contact: 'everyone', friends: [], blocks: [] });
 
     // Expiry, another world, tampering: each refused by the world's own check.
     await expect(openToken(sealed, { key, world: world.id, now: nowS + 60 })).rejects.toMatchObject({ code: 'expired' });
