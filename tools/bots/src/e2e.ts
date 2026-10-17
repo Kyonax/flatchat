@@ -84,7 +84,8 @@ try {
   };
   const plaza = await register('E2E Plaza');
   const garden = await register('E2E Garden');
-  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden']);
+  // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park']);
   const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
     const [icePort, signalPort] = [await freePort(), await freePort()];
     const s = await start(
@@ -179,6 +180,7 @@ try {
     await page.locator('.whud.top strong', { hasText: 'E2E Garden' }).waitFor({ timeout: 20_000 });
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
     steps['travelled'] = true;
+    steps['gardenParts'] = await page.locator('[data-test=sounds]').getAttribute('data-parts', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
     await snap('3-travelled');
   } finally {
@@ -191,7 +193,9 @@ try {
   serverSummary = world.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined;
   const events = (serverSummary?.['events'] ?? {}) as Record<string, { messages: number }>;
   const received = (serverSummary?.['received'] ?? {}) as Record<string, { messages: number }>;
-  const garden2 = ((second.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined)?.['events'] ?? {}) as Record<string, { messages: number }>;
+  const gardenSummary = second.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined;
+  const garden2 = (gardenSummary?.['events'] ?? {}) as Record<string, { messages: number }>;
+  const gardenSent = (gardenSummary?.['sent'] ?? {}) as Record<string, { bytes: number }>;
   steps['server'] = {
     joins: events['join']?.messages ?? 0,
     poses: events['pose:applied']?.messages ?? 0,
@@ -201,6 +205,7 @@ try {
     portals: events['portal']?.messages ?? 0,
     travelled: events['leave:travel']?.messages ?? 0,
     gardenJoins: garden2['join']?.messages ?? 0,
+    gardenContentBytes: gardenSent['chunk']?.bytes ?? 0,
   };
   // The world's content came down: world.json, the scenes, the collision file and the navigation mesh.
   ok =
@@ -211,7 +216,9 @@ try {
     (events['portal']?.messages ?? 0) >= 1 &&
     (events['leave:travel']?.messages ?? 0) === 1 &&
     (garden2['join']?.messages ?? 0) === 1 &&
-    steps['sounds'] === '1';
+    steps['sounds'] === '1' &&
+    Number(steps['gardenParts']) > 60 &&
+    (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);
