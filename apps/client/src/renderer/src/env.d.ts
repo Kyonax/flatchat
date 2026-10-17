@@ -53,6 +53,9 @@ interface FlatchatBridge {
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
+  // Appeals against a world's ban (S3.07).
+  appealBan(worldId: string, reason: string, text: string): Promise<FlatchatResult<object>>;
+  banAppeal(worldId: string): Promise<FlatchatResult<{ appeal: { status: 'pending' | 'upheld' | 'reversed'; note: string } | null }>>;
   // Offline mode (S2.13): worlds in the client's own main process.
   offlineWorlds(): Promise<Array<{ id: string; name: string }>>;
   offlineJoin(id: string): Promise<FlatchatResult<{ token: Uint8Array; name: string }>>;

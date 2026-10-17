@@ -4,9 +4,10 @@ import { PLAZA } from '@flatchat/sim';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { actionFor, type Settings } from '../../../shared/settings';
-import { canGiveTo, type Person, type Role, rolesToGive } from '../world/people';
+import { canGiveTo, canModerate, MODERATION, type Person, type Role, rolesToGive } from '../world/people';
 import { CHAT_MAX, type Travel, WorldSession, type WorldState } from '../world/session';
 import { keyLabel } from './keys';
+import BanAppeal from './BanAppeal.vue';
 import MicQuestion from './MicQuestion.vue';
 
 const props = defineProps<{
@@ -29,6 +30,10 @@ const tooFast = ref(false);
 const menu = ref(false);
 /** The People panel (S3.06): who is here, their roles, and the roles this player may give. */
 const peopleOpen = ref(false);
+/** The person a moderator is acting on in the panel (S3.07), and the choice and reason. */
+const moderating = ref('');
+const modChoice = ref<(typeof MODERATION)[number]['id']>('kick');
+const modReason = ref('');
 let session: WorldSession | undefined;
 const state = ref<WorldState | undefined>(undefined);
 // Set when this world's portal is taking the player away: the leave says `travel`.
@@ -47,13 +52,25 @@ const refusedText = computed(() => {
   if (s.status === 'refused') return t(`world.refused.${s.reason}`);
   // While the app brings the player back in, its banner speaks; if that fails, this card does.
   if (updating.value && props.travel?.status !== 'failed') return '';
+  // A moderator's removal or ban (S3.07): what happened; the reason follows below.
+  if (s.status === 'lost' && s.reason === 'kicked') return t('world.kicked');
+  if (s.status === 'lost' && s.reason === 'banned') return t('world.bannedHere');
   if (s.status === 'lost' && s.reason === 'download') return t('world.downloadFailed', { reason: s.detail });
   if (s.status === 'lost') return t('world.lost', { reason: s.detail || s.reason });
   return '';
 });
 
-/** An entry rule's or a ban's own words (S3.05): the world's text, shown as text. */
-const refusedDetail = computed(() => (state.value?.status === 'refused' && (state.value.reason === 'rule' || state.value.reason === 'banned') ? state.value.detail : ''));
+/** An entry rule's own words (S3.05), or the reason a moderator gave (S3.07): the world's text,
+ *  shown as text. */
+const refusedDetail = computed(() => {
+  const s = state.value;
+  if (!s || !s.detail) return '';
+  if (s.status === 'refused' && s.reason === 'rule') return s.detail;
+  const removed = (s.status === 'refused' && s.reason === 'banned') || (s.status === 'lost' && (s.reason === 'kicked' || s.reason === 'banned'));
+  return removed ? t('world.reason', { reason: s.detail }) : '';
+});
+/** Banned here, now or before: the player may appeal to the world's owner (S3.07). */
+const banned = computed(() => (state.value?.status === 'refused' || state.value?.status === 'lost') && state.value.reason === 'banned' && !props.ticket.local);
 
 function line(l: { from: string; text: string; notice?: 'joined' | 'left' }): string {
   if (l.notice) return t(l.notice === 'joined' ? 'chat.joined' : 'chat.left', { name: l.text });
@@ -99,8 +116,24 @@ function onKey(e: KeyboardEvent): void {
 /** The People panel frees the mouse to click in it; closing it goes back to looking around. */
 function togglePeople(): void {
   peopleOpen.value = !peopleOpen.value;
+  moderating.value = '';
+  // Keys go to the panel's fields while it is open, not to the avatar.
+  if (session) session.typing = peopleOpen.value;
   if (peopleOpen.value) session?.unlock();
   else session?.lock();
+}
+
+function startModerating(p: Person): void {
+  moderating.value = moderating.value === p.account ? '' : p.account;
+  modChoice.value = 'kick';
+  modReason.value = '';
+}
+
+function applyModeration(p: Person): void {
+  const m = MODERATION.find((x) => x.id === modChoice.value);
+  if (!m || (m.action !== 'unmute' && !modReason.value.trim())) return;
+  session?.moderate(p.account, m.action, m.minutes, modReason.value.trim());
+  moderating.value = '';
 }
 
 function give(p: Person, role: string): void {
@@ -116,6 +149,7 @@ function onLockChange(): void {
 function look(): void {
   if (state.value?.status !== 'joined' || chatOpen.value || asking.value) return;
   menu.value = false;
+  if (peopleOpen.value && session) session.typing = false;
   peopleOpen.value = false;
   session?.lock();
 }
@@ -249,6 +283,11 @@ onBeforeUnmount(() => {
         >
           {{ refusedDetail }}
         </p>
+        <BanAppeal
+          v-if="banned"
+          :world-id="world.id"
+          :reason="state?.detail ?? ''"
+        />
         <button
           type="button"
           class="primary"
@@ -258,6 +297,15 @@ onBeforeUnmount(() => {
           {{ t('settings.back') }}
         </button>
       </div>
+    </div>
+
+    <div
+      v-if="state?.status === 'joined' && state.heldMute !== undefined"
+      class="whud held error"
+      role="status"
+      data-test="held-mute"
+    >
+      {{ t('world.heldMute') }}{{ state.heldMute ? ` · ${t('world.reason', { reason: state.heldMute })}` : '' }}
     </div>
 
     <aside
@@ -297,6 +345,49 @@ onBeforeUnmount(() => {
               {{ t(`roles.${r}`) }}
             </option>
           </select>
+          <button
+            v-if="canModerate(state.role, p)"
+            type="button"
+            class="small"
+            data-test="moderate"
+            @click="startModerating(p)"
+          >
+            {{ t('people.moderate') }}
+          </button>
+          <form
+            v-if="moderating === p.account"
+            class="moderate"
+            @submit.prevent="applyModeration(p)"
+          >
+            <select
+              v-model="modChoice"
+              :aria-label="t('people.action', { name: p.name })"
+              data-test="mod-action"
+            >
+              <option
+                v-for="m in MODERATION"
+                :key="m.id"
+                :value="m.id"
+              >
+                {{ t(`moderation.${m.id}`) }}
+              </option>
+            </select>
+            <input
+              v-model="modReason"
+              type="text"
+              maxlength="160"
+              :placeholder="t('people.reason')"
+              data-test="mod-reason"
+            >
+            <button
+              type="submit"
+              class="primary"
+              :disabled="modChoice !== 'unmute' && !modReason.trim()"
+              data-test="mod-apply"
+            >
+              {{ t('people.apply') }}
+            </button>
+          </form>
         </li>
       </ul>
       <p class="muted small">
@@ -528,6 +619,18 @@ onBeforeUnmount(() => {
 
 .people select {
   margin-left: auto;
+}
+
+.people form.moderate {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.held {
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .badge {

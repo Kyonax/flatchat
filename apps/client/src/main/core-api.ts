@@ -70,6 +70,12 @@ export function cleanIceServers(raw: unknown): IceServerSpec[] {
   });
 }
 
+/** Where an appeal against a world's ban stands (S3.07). */
+export interface BanAppeal {
+  status: 'pending' | 'upheld' | 'reversed';
+  note: string;
+}
+
 export class CoreError extends Error {
   readonly status: number;
   readonly code: string;
@@ -202,6 +208,26 @@ export class CoreApi {
   async setFavourite(access: string, worldId: string, on: boolean): Promise<void> {
     if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
     await this.call(on ? 'PUT' : 'DELETE', `/api/v1/me/favourites/${worldId}`, undefined, access);
+  }
+
+  /** An appeal against a world's ban, to its owner (S3.07): the reason the world gave, and why it
+   *  is wrong. */
+  async appealBan(access: string, worldId: string, reason: string, text: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
+    await this.call('POST', `/api/v1/worlds/${worldId}/appeals`, { reason: reason.slice(0, 500), text: text.slice(0, 2000) }, access);
+  }
+
+  /** The latest appeal against that world's ban, if any. */
+  async banAppeal(access: string, worldId: string): Promise<BanAppeal | undefined> {
+    if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
+    try {
+      const r = await this.call<{ status?: unknown; note?: unknown }>('GET', `/api/v1/worlds/${worldId}/appeal`, undefined, access);
+      const status = r.status === 'pending' || r.status === 'upheld' || r.status === 'reversed' ? r.status : 'pending';
+      return { status, note: typeof r.note === 'string' ? r.note.slice(0, 1000) : '' };
+    } catch (err) {
+      if (err instanceof CoreError && err.status === 404) return undefined;
+      throw err;
+    }
   }
 
   async join(access: string, worldId: string): Promise<JoinTicket> {

@@ -28,6 +28,22 @@ export function canGiveTo(mine: Role, person: Person): boolean {
   return !person.me && rolesToGive(mine).length > 0 && roleRank(person.role) < roleRank(mine);
 }
 
+/** Whether `mine` may kick, ban or mute this person (S3.07): a moderator and up, over someone below. */
+export function canModerate(mine: Role, person: Person): boolean {
+  return !person.me && roleRank(mine) >= roleRank('moderator') && roleRank(person.role) < roleRank(mine);
+}
+
+/** The moderation choices the People panel offers, each with its minutes (0: until lifted). */
+export const MODERATION = [
+  { id: 'kick', action: 'kick', minutes: 0 },
+  { id: 'mute', action: 'mute', minutes: 0 },
+  { id: 'unmute', action: 'unmute', minutes: 0 },
+  { id: 'ban60', action: 'ban', minutes: 60 },
+  { id: 'ban1440', action: 'ban', minutes: 1440 },
+  { id: 'ban10080', action: 'ban', minutes: 10_080 },
+  { id: 'ban0', action: 'ban', minutes: 0 },
+] as const;
+
 /** The list in the panel's order: this player first, then by role (highest first) and name. */
 export function sortPeople(people: Iterable<Person>): Person[] {
   return [...people].sort((a, b) => Number(b.me) - Number(a.me) || roleRank(b.role) - roleRank(a.role) || a.name.localeCompare(b.name));

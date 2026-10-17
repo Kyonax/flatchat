@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // The People panel's rules (S3.06): who may give which roles, and the list's order.
 import { describe, expect, it } from 'vitest';
-import { canGiveTo, type Person, rolesToGive, sortPeople } from '../src/renderer/src/world/people';
+import { canGiveTo, canModerate, type Person, rolesToGive, sortPeople } from '../src/renderer/src/world/people';
 
 const person = (name: string, role: Person['role'], me = false): Person => ({ entity: name.length, account: `id-${name}`, name, role, me });
 
@@ -19,6 +19,14 @@ describe('roles in the People panel', () => {
     expect(canGiveTo('admin', person('Ow', 'owner'))).toBe(false);
     expect(canGiveTo('owner', person('Me', 'owner', true))).toBe(false);
     expect(canGiveTo('moderator', person('Vi', 'visitor'))).toBe(false);
+  });
+
+  it('offers moderation from a moderator up, over someone below', () => {
+    expect(canModerate('moderator', person('Vi', 'visitor'))).toBe(true);
+    expect(canModerate('moderator', person('Bu', 'builder'))).toBe(true);
+    expect(canModerate('moderator', person('Mo', 'moderator'))).toBe(false);
+    expect(canModerate('builder', person('Vi', 'visitor'))).toBe(false);
+    expect(canModerate('owner', person('Me', 'owner', true))).toBe(false);
   });
 
   it('lists this player first, then by role and name', () => {

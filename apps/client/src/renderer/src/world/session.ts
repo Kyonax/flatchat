@@ -80,6 +80,8 @@ export interface WorldState {
   people: Person[];
   /** This player's role here. */
   role: Role;
+  /** A moderator muted this player (S3.07): the reason, or undefined when not muted. */
+  heldMute: string | undefined;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -192,6 +194,7 @@ export class WorldSession {
       notice: '',
       people: [],
       role: 'visitor',
+      heldMute: undefined,
     });
   }
 
@@ -431,7 +434,7 @@ export class WorldSession {
     }
     if (this.chain) {
       const push = this.settings.voice.mode === 'push';
-      this.chain.muted = this.state.muted || (push && (this.typing || !this.controls.held('talk')));
+      this.chain.muted = this.state.muted || this.state.heldMute !== undefined || (push && (this.typing || !this.controls.held('talk')));
       this.state.talking = this.chain.sending;
       this.placeVoices();
     }
@@ -529,6 +532,10 @@ export class WorldSession {
       case 'placed':
         this.placed(m);
         break;
+      case 'muted':
+        // The world drops this player's voice; the microphone stops sending too (S3.07).
+        this.state.heldMute = m.on ? m.reason : undefined;
+        break;
       default:
         break;
     }
@@ -584,6 +591,11 @@ export class WorldSession {
     this.state.players = this.names.size;
     this.state.people = sortPeople(this.people.values());
     this.state.role = this.people.get(this.entity)?.role ?? 'visitor';
+  }
+
+  /** Asks the world to kick, ban or mute someone, with the reason they are told (S3.07). */
+  moderate(account: string, action: 'kick' | 'ban' | 'unban' | 'mute' | 'unmute', minutes: number, reason: string): void {
+    if (this.state.status === 'joined') this.conn?.send({ type: 'moderate', account, action, minutes, reason: reason.slice(0, 160) });
   }
 
   /** Asks the world to give someone a role (S3.06); the world checks it and the roster answers. */

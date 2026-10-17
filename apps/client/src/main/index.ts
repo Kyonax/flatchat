@@ -179,6 +179,25 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   }
 });
 
+// Appeals against a world's ban (S3.07): to the world's owner, through the core.
+ipcMain.handle('flatchat:appeal-ban', async (_event, worldId: unknown, reason: unknown, text: unknown) => {
+  if (typeof worldId !== 'string' || typeof reason !== 'string' || typeof text !== 'string' || !text.trim() || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.appealBan(worldId, reason, text);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:ban-appeal', async (_event, worldId: unknown) => {
+  if (typeof worldId !== 'string' || !auth) return { ok: false, error: 'bad-world' };
+  try {
+    return { ok: true, appeal: (await auth.banAppeal(worldId)) ?? null };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
 // Offline mode (S2.13): the built-in worlds sit beside the app (extraResources), or in out/ while
 // developing; folders given with --offline-world are converted into the app's data folder.
 let offline: OfflineHost | undefined;
