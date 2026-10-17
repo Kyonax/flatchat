@@ -2,7 +2,7 @@
 title: Reports and Safety — Reports With Evidence and the Voice Clip, the Public Form, the Triage Queue, Under-Age Reports, Keeping and Purging Evidence
 impact: CRITICAL
 impactDescription: A voice clip that leaves a player's computer without a report, a report queue that hides threats behind spam, evidence kept forever or lost too soon, or an under-age report that changes nothing breaks the promises the platform makes to minors and to the people who report.
-tags: reports, report, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
+tags: reports, report, friends, friend requests, blocks, block, hidden, minors, under18, contact, tokenLists, befriend, setBlock, S3.10, S3.11, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
 ---
 
 Reports (S3.02) carry evidence to the core's owner, who decides on the admin page's triage queue (S3.07). The player is told a receipt at once and the decision later.
@@ -29,6 +29,16 @@ Reports (S3.02) carry evidence to the core's owner, who decides on the admin pag
 | Evidence is kept `KEEP_DAYS` (183; 365 for abuse material and grooming, S3.12), then `purgeReports` (at start and every six hours) clears the text, evidence, clip and contact and keeps the category, the decision and the dates | Data minimisation with the evidence kept long enough to act |
 | The public form (`/report`, both languages, five per address per ten minutes) takes reports without an account, with an optional contact | OQ-12 |
 | Reports are rate-limited per account (ten, then one every six minutes) | One person cannot flood the queue |
+
+## Friends, Blocks and Minors (S3.10, S3.11)
+
+| Rule | Where |
+|---|---|
+| Friends are asked and accepted (`friend_requests`, `friends` with `a < b`); a minor never receives a request from someone it did not ask (`friend-minor`) | `apps/core/src/social.ts` `befriend` |
+| A block is two-way and ends any friendship or request; nobody befriends across it (`friend-blocked`) | `setBlock` |
+| The connect token carries `blocks` (blocked or blocking, newest 100) and, for a minor only, `friends` (100) with `contact` `friends`; an adult's friends never reach a world | `tokenLists`, `claimsFor` |
+| The world keeps blocked pairs apart (voice, chat, `hidden`) and lets a minor reach and be reached only within `contact` | rule `world-networking` (`apart`, `mayReach`) |
+| Sign-up still refuses minors until Stage 3's gate opens (OQ-16): tests make a minor by moving a test account's birth year | `apps/core/test/social.test.ts` |
 
 ## Correct vs. Incorrect
 

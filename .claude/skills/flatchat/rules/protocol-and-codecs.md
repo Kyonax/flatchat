@@ -59,6 +59,10 @@ The same files run in Node.js 24 and in Chromium's sandboxed renderer, so the pa
 
 The decoder refuses with a `ProtocolError` whose `code` is one of `truncated`, `trailing`, `padding`, `bad-varint`, `unknown-type`, `wrong-direction`, `too-long`, `bad-utf8`, `out-of-range`, `bad-value`. A test feeds it 20,000 random and damaged packets and accepts no other kind of exception.
 
+## Version 6
+
+Version 6 (S3.08) gives each `voiceBundle` frame `range` (u8, metres; 0 for the platform's 25 m) and makes `gain` a byte in 64ths (64 as spoken, 255 nearly four times, the world format's zone limit); schema `1133523f`. A version's golden bytes are frozen once written: a change before publishing means putting back the last published `golden/schema.json` (read with `git show HEAD:…`) and writing again.
+
 ## Version 5
 
 Version 5 (Stage 3) is one bump for every world-facing change of the stage; schema `78e23a01`. `role` (`oneOf(ROLES)`) ends each roster player; `role` (0x60, client: an account and a role to give); `moderate` (0x61, client: account, `oneOf(MOD_ACTIONS)` kick/ban/unban/mute/unmute, `minutes` u32 with 0 for until lifted, reason ≤160); `muted` (0x62, server: on, reason); `block` (0x63, client: account, on); `hidden` (0x64, server: the whole list of entities kept apart, ≤256); build uploads `put` (0x45, client: hash, offset, total, ≤16,384 bytes), `publish` (0x46, client: world.json's hash), `published` (0x47, server: ok, detail ≤160) and `got` (0x48, server: hash, bytes held); `gain` (uint 4, eighths, 8 = as spoken, `GAIN_UNITY`) in each `voiceBundle` frame, between `mouth` and `opus`. The token's format is 1 (`TOKEN_VERSION`): claims end with `owner` (bool), `contact` (`oneOf(CONTACT)`: everyone, friends, none), `friends` and `blocks` (`list(uuid, 100)` each), so `hello`'s `token` is `bytes(4096)`. Sealing call sites (tests, bots, offline mode) pass all four; offline mode's guest is `owner: true`.
