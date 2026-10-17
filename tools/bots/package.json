@@ -1,0 +1,21 @@
+{
+  "name": "@flatchat/bots",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Headless FlatChat clients that speak the real protocol, to load-test a world server.",
+  "license": "MPL-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@flatchat/protocol": "*",
+    "@flatchat/world-server": "*"
+  },
+  "scripts": {
+    "start": "node src/run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
