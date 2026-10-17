@@ -2,10 +2,11 @@
 // Hosting from home (S1.13): the port mapper's wire formats and its fallbacks against a fake
 // router, the ICE servers' conversion, and the host channel's proof.
 import { createHmac } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type Network, natPmpRequest, parseNatPmpMap, parsePcpMap, pcpMapRequest, PortMapper, soapBody } from '../src/net/portmap.ts';
 import { CoreRelay, hostProof, hostUrl } from '../src/net/relay.ts';
 import { toDatachannelIce } from '../src/net/rtc.ts';
+import { DEFAULT_SERVER, WorldServer } from '../src/server.ts';
 
 describe('the wire formats', () => {
   it('NAT-PMP: a UDP mapping request, and its answer', () => {
@@ -158,5 +159,64 @@ describe('ICE servers and the host channel', () => {
       { type: 'answer', id: 'o1', sdp: 'answer to v=0' },
     ]);
     relay.stop();
+  });
+
+  it('reports its players for the world browser, takes the approved capacity, and refuses offers when not relayed', () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Array<Record<string, unknown>> = [];
+      const listeners: Record<string, (ev: { data?: unknown }) => void> = {};
+      const socket = {
+        OPEN: 1,
+        readyState: 1,
+        send: (d: string) => sent.push(JSON.parse(d) as Record<string, unknown>),
+        close: () => undefined,
+        addEventListener: (type: string, fn: (ev: { data?: unknown }) => void) => {
+          listeners[type] = fn;
+        },
+      } as unknown as WebSocket;
+      let players = 0;
+      let approved = 0;
+      const relay = new CoreRelay({
+        core: 'http://127.0.0.1:1',
+        worldId: 'w',
+        worldKey: new Uint8Array(32),
+        status: () => ({ players, recommended: 3, maximum: 5 }),
+        onLimits: (m) => (approved = m),
+        log: () => undefined,
+        socketFactory: () => socket,
+      });
+      relay.start();
+      listeners['message']!({ data: JSON.stringify({ type: 'challenge', nonce: 'n' }) });
+      listeners['message']!({ data: JSON.stringify({ type: 'welcome' }) });
+      listeners['message']!({ data: JSON.stringify({ type: 'limits', maximum: 4 }) });
+      expect(approved).toBe(4);
+      const statuses = (): Array<Record<string, unknown>> => sent.filter((m) => m['type'] === 'status');
+      expect(statuses()).toEqual([{ type: 'status', players: 0, recommended: 3, maximum: 5 }]);
+      // Nothing new while nothing changes; a change goes out within a second.
+      vi.advanceTimersByTime(3000);
+      expect(statuses()).toHaveLength(1);
+      players = 2;
+      vi.advanceTimersByTime(1000);
+      expect(statuses().at(-1)).toEqual({ type: 'status', players: 2, recommended: 3, maximum: 5 });
+      // And at least every 15 seconds, so the core never shows a stale count for long.
+      vi.advanceTimersByTime(15_000);
+      expect(statuses()).toHaveLength(3);
+      // A world reached at its own address answers no relayed offer.
+      listeners['message']!({ data: JSON.stringify({ type: 'offer', id: 'o1', sdp: 'v=0' }) });
+      expect(sent.at(-1)).toEqual({ type: 'error', id: 'o1', error: 'this world takes no relayed offers' });
+      relay.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('takes no more players than the core approved', () => {
+    const server = new WorldServer({ ...DEFAULT_SERVER, worldId: '00000000-0000-4000-8000-000000000001', worldKey: undefined, log: () => undefined, capacity: 10, recommended: 7 }, []);
+    expect([server.capacity, server.recommended]).toEqual([10, 7]);
+    server.setApprovedCapacity(5);
+    expect([server.capacity, server.recommended]).toEqual([5, 5]);
+    server.setApprovedCapacity(0);
+    expect(server.capacity).toBe(5);
   });
 });

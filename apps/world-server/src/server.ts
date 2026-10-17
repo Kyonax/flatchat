@@ -62,6 +62,8 @@ export interface WorldServerOptions {
   tickHz: number;
   voiceHz: number;
   capacity: number;
+  /** Where the world drops off the public list (S2.09, Q-L19); the capacity when left out. */
+  recommended?: number;
   /** The lowest protocol version the core allows (R-17). */
   coreMinimum: number;
   world: Partial<WorldConfig>;
@@ -151,7 +153,7 @@ export function cleanChat(text: string): string {
 
 /** A world server's options for a built world (S2.03): its bounds, solids, flying, capacity and
  *  spawn points, and the content players download. */
-export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'content' | 'capacity'> {
+export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'content' | 'capacity' | 'recommended'> {
   const w = loaded.world;
   const size = Math.max(16, Math.ceil(Math.max(w.bounds.max[0], w.bounds.max[2])));
   return {
@@ -159,6 +161,7 @@ export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<
     spawnPoints: w.scenes[0]!.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw })),
     content,
     capacity: w.manifest.capacity.maximum,
+    recommended: w.manifest.capacity.recommended,
   };
 }
 
@@ -205,6 +208,8 @@ export class WorldServer {
   private readonly received = new Tally();
   private readonly events = new Tally();
   private peakPlayers = 0;
+  /** The capacity the world's owner approved on the core (S2.09); none until the core says. */
+  private approved = Number.POSITIVE_INFINITY;
   private readonly memoryStart = memory();
   private memoryWarm: ReturnType<typeof memory> | undefined;
   // CPU of the whole process (every thread, so libdatachannel's too) and the main thread's busy share.
@@ -226,6 +231,23 @@ export class WorldServer {
 
   get players(): number {
     return this.byEntity.size;
+  }
+
+  /** The most players the world takes: its own capacity, or less when the core approved less. */
+  get capacity(): number {
+    return Math.min(this.options.capacity, this.approved);
+  }
+
+  /** Where the world drops off the public list. */
+  get recommended(): number {
+    return Math.min(this.options.recommended ?? this.options.capacity, this.capacity);
+  }
+
+  /** The capacity the core approved, sent over the host channel. */
+  setApprovedCapacity(maximum: number): void {
+    if (!Number.isInteger(maximum) || maximum < 1) return;
+    this.approved = maximum;
+    this.options.log('capacity-approved', { maximum, capacity: this.capacity });
   }
 
   get ticks(): number {
@@ -366,9 +388,9 @@ export class WorldServer {
     this.seenNonces.set(nonce, opened.header.expiresAt);
     // An account already here (another window, a lost connection) makes room for itself.
     const earlier = [...this.byEntity.values()].find((c) => c.account === opened.claims.account);
-    if (this.byEntity.size - (earlier ? 1 : 0) >= this.options.capacity) return this.refuse(conn, { reason: 'full', ...base, detail: '' });
+    if (this.byEntity.size - (earlier ? 1 : 0) >= this.capacity) return this.refuse(conn, { reason: 'full', ...base, detail: '' });
     for (const rule of this.options.entryRules) {
-      const verdict = rule(opened.claims, { players: this.byEntity.size, capacity: this.options.capacity });
+      const verdict = rule(opened.claims, { players: this.byEntity.size, capacity: this.capacity });
       if (!verdict.admit) return this.refuse(conn, { reason: 'rule', ...base, detail: verdict.detail.slice(0, 160) });
     }
     if (earlier) this.kick(earlier, 'kicked', 'joined again from somewhere else');

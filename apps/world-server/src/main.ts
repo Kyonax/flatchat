@@ -7,12 +7,15 @@
 //
 //   node src/main.ts [--port 7777] [--transport udp|rtc|both] [--rtc-port 7778] [--signal-port 7779]
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
-//                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
+//                    [--capacity 200] [--recommended N] [--world-size 256] [--metrics-every 5] [--trace FILE]
 //                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
-//                    [--core URL --relay] [--ice-server URL]… [--map-port] [--world BUILT_DIR] [--data FILE]
+//                    [--core URL [--relay]] [--ice-server URL]… [--map-port] [--world BUILT_DIR] [--data FILE]
 //
-// Hosting from home (S1.13): --relay takes players' WebRTC offers through the core at --core (an
-// outbound WebSocket, so no TCP port is opened; the world proves it holds its key), --ice-server adds
+// With --core and its key, the world keeps a channel to the core (an outbound WebSocket; the world
+// proves it holds its key) that reports its players to the world browser and brings the capacity
+// the owner approved (S2.09); --recommended is where it drops off the public list (default: the
+// built world's, or the capacity). Hosting from home (S1.13): --relay also takes players' WebRTC
+// offers through that channel, so no TCP port is opened; --ice-server adds
 // STUN or TURN servers (the core adds its own over the relay), and --map-port asks the router to
 // forward the WebRTC UDP port (PCP, NAT-PMP or UPnP; it changes the router, so it is opt-in).
 // --world serves a built world (the converter's output: world.json and content/), which players
@@ -72,6 +75,7 @@ const { values } = parseArgs({
     'voice-hz': { type: 'string', default: '50' },
     ticks: { type: 'string' },
     capacity: { type: 'string' },
+    recommended: { type: 'string' },
     'world-size': { type: 'string' },
     'metrics-every': { type: 'string', default: '5' },
     trace: { type: 'string' },
@@ -97,6 +101,7 @@ const hz = intOption('tick-hz', values['tick-hz'], 1, 1000) ?? 20;
 const voiceHz = intOption('voice-hz', values['voice-hz'], 1, 1000) ?? 50;
 const maxTicks = intOption('ticks', values.ticks, 1, Number.MAX_SAFE_INTEGER);
 const capacity = intOption('capacity', values.capacity, 1, 65_535) ?? 200;
+const recommendedFlag = intOption('recommended', values.recommended, 1, 65_535);
 if (values.map !== 'flat' && values.map !== 'plaza') fail(`--map must be flat or plaza, got ${values.map}`);
 const plaza = values.map === 'plaza';
 if (plaza && (values['world-size'] !== undefined || values.spawn !== undefined)) fail('--map plaza has its own size and spawn: leave out --world-size and --spawn');
@@ -189,6 +194,7 @@ const server = new WorldServer(
     ...(spawn ? { spawn } : {}),
     ...(plaza ? mapOptions(PLAZA) : {}),
     ...(built ? { ...built, capacity: values.capacity !== undefined ? capacity : built.capacity } : {}),
+    ...(recommendedFlag !== undefined ? { recommended: recommendedFlag } : {}),
     ...(store ? { store } : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),
@@ -210,7 +216,8 @@ log('ready', {
   joins: worldKey !== undefined,
   tickHz: hz,
   voiceHz,
-  capacity,
+  capacity: server.capacity,
+  recommended: server.recommended,
   worldSize,
   map: values.map,
   relay: values.relay,
@@ -219,7 +226,18 @@ log('ready', {
 });
 
 const rtc = listening.find((t): t is RtcServer => t instanceof RtcServer);
-const relay = values.relay && rtc && worldKey && values.core ? new CoreRelay({ core: values.core, worldId, worldKey, rtc, log }) : undefined;
+const relay =
+  worldKey && values.core
+    ? new CoreRelay({
+        core: values.core,
+        worldId,
+        worldKey,
+        ...(values.relay && rtc ? { rtc } : {}),
+        status: () => ({ players: server.players, recommended: server.recommended, maximum: server.capacity }),
+        onLimits: (maximum) => server.setApprovedCapacity(maximum),
+        log,
+      })
+    : undefined;
 relay?.start();
 const mapper = values['map-port'] ? new PortMapper(rtcPort, log) : undefined;
 void mapper?.start();
