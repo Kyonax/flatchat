@@ -81,7 +81,8 @@ describe('sign-up by invitation (S1.02, S1.03)', () => {
     expect(r.body).toContain('Crea tu cuenta de FlatChat');
     expect(r.headers['content-security-policy']).toContain("default-src 'none'");
     expect(r.headers['referrer-policy']).toBe('no-referrer');
-    expect(r.body).not.toMatch(/edad|13|18|age/i);
+    // The random invitation code is on the page too, and may hold "13" or "age" by chance.
+    expect(r.body.replaceAll(code, '')).not.toMatch(/edad|13|18|age/i);
   });
 
   it('refuses unknown, used and expired invitations', async () => {

@@ -74,6 +74,10 @@ export const LIMITS = {
   joinByAccount: { burst: 30, everyMs: 2_000 },
   /** World host connections per address. */
   hostByAddress: { burst: 10, everyMs: 6_000 },
+  /** Reports from the client per account: 10, then one every 6 minutes (S3.02). */
+  reportByAccount: { burst: 10, everyMs: 360_000 },
+  /** Reports from the public form per address: 5, then one every 10 minutes. */
+  reportByAddress: { burst: 5, everyMs: 600_000 },
   /** Any other API call per address. */
   apiByAddress: { burst: 120, everyMs: 250 },
 } satisfies Record<string, LimitSpec>;

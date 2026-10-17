@@ -28,7 +28,8 @@ import type { Db } from './db.ts';
 import { HOST_PROTOCOL, HostRegistry, RelayError } from './hosts.ts';
 import { DEFAULT_STUN, type IceConfig, IceServers } from './ice.ts';
 import { LIMITS, RateLimiter } from './limits.ts';
-import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
+import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
+import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
 import {
   authenticate,
@@ -121,6 +122,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     joinByAccount: new RateLimiter(LIMITS.joinByAccount),
     apiByAddress: new RateLimiter(LIMITS.apiByAddress),
     hostByAddress: new RateLimiter(LIMITS.hostByAddress),
+    reportByAccount: new RateLimiter(LIMITS.reportByAccount),
+    reportByAddress: new RateLimiter(LIMITS.reportByAddress),
   };
   const hosts = new HostRegistry();
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
@@ -143,6 +146,16 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
 
   await app.register(websocket, { options: { maxPayload: 256 * 1024 } });
   app.addHook('onClose', async () => hosts.closeAll());
+  // Reports' evidence is kept for its time, then purged (S3.02): at start and every six hours.
+  const purge = (): void => {
+    void purgeReports(o.db, now())
+      .then((n) => n > 0 && o.log?.('reports-purged', { reports: n }))
+      .catch(() => undefined);
+  };
+  purge();
+  const purgeTimer = setInterval(purge, 6 * 3_600_000);
+  purgeTimer.unref();
+  app.addHook('onClose', async () => clearInterval(purgeTimer));
 
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
     done(null, Object.fromEntries(new URLSearchParams(body as string)));
@@ -216,6 +229,30 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   app.get('/privacy', async (req, reply) => {
     const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
     return htmlPage(reply, privacyPage(lang, o.operator, o.contact));
+  });
+
+  // The public report form (S3.02, OQ-12): for people without an account.
+  app.get('/report', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    return htmlPage(reply, reportPage(lang, REPORT_CATEGORIES));
+  });
+
+  app.post('/report', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const category = str(b['category'], 16) as ReportCategory;
+    const what = str(b['what'], 300).trim();
+    const text = str(b['text'], TEXT_MAX).trim();
+    const contact = str(b['contact'], 254).trim();
+    if (!REPORT_CATEGORIES.includes(category)) return reply.code(400).send();
+    if (!text) return htmlPage(reply.code(400), reportPage(lang, REPORT_CATEGORIES, { category, what, contact, error: s.reportEmpty }));
+    if (!limits.reportByAddress.take(req.ip, now().getTime())) return htmlPage(reply.code(429), reportPage(lang, REPORT_CATEGORIES, { category, what, text, contact, error: s.tooMany }));
+    // A world's link or id names the world; anything else is kept as the reporter wrote it.
+    const world = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.exec(what)?.[0];
+    const r = await fileReport(o.db, { contact, category, target: { kind: world ? 'world' : 'other', ...(world ? { world } : {}), ref: what }, text }, now());
+    o.log?.('report', { category, from: 'public form' });
+    return htmlPage(reply, messagePage(lang, s.reportSentTitle, s.reportSent.replace('{receipt}', r.receipt)));
   });
 
   app.get('/host-agreement', async (req, reply) => {
@@ -355,13 +392,17 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     reverse: 'Reversed: the decision is lifted.',
     uphold: 'Upheld: the person sees the answer when they sign in.',
     'no-account': 'No account has that email.',
+    actioned: 'Report closed: acted on. The reporter reads your answer.',
+    dismissed: 'Report closed: no action. The reporter reads your answer.',
+    'underage-confirmed': 'The account was deleted, with its worlds.',
+    'underage-cleared': 'The account’s suspension was lifted.',
   };
 
   app.get('/admin', async (req, reply) => {
     const admin = await adminFromCookie(o.db, req.headers.cookie, now());
     if (!admin) return reply.code(303).header('location', '/admin/signin').send();
-    const done = str((req.query as Record<string, unknown>)['done'], 16);
-    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db)));
+    const done = str((req.query as Record<string, unknown>)['done'], 24);
+    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db), await reportQueue(o.db), now()));
   });
 
   app.get('/admin/signin', async (_req, reply) => htmlPage(reply, adminSigninPage()));
@@ -405,6 +446,28 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     }
     o.log?.(`world-${action}d`, { world: id });
     return reply.code(303).header('location', `/admin?done=${action}d`).send();
+  });
+
+  // The triage queue's decisions and a report's voice clip (S3.02, S3.07).
+  app.post('/admin/reports/:id', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const decision = str(b['decision'], 24);
+    const id = (req.params as { id: string }).id;
+    if (!['actioned', 'dismissed', 'underage-confirmed', 'underage-cleared'].includes(decision) || !/^[0-9a-f-]{36}$/i.test(id)) return reply.code(400).send();
+    if (!(await decideReport(o.db, id, decision as 'actioned', str(b['note'], 1000).trim(), `admin:${admin.accountId}`, now()))) return reply.code(404).send();
+    o.log?.('report-decided', { decision });
+    return reply.code(303).header('location', `/admin?done=${decision}`).send();
+  });
+
+  app.get('/admin/reports/:id/clip', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(404).send();
+    const clip = await reportClip(o.db, (req.params as { id: string }).id);
+    if (!clip) return reply.code(404).send();
+    return reply.type('audio/wav').header('cache-control', 'no-store').header('content-disposition', 'inline').send(clip);
   });
 
   // The owner suspends, bans or lifts an account, with the reason it is shown (S3.07, G-11).
@@ -556,6 +619,46 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     );
     // A revoked world's host reads why (S3.07).
     return { worlds: rows.map(({ note, ...r }) => ({ ...r, ...(r.status === 'revoked' ? { revokedFor: note ?? '' } : {}), online: hosts.online(r.id), players: hosts.status(r.id)?.status?.players ?? 0 })) };
+  });
+
+  // Reports from the client (S3.02): the target, the text, the evidence and the reporter's voice
+  // clip (a WAV the client cut from what it heard); the receipt now, the decision later.
+  app.post('/api/v1/reports', { bodyLimit: Math.ceil((CLIP_MAX * 4) / 3) + 128 * 1024 }, async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (limited(limits.reportByAccount, who.accountId, reply)) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const t = (typeof b['target'] === 'object' && b['target'] !== null ? b['target'] : {}) as Record<string, unknown>;
+    const category = b['category'] as ReportCategory;
+    const kind = t['kind'] as TargetKind;
+    const text = str(b['text'], TEXT_MAX).trim();
+    if (!REPORT_CATEGORIES.includes(category) || !TARGET_KINDS.includes(kind)) return sendProblem(reply, problem(400, 'bad-request', `category (${REPORT_CATEGORIES.join(', ')}) and target.kind (${TARGET_KINDS.join(', ')})`));
+    const clip = typeof b['clip'] === 'string' && b['clip'] ? new Uint8Array(Buffer.from(b['clip'], 'base64')) : undefined;
+    try {
+      const r = await fileReport(
+        o.db,
+        {
+          reporter: who.accountId,
+          category,
+          target: { kind, ...(typeof t['account'] === 'string' ? { account: t['account'] } : {}), ...(typeof t['world'] === 'string' ? { world: t['world'] } : {}), ref: str(t['ref'], 300) },
+          text,
+          evidence: cleanEvidence(b['evidence']),
+          ...(clip ? { clip } : {}),
+        },
+        now(),
+      );
+      o.log?.('report', { category, clip: clip !== undefined });
+      return reply.code(201).send({ receipt: r.receipt, status: 'open' });
+    } catch (err) {
+      if (err instanceof ReportError) return sendProblem(reply, problem(400, 'bad-clip', err.message));
+      throw err;
+    }
+  });
+
+  app.get('/api/v1/reports', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return { reports: (await myReports(o.db, who.accountId)).map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null })) };
   });
 
   // Appeals against a world's ban (S3.07): the banned player sends one to the world's owner, who

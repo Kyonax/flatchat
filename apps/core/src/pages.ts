@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The core's own pages: sign-in, sign-up, the privacy notice, an account's standing and appeal
-// (S3.07), the host agreement. Plain HTML forms with no script.
+// (S3.07), the host agreement, the public report form (S3.02). Plain HTML forms with no script.
 // Every value goes through `html`, which escapes it; only `raw()` marks trusted markup, and only
 // this file builds any. The page's policy forbids scripts, frames and outside resources.
 import { COUNTRY_CODES } from './countries.ts';
@@ -36,7 +36,8 @@ export function html(parts: TemplateStringsArray, ...values: unknown[]): Raw {
 }
 
 /** The policy on every page: no scripts at all; the sign-in form may lead to the client's loopback port. */
-export const PAGE_POLICY = "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self' http://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'";
+// media-src: the admin page plays a report's voice clip from this server (S3.02).
+export const PAGE_POLICY = "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self' http://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'";
 
 export const CSS = `:root{color-scheme:light dark;--bg:#f5f5f2;--fg:#17171a;--muted:#5d5d66;--line:#d4d4d8;--accent:#c9a20a;--error:#b3261e;--card:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#121214;--fg:#ececee;--muted:#a1a1aa;--line:#2e2e33;--accent:#f9cd26;--error:#f2b8b5;--card:#1b1b1e}}
@@ -172,4 +173,22 @@ ${error ? html`<p class="error" role="alert">${error}</p>` : ''}
 export function agreementPage(lang: Lang, version: number): string {
   const s = STRINGS[lang];
   return page(lang, s.agreementTitle, html`<h1>${s.agreementTitle}</h1><p>${s.agreementLead.replace('{version}', String(version))}</p><ol>${s.agreement.map((p) => html`<li>${p}</li>`)}</ol>`);
+}
+
+/** The public report form, for people without an account (S3.02, OQ-12). */
+export function reportPage(lang: Lang, categories: readonly string[], values: { category?: string; what?: string; text?: string; contact?: string; error?: string } = {}): string {
+  const s = STRINGS[lang];
+  const options = categories.map((c) => html`<option value="${c}"${values.category === c ? raw(' selected') : ''}>${(s.categories as Record<string, string>)[c] ?? c}</option>`);
+  return page(
+    lang,
+    s.reportTitle,
+    html`<h1>${s.reportTitle}</h1><p class="muted">${s.reportLead}</p>
+<form method="post" action="/report?lang=${lang}">
+${values.error ? html`<p class="error" role="alert">${values.error}</p>` : ''}
+<label for="category">${s.reportCategory}</label><select id="category" name="category">${options}</select>
+<label for="what">${s.reportWhat}</label><input id="what" name="what" maxlength="300" value="${values.what ?? ''}">
+<label for="text">${s.reportText}</label><textarea id="text" name="text" rows="6" maxlength="2000" required>${values.text ?? ''}</textarea>
+<label for="contact">${s.reportContact}</label><input id="contact" name="contact" type="email" maxlength="254" value="${values.contact ?? ''}">
+<button type="submit">${s.reportSend}</button></form>`,
+  );
 }

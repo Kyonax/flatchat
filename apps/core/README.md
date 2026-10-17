@@ -62,6 +62,10 @@ The token carries the account's trust level (S3.09), which worlds' entry rules u
 
 The owner suspends, bans or lifts accounts on the admin page (`/admin`) or with `admin account EMAIL --status … --reason R`; every decision is recorded with its reason (`moderation_actions`). A suspended or banned account cannot sign in, join a world, or (from Stage 4) upload; when its password checks, the sign-in page shows the decision and its reason, and a one-time form to appeal it. The admin page lists the appeals: reversing one lifts the decision, upholding it shows the person the answer when they sign in again. A player banned from a world appeals to that world's owner (the host tool's `appeals` and `appeal`). Every host accepts the host agreement (`/host-agreement`, English and Spanish) before a world is registered, and the admin page revokes a world with the reason its host reads (`host worlds`).
 
+## Reports (S3.02)
+
+Players report players and worlds from the client, with the chat excerpt, the world, who was near, the times and, if they keep the box ticked, the last 15 seconds of what they heard (a WAV their client cut; it leaves their computer only in a report). People without an account use the public form at `/report` (English and Spanish). Every report gets a receipt; the admin page's queue puts child sexual abuse material, grooming and threats first, and the decision goes back to the reporter (the client's home screen lists it). A report that an account is under the minimum age suspends it until the owner deletes it (age confirmed) or lifts it. Evidence is purged after about six months, a year for abuse material and grooming.
+
 ## The API
 
 | Method and path | Auth | What |
@@ -73,6 +77,8 @@ The owner suspends, bans or lifts accounts on the admin page (`/admin`) or with 
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
 | `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created |
 | `POST /api/v1/worlds` | Bearer | `{ name, address, capacity?, listed?, agreement }` → a pending world; `agreement` is the host agreement's version the host accepts (1), else `agreement-required` |
+| `POST /api/v1/reports` | Bearer | A report (S3.02): `{ category, target: { kind, account?, world?, ref }, text, evidence, clip? }` (the clip a base64 WAV of 700 KB at most) → `{ receipt }`; ten, then one every six minutes |
+| `GET /api/v1/reports` | Bearer | The account's reports: receipt, category, status (`open`, `actioned`, `dismissed`) and the decision |
 | `POST /api/v1/worlds/:id/appeals`, `GET /api/v1/worlds/:id/appeal` | Bearer | A player's appeal against that world's ban, `{ reason, text }`, and where it stands (S3.07) |
 | `GET /api/v1/my/worlds/:id/appeals`, `POST /api/v1/my/worlds/:id/appeals/:appeal` | Bearer | The world's owner reads the appeals and decides one, `{ decision: reverse\|uphold, note }`; a reversal goes to the world over its host channel |
 | `GET /api/v1/worlds` | — | `{ worlds: [{ id, name, capacity }] }`, the approved ones |

@@ -5,6 +5,7 @@
 // session in an HttpOnly, SameSite=Strict cookie; every form carries the session's CSRF token.
 // Sessions last 12 hours and are stored as digests.
 import type { Db, Sql } from './db.ts';
+import type { QueuedReport } from './reports.ts';
 import { html, raw } from './pages.ts';
 import { digest, newToken } from './secrets.ts';
 
@@ -77,8 +78,27 @@ export interface AdminAppeal {
   createdAt: Date;
 }
 
-export function adminWorldsPage(admin: { email: string; csrf: string }, worlds: readonly AdminWorld[], notice?: string, appeals: readonly AdminAppeal[] = []): string {
+const ago = (d: Date, now: Date): string => {
+  const h = Math.floor((now.getTime() - d.getTime()) / 3_600_000);
+  return h < 48 ? `${h} h ago` : `${Math.floor(h / 24)} days ago`;
+};
+
+export function adminWorldsPage(admin: { email: string; csrf: string }, worlds: readonly AdminWorld[], notice?: string, appeals: readonly AdminAppeal[] = [], reports: readonly QueuedReport[] = [], now = new Date()): string {
   const csrf = html`<input type="hidden" name="csrf" value="${admin.csrf}">`;
+  // The triage queue (S3.07): abuse material, grooming and threats first, within hours.
+  const report = (r: QueuedReport): ReturnType<typeof html> => html`<tr>
+<td><strong>${r.urgent ? 'URGENT · ' : ''}${r.category}</strong><br><span class="muted">${r.receipt} · ${ago(r.createdAt, now)}</span></td>
+<td>${r.target}<br><span class="muted">from ${r.reporter}</span></td>
+<td>${r.text}${r.evidence.chat?.length ? html`<details><summary>Chat (${r.evidence.chat.length} lines)</summary><ul>${r.evidence.chat.map((l) => html`<li>${l.from}: ${l.text}</li>`)}</ul></details>` : ''}
+${r.evidence.near?.length ? html`<details><summary>Near (${r.evidence.near.length})</summary><ul>${r.evidence.near.map((p) => html`<li>${p.name} · ${p.account} · ${p.distance} m</li>`)}</ul></details>` : ''}
+${r.evidence.speech?.length ? html`<details><summary>Who spoke in the clip</summary><ul>${r.evidence.speech.map((p) => html`<li>${p.name} · ${p.account} · ${Math.round(p.from / 100) / 10}–${Math.round(p.to / 100) / 10} s</li>`)}</ul></details>` : ''}
+${r.hasClip ? html`<audio controls preload="none" src="/admin/reports/${r.id}/clip"></audio>` : ''}</td>
+<td><form method="post" action="/admin/reports/${r.id}">${csrf}<input name="note" aria-label="The answer" placeholder="The answer (the reporter is told)" maxlength="1000">
+${
+  r.category === 'underage' && r.targetAccount
+    ? html`<button type="submit" name="decision" value="underage-confirmed">Under age: delete the account</button><button type="submit" name="decision" value="underage-cleared" class="secondary">Old enough: lift</button>`
+    : html`<button type="submit" name="decision" value="actioned">Acted on it</button><button type="submit" name="decision" value="dismissed" class="secondary">No action</button>`
+}</form></td></tr>`;
   const row = (w: AdminWorld): ReturnType<typeof html> => html`<tr>
 <td><strong>${w.name}</strong><br><span class="muted">${w.id}</span></td>
 <td>${w.status}${w.agreement ? '' : html`<br><span class="muted">no host agreement</span>`}</td><td>${w.owner}</td><td>${w.address}</td><td>${w.capacity}</td>
@@ -96,6 +116,8 @@ ${notice ? html`<p role="status">${notice}</p>` : ''}
 <table class="list"><thead><tr><th>World</th><th>Status</th><th>Host</th><th>Address</th><th>Capacity</th><th></th></tr></thead>
 <tbody>${worlds.map(row)}</tbody></table>
 ${worlds.length === 0 ? raw('<p class="muted">No worlds yet.</p>') : ''}
+<h2>Reports</h2>
+${reports.length === 0 ? raw('<p class="muted">No open reports.</p>') : html`<table class="list"><thead><tr><th>Report</th><th>About</th><th>Evidence</th><th></th></tr></thead><tbody>${reports.map(report)}</tbody></table>`}
 <h2>Appeals</h2>
 ${appeals.length === 0 ? raw('<p class="muted">No appeals wait for a decision.</p>') : html`<table class="list"><thead><tr><th>Account</th><th>Decision</th><th>Appeal</th><th>Sent</th><th></th></tr></thead><tbody>${appeals.map(appeal)}</tbody></table>`}
 <h2>Suspend, ban or lift an account</h2>
