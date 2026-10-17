@@ -63,7 +63,7 @@ try {
   const ownerWorld = (await admin('world', 'register', '--name', 'Owner Plaza', '--owner', OWNER, '--address', 'relay', '--capacity', '120')).match(/registered (\S+)/)?.[1];
   const ownerKey = (await admin('world', 'approve', ownerWorld ?? '')).match(/FLATCHAT_WORLD_KEY=(\S+)/)?.[1];
   if (!ownerWorld || !ownerKey) throw new Error('no owner world');
-  const asked = (await (await fetch(`${coreUrl}/api/v1/worlds`, { method: 'POST', headers: hostAuth, body: JSON.stringify({ name: 'Second Park', address: 'relay', capacity: 120 }) })).json()) as { id?: string; status?: string };
+  const asked = (await (await fetch(`${coreUrl}/api/v1/worlds`, { method: 'POST', headers: hostAuth, body: JSON.stringify({ name: 'Second Park', address: 'relay', capacity: 120, agreement: 1 }) })).json()) as { id?: string; status?: string };
   const hostWorld = asked.id ?? '';
   const pendingKey = await fetch(`${coreUrl}/api/v1/worlds/${hostWorld}/key`, { headers: hostAuth });
   // The owner's admin page: its own sign-in, then the world's approve form with the session's token.
