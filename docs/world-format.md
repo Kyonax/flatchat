@@ -61,6 +61,7 @@ Markers use the open extensions of the [OMI group](https://github.com/omigroup/g
 | Spawn point | `OMI_spawn_point`: `{ title?, team?, group? }` | Where players appear, facing the node's -z. At least one per world (in its first scene): players who join from the browser appear at the first scene's. Any scene may add more with a `group`, the group a portal in another world names; a portal's arrivals appear there |
 | Seat | `OMI_seat`: `{ back: [x,y,z], foot: [x,y,z], knee: [x,y,z], angle }` | Where an avatar sits (Q-F1); points in the node's space |
 | Solid | `OMI_physics_shape` (on the document: `shapes`) and `OMI_physics_body` (on a node: `{ motion?, collider?: { shape }, trigger?: { shape } }`) | What players collide with (Q-F2): box, sphere, capsule, cylinder, convex or trimesh shapes; a `trigger` detects without blocking |
+| Base part | `FLATCHAT_world`: `{ part: { id } }` | One of the base library's parts (below), placed, turned and scaled by the node: drawn by every client from its own library, so it adds nothing to download; its solid boxes and its seats join the scene's |
 | Sound | `KHR_audio_emitter` (document: `audio`, `sources`, `emitters`; node: `{ emitter }`) | Ambience, music, positional sounds (Q-H1). The sound file sits beside the scene (`uri`), in a format the client's browser engine decodes (MP3, Ogg, WAV, FLAC). Emitters with `autoPlay` start when a player arrives, positional ones from their node's place with the emitter's `refDistance` and `maxDistance`; the others wait for plugins (Stage 3). At most 64 play at once |
 | Portal | `FLATCHAT_world`: `{ portal: { world, spawn?, size: [x,y,z] } }` | Walking into the box (`size` in metres, centred on the node) takes a player to another world (Q-L11): `world` is its id, `spawn` an optional spawn group there. The world server checks the player's feet, so let the box reach a little below the floor |
 | Zone | `FLATCHAT_world`: `{ zone: { kind, size: [x,y,z], range?, gain? } }` | A box where voice changes: `kind` is `voice` (`range` and `gain` for everyone inside, a stage), `quiet` (no voice heard or sent: Q-L18), or `private` (voice only among those inside); reverb and screen effects come in Stage 6 |
@@ -82,6 +83,27 @@ A scene may use any other extension the converter accepts (`KHR_materials_*`, `K
 ## What the validator reports
 
 Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`.
+
+## The base library (S2.05)
+
+Parts every client carries, which a world places by id instead of shipping their geometry: a world made only of parts downloads its plan and nothing else (the kit `kits/worlds/park`, written by `tools/converter/scripts/make-park.ts`, is 69 parts and a spawn point; built, about 37 KB). Each part's origin is the centre of its footprint on the floor, its front facing -z. Version 1 is a greybox kit; later art may change how a part looks, never its id, its size or its solids.
+
+| Id | What it is | Solids and seats |
+|---|---|---|
+| `flatchat:floor-4`, `flatchat:floor-8` | Paving, 4 or 8 m square, 0.2 m thick, its top at the node | Solid |
+| `flatchat:platform-4` | A 4 m block, 1.5 m high | Solid |
+| `flatchat:stairs-4` | Six 0.25 m steps up toward -z over 4 m, 2 m wide | Solid; climbs onto a platform |
+| `flatchat:wall-4`, `flatchat:wall-door-4` | A 4 m wall, 3 m high, 0.2 m thick; with a 1.2 m doorway | Solid |
+| `flatchat:arch-4` | Two posts and a lintel over 4 m, 4 m high | Solid |
+| `flatchat:pillar` | 0.5 m square, 3 m high | Solid |
+| `flatchat:fence-4` | Two posts and two rails over 4 m, 1 m high | Solid |
+| `flatchat:bench` | A 1.6 m bench | Solid; two seats |
+| `flatchat:table` | A 1.6 by 1 m table | Solid |
+| `flatchat:crate`, `flatchat:rock` | A 1 m crate; a low rock | Solid |
+| `flatchat:lamp` | A 2.85 m lamp post | The post is solid, the lamp is not |
+| `flatchat:tree` | A trunk and two boxes of leaves, 4.2 m high | The trunk is solid, the leaves are not |
+
+At most 10,000 parts in a world.
 
 ## What the converter makes of it
 
