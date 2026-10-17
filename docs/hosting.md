@@ -74,6 +74,10 @@ node --env-file=$HOME/.config/flatchat/world.env apps/world-server/src/main.ts \
 
 Its log says `relay-connected` once the core has accepted its proof, and `port-map` with `ok: true` and the protocol (PCP, NAT-PMP or UPnP) once the router has mapped UDP port 7778. `--map-port` changes your router's settings for as long as the world runs (it renews the lease every half hour and removes it when the world stops); leave it out to forward the port by hand instead.
 
+### On the public list
+
+A running world reports how many players it holds to the core, which shows it in the client's world browser while it is below its recommended count (`[capacity] recommended` in `world.toml`, or `--recommended`); at that count it leaves the list, and players still reach it by its ID or from their favourites up to its maximum. The core's record caps the maximum at what the owner approved (at most 200). `host request --unlisted` keeps a world off the list from the start, and `host listing WORLD_ID on|off` changes it later.
+
 ## 4. When the UDP port cannot be reached: TURN
 
 Carrier-grade NAT (common in Colombia: the census in [spikes/s-home.md](spikes/s-home.md) measures how common) means no port can be mapped. Then the game traffic goes through a TURN relay. The core hands out credentials that last an hour, so none is ever built into a client:
