@@ -1,6 +1,6 @@
 {
-  "protocol": 2,
-  "fingerprint": "3ff4d993",
+  "protocol": 3,
+  "fingerprint": "8301ef01",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -41,6 +41,13 @@
               "type": {
                 "kind": "bytes",
                 "maxBytes": 256
+              }
+            },
+            {
+              "name": "spawn",
+              "type": {
+                "kind": "string",
+                "maxBytes": 32
               }
             }
           ]
@@ -842,6 +849,30 @@
               "type": {
                 "kind": "fixedBytes",
                 "length": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "portal",
+        "id": 80,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "world",
+              "type": {
+                "kind": "uuid"
+              }
+            },
+            {
+              "name": "spawn",
+              "type": {
+                "kind": "string",
+                "maxBytes": 32
               }
             }
           ]

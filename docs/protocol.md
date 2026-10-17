@@ -1,4 +1,4 @@
-# The FlatChat protocol, version 2
+# The FlatChat protocol, version 3
 
 How FlatChat's programs talk: the client, the world server, the bots and the core. This page is the specification; the reference implementation is [`packages/protocol`](../packages/protocol) (TypeScript, Apache-2.0), the machine-readable schema is [`golden/schema.json`](../packages/protocol/golden/schema.json), and the golden packets in the same folder pin every byte. Version 0 was the first, built in Stage 0 (S0.06) and measured with 200 bots in spike S0.07. Version 1 (spike S0.08) gives every voice frame a `start` bit and makes its `seq` count 20 ms slots: see [Versions](#versions).
 
@@ -74,7 +74,7 @@ A world server may send **several snapshots for one tick**, each kept to about o
 
 | Message | Type | Sent by | Channel | Fields | What it does |
 |---|---|---|---|---|---|
-| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most) and the connect token (256 bytes at most) |
+| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token, spawn | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most), the connect token (256 bytes at most) and the spawn group a portal named (32 bytes at most; empty for the world's own spawn points) |
 | `welcome` | 0x02 | server | reliable | protocol, build, world, entity, tickHz, tick | Accepts the join: the server's version and build, the world's ID, the player's entity number, the tick rate and the current tick |
 | `refuse` | 0x03 | server | reliable | reason, protocolMin, protocolMax, detail | Refuses the join, with a reason (below), the versions the server accepts and a detail of 160 bytes at most |
 | `leave` | 0x04 | either | reliable | reason, detail | Ends the connection: `quit`, `travel`, `kicked`, `banned`, `timeout`, `closing` or `error` |
@@ -92,6 +92,7 @@ A world server may send **several snapshots for one tick**, each kept to about o
 | `chunk` | 0x42 | server | reliable | hash, offset, total, data | Up to 16,384 bytes of a file, at `offset`, of `total`; the server paces them so content never starves the game |
 | `unfetch` | 0x43 | client | reliable | hash | Stops a fetch (the player left, or found the file elsewhere) |
 | `notFound` | 0x44 | server | reliable | hash | The server does not have that file |
+| `portal` | 0x50 | server | reliable | world, spawn | The player walked into a portal (S2.11): the world it leads to and the spawn group there. Sent once on entering the portal's box; the client asks the core for a connect token to that world, leaves with `travel`, and joins it with `spawn` in its `hello` |
 
 A world's content travels over the world connection itself (S2.04): no second port, no web server, no certificate for the host. The client checks every file's SHA-256 before it uses it, keeps it in a cache by hash (a file shared by two worlds downloads once), and reads `world.json` (the built world: [world-format.md](world-format.md) and `packages/content`) as untrusted data.
 
@@ -171,3 +172,4 @@ The golden writer refuses step 3 without step 2, the tests fail while the golden
 | 0 | The first: thirteen messages, the connect token, the version handshake (S0.06) |
 | 1 | `voice` and each `voiceBundle` frame gain `start`, and their `seq` counts 20 ms slots including silence: a voice gate that closes and reopens within a moment left gaps the listener could not see, and frames after them played late or were concealed (S0.08, measured with real speech) |
 | 2 | `content`, `fetch`, `chunk`, `unfetch` and `notFound`: worlds download over the world connection (S2.04) |
+| 3 | `portal`, and `spawn` in `hello`: travel between worlds through portals (S2.11) |

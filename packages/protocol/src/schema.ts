@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -111,7 +111,8 @@ export const MESSAGES = {
     id: 0x01,
     from: 'client',
     channel: 'reliable',
-    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(256) }),
+    // `spawn` (version 3): the spawn group a portal named (S2.11), empty for the world's own.
+    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(256), spawn: str(32) }),
   },
   welcome: {
     id: 0x02,
@@ -168,6 +169,9 @@ export const MESSAGES = {
   chunk: { id: 0x42, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32), offset: u32, total: u32, data: bytes(16_384) }) },
   unfetch: { id: 0x43, from: 'client', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
   notFound: { id: 0x44, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
+  // Travel (version 3, S2.11): the player walked into a portal; the client asks the core to join
+  // that world (the world never hands out a connect token itself) and names the spawn group.
+  portal: { id: 0x50, from: 'server', channel: 'reliable', body: struct({ world: uuid, spawn: str(32) }) },
 } as const satisfies Record<string, MessageDef>;
 
 /** The connect token's format version, written as its first byte. */

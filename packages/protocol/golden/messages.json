@@ -7,9 +7,22 @@
         "protocol": 0,
         "fingerprint": 305419896,
         "build": "0.0.0",
-        "token": "000102030405060708090a0b0c0d0e0f"
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "spawn": ""
       },
-      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f"
+      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f00"
+    },
+    {
+      "name": "hello-spawn",
+      "value": {
+        "type": "hello",
+        "protocol": 3,
+        "fingerprint": 305419896,
+        "build": "0.0.0",
+        "token": "000102030405060708090a0b0c0d0e0f",
+        "spawn": "arrival"
+      },
+      "hex": "0103007856341205302e302e3010000102030405060708090a0b0c0d0e0f076172726976616c"
     },
     {
       "name": "welcome",
@@ -314,6 +327,24 @@
         "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
       },
       "hex": "449f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+    },
+    {
+      "name": "portal",
+      "value": {
+        "type": "portal",
+        "world": "0f8e2c1a-5b3d-4e6f-8a9b-1c2d3e4f5a6b",
+        "spawn": "arrival"
+      },
+      "hex": "500f8e2c1a5b3d4e6f8a9b1c2d3e4f5a6b076172726976616c"
+    },
+    {
+      "name": "portal-no-spawn",
+      "value": {
+        "type": "portal",
+        "world": "00000000-0000-4000-8000-000000000001",
+        "spawn": ""
+      },
+      "hex": "500000000000004000800000000000000100"
     }
   ]
 }
