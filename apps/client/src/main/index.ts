@@ -179,6 +179,35 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   }
 });
 
+// Reports (S3.02): the page builds one (with the clip, only then) and the core files it.
+const REPORT_CATEGORIES = new Set(['csam', 'grooming', 'threats', 'intimate', 'underage', 'harassment', 'other']);
+ipcMain.handle('flatchat:report', async (_event, raw: unknown) => {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const target = (typeof r['target'] === 'object' && r['target'] !== null ? r['target'] : {}) as Record<string, unknown>;
+  const clip = r['clip'];
+  if (!auth || typeof r['category'] !== 'string' || !REPORT_CATEGORIES.has(r['category']) || (target['kind'] !== 'player' && target['kind'] !== 'world') || typeof r['text'] !== 'string') return { ok: false, error: 'bad-request' };
+  if (clip !== undefined && (!(clip instanceof Uint8Array) || clip.length > 700 * 1024)) return { ok: false, error: 'bad-clip' };
+  try {
+    const receipt = await auth.report({
+      category: r['category'],
+      target: { kind: target['kind'], ...(typeof target['account'] === 'string' ? { account: target['account'] } : {}), ...(typeof target['world'] === 'string' ? { world: target['world'] } : {}), ref: typeof target['ref'] === 'string' ? target['ref'].slice(0, 300) : '' },
+      text: r['text'].slice(0, 2000),
+      evidence: r['evidence'],
+      ...(clip instanceof Uint8Array ? { clip } : {}),
+    });
+    return { ok: true, receipt };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:reports', async () => {
+  try {
+    return { ok: true, reports: (await auth?.reports()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
 // Appeals against a world's ban (S3.07): to the world's owner, through the core.
 ipcMain.handle('flatchat:appeal-ban', async (_event, worldId: unknown, reason: unknown, text: unknown) => {
   if (typeof worldId !== 'string' || typeof reason !== 'string' || typeof text !== 'string' || !text.trim() || !auth) return { ok: false, error: 'bad-request' };

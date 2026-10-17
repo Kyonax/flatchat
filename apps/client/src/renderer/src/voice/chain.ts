@@ -11,6 +11,7 @@
 // (distance.ts) → an HRTF panner at the speaker's position → the output. At most 16 speakers.
 import type { MessageOf } from '@flatchat/protocol';
 import captureUrl from './capture-worklet.ts?worker&url';
+import type { ClipRecorder } from './clip';
 import { voiceCutoffHz, voiceGain } from './distance';
 import { JitterBuffer, type JitterStats } from './jitter';
 import { type MouthShape, mouthShape } from './mouth';
@@ -63,6 +64,8 @@ export class VoiceChain {
   readonly ctx: AudioContext;
   /** Where every heard voice goes; connect it to ctx.destination, a recorder or a meter. */
   readonly output: GainNode;
+  /** Keeps the last seconds of what was heard, for a report's clip (S3.02). */
+  recorder: ClipRecorder | undefined;
   private readonly freeDecoders: OpusDecoderHandle[];
   private readonly speakers = new Map<number, Speaker>();
   /** While true, captured frames are not sent; the first frame after unmuting has `start`. */
@@ -216,6 +219,7 @@ export class VoiceChain {
     this.counts.decoded += 1;
     // The decoder's output may sit in WebAssembly memory: copy it before transferring.
     const copy = Float32Array.from(pcm);
+    this.recorder?.add(s.entity, t0, copy);
     return [copy, [copy.buffer]];
   }
 

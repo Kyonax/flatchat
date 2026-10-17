@@ -8,7 +8,7 @@ import WorldRow from './WorldRow.vue';
 // public list (open worlds below their recommended count, busiest first).
 defineProps<{ account: FlatchatAccount; remembered: boolean; joining: string; joinError: string }>();
 const emit = defineEmits<{ join: [world: FlatchatWorld]; settings: []; 'sign-out': [] }>();
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 const WORLD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,6 +19,8 @@ const byId = ref('');
 const byIdError = ref('');
 const looking = ref(false);
 const starred = computed(() => new Set(favourites.value.map((w) => w.id)));
+/** The reports this account filed, with their decisions (S3.02). */
+const reports = ref<Array<{ receipt: string; category: string; status: string; decision: string; createdAt: string }>>([]);
 
 function failed(error: string): string {
   return error === 'unreachable' ? t('signin.errors.unreachable') : t('signin.errors.failed');
@@ -27,8 +29,9 @@ function failed(error: string): string {
 async function load(): Promise<void> {
   worlds.value = undefined;
   listError.value = '';
-  const [list, favs] = await Promise.all([window.flatchat?.worlds(), window.flatchat?.favourites()]);
+  const [list, favs, mine] = await Promise.all([window.flatchat?.worlds(), window.flatchat?.favourites(), window.flatchat?.reports()]);
   if (favs?.ok) favourites.value = favs.worlds;
+  if (mine?.ok) reports.value = mine.reports;
   if (!list || !list.ok) {
     listError.value = failed(list?.error ?? '');
     worlds.value = [];
@@ -190,6 +193,26 @@ onMounted(load);
       >
         {{ joinError }}
       </p>
+      <template v-if="reports.length > 0">
+        <h2>{{ t('home.reports') }}</h2>
+        <ul
+          class="plain"
+          data-test="my-reports"
+        >
+          <li
+            v-for="r in reports"
+            :key="r.receipt"
+            :data-status="r.status"
+          >
+            <strong>{{ r.receipt }}</strong> · {{ te(`report.categories.${r.category}`) ? t(`report.categories.${r.category}`) : r.category }} ·
+            {{ t(`report.status.${r.status}`) }}
+            <span
+              v-if="r.decision"
+              class="muted"
+            > · {{ r.decision }}</span>
+          </li>
+        </ul>
+      </template>
       <p>
         <button
           type="button"

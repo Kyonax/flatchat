@@ -23,6 +23,8 @@ import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
 import { Navigation } from './navigation';
 import { type Person, type Role, sortPeople } from './people';
+import { buildReport, type ReportDraft, type ReportEvidence, type ReportPayload } from './report';
+import { ClipRecorder } from '../voice/clip';
 import { buildParts } from './parts';
 import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
@@ -45,6 +47,8 @@ export interface ChatLine {
   text: string;
   /** A notice the page words itself: someone arrived or left. */
   notice?: 'joined' | 'left';
+  /** When it arrived (wall clock, ms), for a report's chat excerpt. */
+  at: number;
 }
 
 export type VoiceStatus = 'off' | 'starting' | 'on' | 'denied';
@@ -121,6 +125,12 @@ export class WorldSession {
   private readonly remotes = new Remotes();
   private readonly names = new Map<number, string>();
   private readonly people = new Map<number, Person>();
+  /** Everyone seen during this visit, by entity, gone or not: a report names the speakers. */
+  private readonly everyone = new Map<number, { account: string; name: string }>();
+  /** What this client heard lately, for a report's clip (S3.02); nothing reads it but a report. */
+  private readonly recorder = new ClipRecorder();
+  private worldId = '';
+  private joinedWall = 0;
   private renderer: THREE.WebGPURenderer | undefined;
   private crowd: CrowdView | undefined;
   private conn: WorldConnection | undefined;
@@ -372,6 +382,7 @@ export class WorldSession {
     this.state.voice = 'starting';
     try {
       this.chain = await VoiceChain.create();
+      this.chain.recorder = this.recorder;
       await this.chain.ctx.resume();
       this.volume = new GainNode(this.chain.ctx, { gain: this.settings.voice.volume });
       this.chain.output.connect(this.volume).connect(this.chain.ctx.destination);
@@ -504,6 +515,8 @@ export class WorldSession {
       case 'welcome':
         // Before the join's first snapshot, so the player is never drawn as someone else.
         this.entity = m.entity;
+        this.worldId = m.world;
+        this.joinedWall = Date.now();
         break;
       case 'snapshot':
         this.snapshot(m);
@@ -571,6 +584,7 @@ export class WorldSession {
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
       this.people.set(p.entity, { entity: p.entity, account: p.account, name: p.name, role: p.role, me: p.entity === this.entity });
+      this.everyone.set(p.entity, { account: p.account, name: p.name });
       this.heights.set(p.entity, p.height / 100);
       if (arriving && this.rosterSeen && p.entity !== this.entity) {
         this.chatLine({ from: '', text: p.name, notice: 'joined' });
@@ -593,6 +607,28 @@ export class WorldSession {
     this.state.role = this.people.get(this.entity)?.role ?? 'visitor';
   }
 
+  /** A report from this world (S3.02): the player's choices, the evidence this visit holds, and
+   *  the voice clip when the player keeps it. */
+  reportOf(draft: ReportDraft, instance: string): ReportPayload {
+    const now = performance.now();
+    const wall = (t: number): number => Date.now() - (now - t);
+    const near = [...this.remotes.entities()].flatMap((entity) => {
+      const p = this.remotes.at(entity, now);
+      const who = this.everyone.get(entity);
+      return p && who ? [{ account: who.account, name: who.name, distance: Math.hypot(p.x - this.me.x, p.y - this.me.y, p.z - this.me.z) }] : [];
+    });
+    const evidence: ReportEvidence = {
+      world: { id: this.worldId, name: this.state.world, instance },
+      chat: this.state.chat
+        .filter((l) => !l.notice)
+        .slice(-50)
+        .map((l) => ({ from: l.from, text: l.text, at: l.at })),
+      near: near.sort((a, b) => a.distance - b.distance).slice(0, 64),
+      times: { joined: this.joinedWall, reported: Date.now() },
+    };
+    return buildReport(draft, evidence, this.recorder, now, wall, (entity) => this.everyone.get(entity));
+  }
+
   /** Asks the world to kick, ban or mute someone, with the reason they are told (S3.07). */
   moderate(account: string, action: 'kick' | 'ban' | 'unban' | 'mute' | 'unmute', minutes: number, reason: string): void {
     if (this.state.status === 'joined') this.conn?.send({ type: 'moderate', account, action, minutes, reason: reason.slice(0, 160) });
@@ -603,8 +639,8 @@ export class WorldSession {
     if (this.state.status === 'joined') this.conn?.send({ type: 'role', account, role });
   }
 
-  private chatLine(line: Omit<ChatLine, 'id'>): void {
-    this.state.chat.push({ id: (this.chatId += 1), ...line });
+  private chatLine(line: Omit<ChatLine, 'id' | 'at'>): void {
+    this.state.chat.push({ id: (this.chatId += 1), at: Date.now(), ...line });
     if (this.state.chat.length > CHAT_KEEP) this.state.chat.splice(0, this.state.chat.length - CHAT_KEEP);
   }
 

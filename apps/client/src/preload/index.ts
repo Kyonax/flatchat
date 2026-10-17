@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('flatchat', {
   contentPut: (hash: string, bytes: Uint8Array): Promise<boolean> => ipcRenderer.invoke('flatchat:content-put', hash, bytes),
   joinWorld: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:join', worldId),
   appealBan: (worldId: string, reason: string, text: string): Promise<unknown> => ipcRenderer.invoke('flatchat:appeal-ban', worldId, reason, text),
+  report: (report: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:report', report),
+  reports: (): Promise<unknown> => ipcRenderer.invoke('flatchat:reports'),
   banAppeal: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:ban-appeal', worldId),
   // Offline mode (S2.13): a world in the main process, its messages over IPC.
   offlineWorlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-worlds'),

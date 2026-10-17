@@ -6,7 +6,7 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type WorldSummary } from './core-api';
+import { type Account, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type ReportBody, type WorldSummary } from './core-api';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -166,6 +166,14 @@ export class Auth {
 
   async join(worldId: string): Promise<JoinTicket> {
     return this.api.join(await this.access(), worldId);
+  }
+
+  async report(r: ReportBody): Promise<string> {
+    return this.api.report(await this.access(), r);
+  }
+
+  async reports(): Promise<MyReport[]> {
+    return this.api.reports(await this.access());
   }
 
   async appealBan(worldId: string, reason: string, text: string): Promise<void> {

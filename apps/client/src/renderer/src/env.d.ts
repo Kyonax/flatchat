@@ -53,6 +53,9 @@ interface FlatchatBridge {
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
+  // Reports (S3.02): one from the world view, and the account's own with their decisions.
+  report(report: import('./world/report').ReportPayload): Promise<FlatchatResult<{ receipt: string }>>;
+  reports(): Promise<FlatchatResult<{ reports: Array<{ receipt: string; category: string; status: string; decision: string; createdAt: string }> }>>;
   // Appeals against a world's ban (S3.07).
   appealBan(worldId: string, reason: string, text: string): Promise<FlatchatResult<object>>;
   banAppeal(worldId: string): Promise<FlatchatResult<{ appeal: { status: 'pending' | 'upheld' | 'reversed'; note: string } | null }>>;

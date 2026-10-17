@@ -8,6 +8,8 @@ import { canGiveTo, canModerate, MODERATION, type Person, type Role, rolesToGive
 import { CHAT_MAX, type Travel, WorldSession, type WorldState } from '../world/session';
 import { keyLabel } from './keys';
 import BanAppeal from './BanAppeal.vue';
+import ReportForm from './ReportForm.vue';
+import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
 
 const props = defineProps<{
@@ -34,6 +36,8 @@ const peopleOpen = ref(false);
 const moderating = ref('');
 const modChoice = ref<(typeof MODERATION)[number]['id']>('kick');
 const modReason = ref('');
+/** Who or what the player is reporting (S3.02); the form owns the keys while it is open. */
+const reporting = ref<ReportDraft['target'] | undefined>(undefined);
 let session: WorldSession | undefined;
 const state = ref<WorldState | undefined>(undefined);
 // Set when this world's portal is taking the player away: the leave says `travel`.
@@ -102,7 +106,7 @@ function send(): void {
 }
 
 function onKey(e: KeyboardEvent): void {
-  if (chatOpen.value || menu.value || props.paused || state.value?.status !== 'joined') return;
+  if (chatOpen.value || menu.value || reporting.value || props.paused || state.value?.status !== 'joined') return;
   const action = actionFor(props.settings.keys, e.code);
   if (action === 'chat' && !peopleOpen.value) {
     e.preventDefault();
@@ -110,6 +114,11 @@ function onKey(e: KeyboardEvent): void {
   } else if (action === 'people' || (peopleOpen.value && e.code === 'Escape')) {
     e.preventDefault();
     togglePeople();
+  } else if (action === 'menu' && !asking.value) {
+    // Esc opens the menu: releasing a held pointer opens it (onLockChange), and with the pointer
+    // already free there is no lock to release, so it opens here.
+    if (document.pointerLockElement) session?.unlock();
+    else menu.value = true;
   }
 }
 
@@ -129,6 +138,26 @@ function startModerating(p: Person): void {
   modReason.value = '';
 }
 
+function startReport(target: ReportDraft['target']): void {
+  reporting.value = target;
+  peopleOpen.value = false;
+  menu.value = false;
+  if (session) session.typing = true;
+  session?.unlock();
+}
+
+function endReport(): void {
+  reporting.value = undefined;
+  if (session) session.typing = false;
+}
+
+/** Builds the report with this visit's evidence and sends it through the core. */
+async function fileReport(draft: ReportDraft): Promise<{ ok: true; receipt: string } | { ok: false; error: string }> {
+  const bridge = window.flatchat;
+  if (!session || !bridge) return { ok: false, error: 'failed' };
+  return bridge.report(session.reportOf(draft, props.ticket.address));
+}
+
 function applyModeration(p: Person): void {
   const m = MODERATION.find((x) => x.id === modChoice.value);
   if (!m || (m.action !== 'unmute' && !modReason.value.trim())) return;
@@ -141,9 +170,9 @@ function give(p: Person, role: string): void {
 }
 
 function onLockChange(): void {
-  // Esc releases the pointer (the browser's own key): that opens the menu, unless chat or the
-  // People panel took it.
-  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
+  // Esc releases the pointer (the browser's own key): that opens the menu, unless chat, the
+  // People panel or a report took it.
+  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
 }
 
 function look(): void {
@@ -354,6 +383,15 @@ onBeforeUnmount(() => {
           >
             {{ t('people.moderate') }}
           </button>
+          <button
+            v-if="!p.me && !ticket.local"
+            type="button"
+            class="small"
+            data-test="report-person"
+            @click="startReport({ kind: 'player', account: p.account, name: p.name })"
+          >
+            {{ t('report.button') }}
+          </button>
           <form
             v-if="moderating === p.account"
             class="moderate"
@@ -476,6 +514,14 @@ onBeforeUnmount(() => {
           {{ t('home.settings') }}
         </button>
         <button
+          v-if="!ticket.local"
+          type="button"
+          data-test="report-world"
+          @click="startReport({ kind: 'world', world: world.id, name: world.name })"
+        >
+          {{ t('report.thisWorld') }}
+        </button>
+        <button
           type="button"
           data-test="leave"
           @click="emit('leave')"
@@ -484,6 +530,13 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+
+    <ReportForm
+      v-if="reporting"
+      :target="reporting"
+      :file="fileReport"
+      @close="endReport"
+    />
 
     <MicQuestion
       v-if="asking && !paused"

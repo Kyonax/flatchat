@@ -70,6 +70,24 @@ export function cleanIceServers(raw: unknown): IceServerSpec[] {
   });
 }
 
+/** A report as the page builds it (S3.02). */
+export interface ReportBody {
+  category: string;
+  target: { kind: string; account?: string; world?: string; ref: string };
+  text: string;
+  evidence: unknown;
+  clip?: Uint8Array;
+}
+
+/** One of the account's reports, with its decision. */
+export interface MyReport {
+  receipt: string;
+  category: string;
+  status: string;
+  decision: string;
+  createdAt: string;
+}
+
 /** Where an appeal against a world's ban stands (S3.07). */
 export interface BanAppeal {
   status: 'pending' | 'upheld' | 'reversed';
@@ -208,6 +226,26 @@ export class CoreApi {
   async setFavourite(access: string, worldId: string, on: boolean): Promise<void> {
     if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
     await this.call(on ? 'PUT' : 'DELETE', `/api/v1/me/favourites/${worldId}`, undefined, access);
+  }
+
+  /** A report (S3.02): the target, the text, the evidence and the voice clip (a WAV) the page
+   *  built; answers the receipt. */
+  async report(access: string, r: ReportBody): Promise<string> {
+    const body = { category: r.category, target: r.target, text: r.text, evidence: r.evidence, ...(r.clip ? { clip: Buffer.from(r.clip).toString('base64') } : {}) };
+    const answer = await this.call<{ receipt?: unknown }>('POST', '/api/v1/reports', body, access);
+    if (typeof answer.receipt !== 'string') throw new CoreError(502, 'bad-answer', 'the core sent no receipt');
+    return answer.receipt.slice(0, 32);
+  }
+
+  /** The reports this account filed, with their decisions. */
+  async reports(access: string): Promise<MyReport[]> {
+    const r = await this.call<{ reports?: unknown }>('GET', '/api/v1/reports', undefined, access);
+    return (Array.isArray(r.reports) ? r.reports : []).slice(0, 50).flatMap((x: unknown) => {
+      const o = (typeof x === 'object' && x !== null ? x : {}) as Record<string, unknown>;
+      return typeof o['receipt'] === 'string' && typeof o['status'] === 'string'
+        ? [{ receipt: o['receipt'].slice(0, 32), category: String(o['category'] ?? '').slice(0, 16), status: String(o['status']).slice(0, 16), decision: typeof o['decision'] === 'string' ? o['decision'].slice(0, 1000) : '', createdAt: String(o['createdAt'] ?? '').slice(0, 32) }]
+        : [];
+    });
   }
 
   /** An appeal against a world's ban, to its owner (S3.07): the reason the world gave, and why it
