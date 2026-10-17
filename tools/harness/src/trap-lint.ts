@@ -58,6 +58,7 @@ export const TRAPS = {
   T17: { severity: 'error', rule: 'protocol-and-codecs', title: 'Node.js API in a shared package', fix: 'packages/ also run in the client\'s sandboxed renderer: use what Node.js and browsers both have (Uint8Array, DataView, TextEncoder, crypto.subtle), never Node built-ins, Buffer, process or __dirname' },
   T18: { severity: 'error', rule: 'core-service', title: 'SQL text built at run time', fix: 'pass values as query parameters ($1, $2, …); a template may only splice in an ALL_CAPS constant such as a column list' },
   T19: { severity: 'error', rule: 'core-service', title: 'markup made from data in the core\'s pages', fix: 'raw() takes only literal markup written in the code; everything else goes through html`…`, which escapes it' },
+  T20: { severity: 'error', rule: 'reports-and-safety', title: 'voice clip taken outside a report', fix: 'only apps/client/src/renderer/src/world/report.ts calls takeClip: what a player heard leaves the client only inside the report they send (OQ-18)' },
 } as const satisfies Record<string, Trap>;
 
 export type TrapId = keyof typeof TRAPS;
@@ -72,6 +73,8 @@ const IPC_METHODS = new Set(['send', 'sendSync', 'invoke', 'on', 'once', 'postMe
 const ALLOW_RE = /trap-lint:\s*allow\s+((?:T\d\d[\s,]*)+)/;
 
 const isRenderer = (rel: string): boolean => rel.startsWith('apps/client/src/renderer/');
+/** The one file that may take the reporter's voice clip (S3.02, T20). */
+const REPORT_BUILDER = 'apps/client/src/renderer/src/world/report.ts';
 const isPreload = (rel: string): boolean => rel.startsWith('apps/client/src/preload/');
 const isClient = (rel: string): boolean => rel.startsWith('apps/client/');
 /** The shared libraries' code, which runs in Node.js and in the client's renderer alike. */
@@ -199,6 +202,7 @@ function scanCode(rel: string, text: string, kind = scriptKind(rel), lineOffset 
       if (isCore(rel) && callee === 'raw' && first && !ts.isStringLiteral(first) && !ts.isNoSubstitutionTemplateLiteral(first)) {
         add('T19', node, 'raw(…) marks text built at run time as markup');
       }
+      if (rel.startsWith('apps/client/src/') && rel !== REPORT_BUILDER && /(^|\.)takeClip$/.test(callee)) add('T20', node, 'takes the voice clip outside the report builder');
       const [base, method] = [callee.split('.').slice(0, -1).join('.'), callee.split('.').pop()];
       if ((method === 'exec' || method === 'execSync') && childProcessNames.has(base)) {
         add('T13', node, `${callee} runs a shell`);

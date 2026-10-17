@@ -125,6 +125,15 @@ describe('the core', () => {
   });
 });
 
+describe('the reporter’s voice clip', () => {
+  it('leaves the client only through the report builder (T20)', () => {
+    const builder = { rel: 'apps/client/src/renderer/src/world/report.ts', text: 'const clip = recorder?.takeClip(now);' };
+    const elsewhere = { rel: 'apps/client/src/renderer/src/world/session.ts', text: 'void bridge.send(this.recorder.takeClip(performance.now()));' };
+    const test = { rel: 'apps/client/test/clip.test.ts', text: 'r.takeClip(1000);' };
+    expect(traps(builder, elsewhere, test)).toEqual(['T20']);
+  });
+});
+
 describe('CI workflows', () => {
   const wf = (text: string): Source => ({ rel: '.github/workflows/ci.yml', text });
   const good = `jobs:
