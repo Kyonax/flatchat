@@ -65,9 +65,13 @@ class Child {
   private waiters: Array<{ event: string; resolve: (l: Line) => void }> = [];
   readonly exited: Promise<number>;
 
+  /** A world server started with --stop-on-stdin stops when its input closes, on Windows too. */
+  private readonly stopsOnStdin: boolean;
+
   constructor(cmd: string[], env: Record<string, string>, file: string | undefined) {
     const [bin, ...args] = cmd;
-    this.proc = spawn(bin!, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+    this.stopsOnStdin = args.includes('--stop-on-stdin');
+    this.proc = spawn(bin!, args, { stdio: [this.stopsOnStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
     const out = file ? createWriteStream(file) : undefined;
     let buffer = '';
     this.proc.stdout!.setEncoding('utf8');
@@ -114,8 +118,11 @@ class Child {
     });
   }
 
+  /** Stops the child and waits for it. Windows has no SIGTERM handler (kill ends the process at
+   *  once), so a world server is asked through its input and its `stopped` summary still arrives. */
   async stop(ms = 15_000): Promise<number> {
-    this.proc.kill('SIGTERM');
+    if (this.stopsOnStdin && this.proc.stdin?.writable) this.proc.stdin.end('stop\n');
+    else this.proc.kill('SIGTERM');
     const timer = setTimeout(() => this.proc.kill('SIGKILL'), ms);
     const code = await this.exited;
     clearTimeout(timer);
@@ -181,6 +188,7 @@ async function measuredRun(o: RunOptions): Promise<number> {
       process.execPath,
       ...SERVER_V8_FLAGS(o.semiSpace),
       SERVER_MAIN,
+      '--stop-on-stdin',
       '--transport', o.transport,
       '--port', String(ports.udp),
       '--rtc-port', String(ports.ice),
@@ -279,7 +287,7 @@ async function smokeOne(transport: 'udp' | 'rtc', bots: number, seconds: number)
   const worldId = randomUUID();
   const ice = 20_000 + Math.floor(Math.random() * 30_000);
   const server = new Child(
-    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--transport', transport, '--port', '0', '--rtc-port', String(ice), '--signal-port', '0', '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--capacity', String(bots + 4), '--world-size', '48', '--metrics-every', '0', '--world-id', worldId],
+    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--stop-on-stdin', '--transport', transport, '--port', '0', '--rtc-port', String(ice), '--signal-port', '0', '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--capacity', String(bots + 4), '--world-size', '48', '--metrics-every', '0', '--world-id', worldId],
     env,
     undefined,
   );
@@ -336,7 +344,7 @@ async function clientCheck(client: string[]): Promise<number> {
   const worldId = randomUUID();
   const ice = 20_000 + Math.floor(Math.random() * 30_000);
   const server = new Child(
-    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--transport', 'rtc', '--rtc-port', String(ice), '--signal-port', '0', '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--capacity', '4', '--metrics-every', '0', '--world-id', worldId],
+    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--stop-on-stdin', '--transport', 'rtc', '--rtc-port', String(ice), '--signal-port', '0', '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--capacity', '4', '--metrics-every', '0', '--world-id', worldId],
     { FLATCHAT_WORLD_KEY: toHex(key) },
     undefined,
   );
@@ -370,7 +378,7 @@ async function voiceCheck(seconds: number, client: string[], netem: string): Pro
   const worldId = randomUUID();
   const ice = 20_000 + Math.floor(Math.random() * 30_000);
   const server = new Child(
-    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--transport', 'rtc', '--rtc-port', String(ice), '--signal-port', '0', '--bind', host, '--rtc-bind', host, '--capacity', '4', '--metrics-every', '0', '--world-size', '64', '--spawn', '8,32,1', '--world-id', worldId],
+    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--stop-on-stdin', '--transport', 'rtc', '--rtc-port', String(ice), '--signal-port', '0', '--bind', host, '--rtc-bind', host, '--capacity', '4', '--metrics-every', '0', '--world-size', '64', '--spawn', '8,32,1', '--world-id', worldId],
     { FLATCHAT_WORLD_KEY: toHex(key) },
     undefined,
   );
@@ -398,7 +406,7 @@ async function lounge(players: number, hours: number): Promise<number> {
   const key = newWorldKey();
   const worldId = randomUUID();
   const server = new Child(
-    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--transport', 'rtc', '--rtc-port', '7778', '--signal-port', '7779', '--capacity', String(players + 2), '--metrics-every', '0', '--world-size', '96', '--spawn', '48,48,3', '--world-id', worldId],
+    [process.execPath, ...SERVER_V8_FLAGS(), SERVER_MAIN, '--stop-on-stdin', '--transport', 'rtc', '--rtc-port', '7778', '--signal-port', '7779', '--capacity', String(players + 2), '--metrics-every', '0', '--world-size', '96', '--spawn', '48,48,3', '--world-id', worldId],
     { FLATCHAT_WORLD_KEY: toHex(key) },
     undefined,
   );
