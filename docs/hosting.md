@@ -55,6 +55,8 @@ Run `cloudflared tunnel run flatchat-core`. `FLATCHAT_CORE_TUNNEL=1` makes the c
 
 ## 3. A world on the same PC
 
+The host tool ([tools/host-tool](../tools/host-tool/README.md); `npm run host --` from the repository, or `bin/flatchat-host` from its download) does every step below for any host: `host signin --core URL`, `host request --name "My Plaza"`, then, once the owner has approved it on the core's admin page (`https://core.example.org/admin`), `host key WORLD_ID` and `host run my-world --world-id WORLD_ID --map-port`. The same by hand, on the PC that also runs the core:
+
 Register it as a relayed world, approve it, and keep its key:
 
 ```sh
@@ -62,11 +64,11 @@ node --env-file=$HOME/.config/flatchat/core.env apps/core/src/admin.ts world reg
 node --env-file=$HOME/.config/flatchat/core.env apps/core/src/admin.ts world approve WORLD_ID     # prints FLATCHAT_WORLD_KEY and FLATCHAT_WORLD_ID once
 ```
 
-Put those two lines in `~/.config/flatchat/world.env`, then:
+Put those two lines in `~/.config/flatchat/world.env`, build the world (`npm run host -- build my-world`), then:
 
 ```sh
 node --env-file=$HOME/.config/flatchat/world.env apps/world-server/src/main.ts \
-  --transport rtc --map plaza --core https://core.example.org --relay \
+  --transport rtc --world my-world/.built --core https://core.example.org --relay \
   --ice-server stun:stun.cloudflare.com:3478 --map-port
 ```
 
