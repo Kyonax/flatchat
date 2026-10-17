@@ -9,8 +9,18 @@
   "engines": {
     "node": ">=24"
   },
+  "exports": {
+    "./net": "./src/net/index.ts",
+    "./metrics": "./src/metrics.ts",
+    "./server": "./src/server.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@flatchat/protocol": "*",
+    "node-datachannel": "0.33.4"
+  },
   "scripts": {
-    "start": "node src/main.ts",
+    "start": "node --min-semi-space-size=16 --max-semi-space-size=16 src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   }

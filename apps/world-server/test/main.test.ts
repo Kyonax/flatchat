@@ -2,6 +2,7 @@
 // Runs the real server process headless and reads its JSON lines.
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { fingerprintHex, PROTOCOL_VERSION } from '@flatchat/protocol';
 import { describe, expect, it } from 'vitest';
 
 const MAIN = fileURLToPath(new URL('../src/main.ts', import.meta.url));
@@ -46,6 +47,7 @@ describe('world server process', () => {
     const [ready, stopped] = events;
     expect(ready?.['tickHz']).toBe(50);
     expect(ready?.['port']).toBeGreaterThan(0);
+    expect(ready).toMatchObject({ protocol: PROTOCOL_VERSION, schema: fingerprintHex() });
     expect(stopped).toMatchObject({ reason: 'tick-limit', ticks: 10 });
   });
 
