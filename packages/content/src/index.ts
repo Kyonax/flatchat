@@ -26,3 +26,20 @@ export {
   type ZoneKind,
 } from './scene.ts';
 export { FILE_LIMIT, FOLDER_LIMIT, imageSize, validateWorld, type WorldReport } from './validate.ts';
+export {
+  BUILT_FORMAT,
+  type BuiltBox,
+  type BuiltEmitter,
+  type BuiltFile,
+  type BuiltKind,
+  type BuiltPortal,
+  type BuiltScene,
+  type BuiltSeat,
+  type BuiltSpawn,
+  type BuiltWorld,
+  type BuiltZone,
+  insideBox,
+  parseBuiltWorld,
+  type V3,
+} from './built.ts';
+export { type Collider, COLLISION_LIMITS, CollisionError, decodeColliders, encodeColliders, type P3, type Quat } from './collision.ts';
