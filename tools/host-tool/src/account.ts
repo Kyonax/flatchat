@@ -128,6 +128,9 @@ export const api = {
   update: (f: Fetch, core: string, a: string, id: string, change: { listed?: boolean; capacity?: number }): Promise<{ id: string; name: string; listed: boolean; capacity: number }> =>
     call(f, core, 'POST', `/api/v1/my/worlds/${id}`, change, a),
   key: (f: Fetch, core: string, a: string, id: string): Promise<{ key: string }> => call(f, core, 'GET', `/api/v1/worlds/${id}/key`, undefined, a),
+  /** A connect token for a world, as a player gets one (S3.06's `host push` joins with it). */
+  join: (f: Fetch, core: string, a: string, id: string): Promise<{ token: string; address: string; iceServers?: Array<{ urls: string | string[]; username?: string; credential?: string }> }> =>
+    call(f, core, 'POST', `/api/v1/worlds/${id}/join`, {}, a),
 };
 
 /** Where an approved world's key and id live for `host run`: one env file per world, user-only. */

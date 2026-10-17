@@ -11,11 +11,14 @@
 //   host listing WORLD_ID on|off    put a world on the public list, or take it off (S2.09)
 //   host key WORLD_ID               fetch an approved world's key (kept in ~/.config/flatchat/worlds)
 //   host run DIR --world-id ID [--map-port] [--ice-server URL]…   build if needed, then run it
+//   host push DIR --world-id ID     build DIR and send the build to the running world, for a builder,
+//                                   an admin or the owner there (S3.06); the world restarts on it
 //   host plugins DIR                the world's plugins: version, hooks, what each asks to do, settings
 //   host plugins DIR add NAME|FOLDER   install a plugin into DIR/plugins, showing what it asks for
 //                                   (NAME: entry-open, entry-verified or entry-trust, S3.05)
 //   host advise [--mbps N]          measure the upload (Cloudflare's speed test) and suggest a capacity
 import { spawn } from 'node:child_process';
+import { connectRtc } from '@flatchat/world-server/net';
 import { cpSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +28,7 @@ import { ConvertError, convertWorld, readFolder, writeBuilt } from '@flatchat/co
 import { access, api, coreUrl, HostError, loadSession, saveSession, saveWorldKey, signIn, worldEnvFile } from './account.ts';
 import { advise, measureUpload } from './advisor.ts';
 import { addPlugin, describePlugin, listPlugins } from './plugins.ts';
+import { pushBuild } from './push.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..');
@@ -50,14 +54,18 @@ const { values, positionals } = parseArgs({
 const [command, a1, a2, a3] = positionals;
 const say = (line: string): void => void process.stdout.write(`${line}\n`);
 
-async function build(dir: string, out: string): Promise<void> {
-  const { world, warnings } = await convertWorld(readFolder(dir)).then((r) => {
+async function build(dir: string, out: string): Promise<ReadonlyMap<string, Uint8Array>> {
+  const { world, warnings, out: files } = await convertWorld(readFolder(dir)).then((r) => {
     writeBuilt(out, r.out);
     return r;
   });
   for (const w of warnings) say(`warning: ${w}`);
   say(`built "${world.manifest.name}": ${world.files.length} files, ${world.files.reduce((n, f) => n + f.size, 0)} bytes → ${out}`);
+  return files;
 }
+
+/** Exit code of a world server that took a new build (S3.06): start it again on the new build. */
+const RESTART = 75;
 
 async function main(): Promise<number> {
   switch (command) {
@@ -138,8 +146,37 @@ async function main(): Promise<number> {
         ...(values['ice-server'] ?? ['stun:stun.cloudflare.com:3478']).flatMap((u) => ['--ice-server', u]),
       ];
       say(`running ${id} from ${out}: Ctrl+C stops it`);
-      const child = spawn(process.execPath, ['--min-semi-space-size=16', '--max-semi-space-size=16', ...args], { env, stdio: 'inherit' });
-      return new Promise((r) => child.on('exit', (code) => r(code ?? 1)));
+      // A world that took a new build from a builder (`host push`) exits to start again on it.
+      for (;;) {
+        const child = spawn(process.execPath, ['--min-semi-space-size=16', '--max-semi-space-size=16', ...args], { env, stdio: 'inherit' });
+        const code = await new Promise<number>((r) => child.on('exit', (c) => r(c ?? 1)));
+        if (code !== RESTART) return code;
+        say(`${id} took a new build: starting it again`);
+      }
+    }
+    case 'push': {
+      const dir = resolve(a1 ?? '.');
+      const id = values['world-id'];
+      if (!id) throw new HostError('host push DIR --world-id ID');
+      const files = await build(dir, join(dir, '.built'));
+      const { core, access: a } = await access();
+      const ticket = await api.join(fetch, core, a, id);
+      if (!/^https?:\/\//.test(ticket.address)) throw new HostError(`the world's address is not one host push can reach (${ticket.address})`);
+      const link = await connectRtc({ signalUrl: ticket.address, iceServers: ticket.iceServers ?? [], headers: { authorization: `Bearer ${a}` } });
+      let shown = -1;
+      try {
+        const r = await pushBuild(link, new Uint8Array(Buffer.from(ticket.token, 'base64url')), files, {
+          progress: (sent, total) => {
+            const pct = Math.floor((sent / Math.max(1, total)) * 10) * 10;
+            if (pct !== shown) say(`sent ${pct} %`);
+            shown = pct;
+          },
+        });
+        say(r.ok ? 'the world took the build: it restarts on it, and players come back in' : `the world refused the build: ${r.detail}`);
+        return r.ok ? 0 : 1;
+      } finally {
+        link.close('pushed');
+      }
     }
     case 'plugins': {
       const dir = resolve(a1 ?? '.');
@@ -165,7 +202,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|plugins|advise … (see the header of tools/host-tool/src/cli.ts)\n');
+      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|push|plugins|advise … (see the header of tools/host-tool/src/cli.ts)\n');
       return 2;
   }
 }
