@@ -4,7 +4,7 @@
 # packaged and smoke-tested on Linux and on Windows, each smoke test also joining a world server over
 # WebRTC data channels; on Linux, Stage 1's path end to end (the core on PostgreSQL, an invited
 # account, sign-in through the browser flow, an approved world on the plaza, joining, walking and
-# chat). GitHub's runners are free for public repositories.
+# chat), and once more relay-only through coturn. GitHub's runners are free for public repositories.
 # Each job has a time limit, so a hung smoke test fails in minutes instead of GitHub's six hours.
 name: CI
 
@@ -96,11 +96,16 @@ jobs:
       # The runner's PostgreSQL (its programs only; the test runs its own private cluster).
       - name: End to end, sign in, join the plaza, walk and chat
         run: xvfb-run -a node tools/bots/src/e2e.ts apps/client/release/linux-unpacked/flatchat --shot e2e-linux.png
+      # S2.12: the same path with the client relay-only, as a player behind a NAT that lets nothing
+      # through but a TURN relay: no join without coturn, then the join goes through it.
+      - run: sudo apt-get update -q && sudo apt-get install -y -q coturn
+      - name: End to end through a TURN relay only
+        run: xvfb-run -a node tools/bots/src/e2e.ts apps/client/release/linux-unpacked/flatchat --relay --shot e2e-relay.png
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-linux
-          path: e2e-linux.png
+          path: e2e-*.png
           if-no-files-found: ignore
           retention-days: 7
       # The same build with no way to draw must fail its smoke test, or a blank client could pass.
