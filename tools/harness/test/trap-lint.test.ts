@@ -134,6 +134,17 @@ describe('the reporter’s voice clip', () => {
   });
 });
 
+describe('the abuse path’s sealed evidence', () => {
+  it('opens only in the abuse module and the admin command line (T21)', () => {
+    const module = { rel: 'apps/core/src/abuse.ts', text: 'const plain = openBytes(evidenceKey(secret), id, sealed); exportCase(db, secret, id);' };
+    const cli = { rel: 'apps/core/src/admin.ts', text: 'await exportCase(db, env.secret, id);' };
+    const route = { rel: 'apps/core/src/app.ts', text: 'reply.send(await exportCase(o.db, o.secret, id));' };
+    const direct = { rel: 'apps/core/src/reports.ts', text: 'openBytes(key, id, row.preserved);' };
+    const test = { rel: 'apps/core/test/abuse.test.ts', text: 'await exportCase(db, secret, id);' };
+    expect(traps(module, cli, route, direct, test)).toEqual(['T21', 'T21']);
+  });
+});
+
 describe('CI workflows', () => {
   const wf = (text: string): Source => ({ rel: '.github/workflows/ci.yml', text });
   const good = `jobs:

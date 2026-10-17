@@ -59,6 +59,7 @@ export const TRAPS = {
   T18: { severity: 'error', rule: 'core-service', title: 'SQL text built at run time', fix: 'pass values as query parameters ($1, $2, …); a template may only splice in an ALL_CAPS constant such as a column list' },
   T19: { severity: 'error', rule: 'core-service', title: 'markup made from data in the core\'s pages', fix: 'raw() takes only literal markup written in the code; everything else goes through html`…`, which escapes it' },
   T20: { severity: 'error', rule: 'reports-and-safety', title: 'voice clip taken outside a report', fix: 'only apps/client/src/renderer/src/world/report.ts calls takeClip: what a player heard leaves the client only inside the report they send (OQ-18)' },
+  T21: { severity: 'error', rule: 'reports-and-safety', title: 'sealed evidence opened outside the abuse path', fix: 'only apps/core/src/abuse.ts opens a sealed package (openBytes), and only it and the admin command line (src/admin.ts) call exportCase: no web route ever serves preserved evidence (S3.12)' },
 } as const satisfies Record<string, Trap>;
 
 export type TrapId = keyof typeof TRAPS;
@@ -73,6 +74,12 @@ const IPC_METHODS = new Set(['send', 'sendSync', 'invoke', 'on', 'once', 'postMe
 const ALLOW_RE = /trap-lint:\s*allow\s+((?:T\d\d[\s,]*)+)/;
 
 const isRenderer = (rel: string): boolean => rel.startsWith('apps/client/src/renderer/');
+/** The files that may open the abuse path's sealed packages (S3.12, T21). */
+const EVIDENCE_OPENERS = new Map<string, readonly string[]>([
+  ['openBytes', ['apps/core/src/abuse.ts']],
+  ['exportCase', ['apps/core/src/abuse.ts', 'apps/core/src/admin.ts']],
+]);
+
 /** The one file that may take the reporter's voice clip (S3.02, T20). */
 const REPORT_BUILDER = 'apps/client/src/renderer/src/world/report.ts';
 const isPreload = (rel: string): boolean => rel.startsWith('apps/client/src/preload/');
@@ -203,6 +210,8 @@ function scanCode(rel: string, text: string, kind = scriptKind(rel), lineOffset 
         add('T19', node, 'raw(…) marks text built at run time as markup');
       }
       if (rel.startsWith('apps/client/src/') && rel !== REPORT_BUILDER && /(^|\.)takeClip$/.test(callee)) add('T20', node, 'takes the voice clip outside the report builder');
+      const opener = EVIDENCE_OPENERS.get(callee.split('.').pop() ?? '');
+      if (rel.startsWith('apps/core/src/') && opener && !opener.includes(rel)) add('T21', node, `${callee} opens sealed evidence outside the abuse path`);
       const [base, method] = [callee.split('.').slice(0, -1).join('.'), callee.split('.').pop()];
       if ((method === 'exec' || method === 'execSync') && childProcessNames.has(base)) {
         add('T13', node, `${callee} runs a shell`);
