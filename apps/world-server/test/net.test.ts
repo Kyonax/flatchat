@@ -10,6 +10,18 @@ import { connectUdp, UdpServer, UdpSession } from '../src/net/udp.ts';
 
 type Got = Array<[Channel, Buffer]>;
 
+/** A repeatable stream of numbers in [0, 1) (mulberry32). */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
 /** Two sessions joined by an in-memory wire that can drop, duplicate or tamper with datagrams. */
 function wire(options: { drop?: (n: number) => boolean; tamper?: (n: number) => boolean; duplicate?: boolean } = {}) {
   const c2s = randomBytes(32);
@@ -30,10 +42,10 @@ function wire(options: { drop?: (n: number) => boolean; tamper?: (n: number) => 
   const gotServer: Got = [];
   client.onMessage((ch, b) => gotClient.push([ch, Buffer.from(b)]));
   server.onMessage((ch, b) => gotServer.push([ch, Buffer.from(b)]));
-  /** Delivers queued datagrams and services both ends, as time passes. */
-  const run = async (ms: number): Promise<void> => {
+  /** Delivers queued datagrams and services both ends, as time passes, until `ms` or `done()`. */
+  const run = async (ms: number, done?: () => boolean): Promise<void> => {
     const end = performance.now() + ms;
-    while (performance.now() < end) {
+    while (performance.now() < end && !done?.()) {
       while (queue.length > 0) queue.shift()!();
       const now = performance.now();
       client.service(now);
@@ -63,13 +75,16 @@ describe('the raw UDP session', () => {
     expect(w.gotClient[0]?.[1].equals(big)).toBe(true);
   });
 
+  // A fixed loss pattern, and a wait for the last message rather than a fixed time: a slow runner's
+  // timers inflate the measured round trip, and so the retransmission timeout (up to 1 s, doubling).
   it('delivers every reliable message through 20% loss, in order', async () => {
-    const w = wire({ drop: () => Math.random() < 0.2 });
+    const lose = seeded(20_261_017);
+    const w = wire({ drop: () => lose() < 0.2 });
     for (let i = 0; i < 200; i++) w.client.send('reliable', Buffer.from(`m${i}`));
-    await w.run(3000);
+    await w.run(30_000, () => w.gotServer.length >= 200);
     expect(w.gotServer.map(([, b]) => b.toString())).toEqual(Array.from({ length: 200 }, (_, i) => `m${i}`));
     expect(w.client.stats().retransmits).toBeGreaterThan(0);
-  });
+  }, 40_000);
 
   it('drops tampered and replayed datagrams', async () => {
     const w = wire({ tamper: (n) => n === 0, duplicate: true });

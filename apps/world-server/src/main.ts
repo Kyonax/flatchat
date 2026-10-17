@@ -2,12 +2,13 @@
 // The world server's program. It serves one world over raw UDP, WebRTC data channels or both,
 // headless, and writes one JSON object per line to stdout: `ready` (the protocol version and
 // schema it speaks, and where it listens), `metrics` every few seconds, `stopped` with the run's
-// summary. It stops cleanly on SIGINT or SIGTERM.
+// summary. It stops cleanly on SIGINT or SIGTERM, and with --stop-on-stdin on a `stop` line or the end
+// of its input (Windows has no SIGTERM handler).
 //
 //   node src/main.ts [--port 7777] [--transport udp|rtc|both] [--rtc-port 7778] [--signal-port 7779]
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
 //                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
-//                    [--world-id UUID] [--seed N] [--spawn X,Z,R]
+//                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--stop-on-stdin]
 //
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
 // world's key comes from the environment, FLATCHAT_WORLD_KEY (64 hexadecimal characters), never
@@ -54,6 +55,7 @@ const { values } = parseArgs({
     'world-size': { type: 'string', default: '256' },
     'metrics-every': { type: 'string', default: '5' },
     trace: { type: 'string' },
+    'stop-on-stdin': { type: 'boolean', default: false },
     'world-id': { type: 'string' },
     seed: { type: 'string', default: '1' },
     spawn: { type: 'string' },
@@ -164,4 +166,13 @@ const shutdown = async (reason: string): Promise<void> => {
 };
 process.once('SIGINT', () => void shutdown('SIGINT'));
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
+// Windows delivers no SIGTERM a process can handle, so a parent (the bots' runs, the host tool) asks
+// through standard input instead: a line `stop`, or the input closing.
+if (values['stop-on-stdin']) {
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk: string) => {
+    if (chunk.split('\n').some((line) => line.trim() === 'stop')) void shutdown('stdin');
+  });
+  process.stdin.on('end', () => void shutdown('stdin'));
+}
 void ticker.done.then(() => shutdown(maxTicks !== undefined && ticker.ticks >= maxTicks ? 'tick-limit' : 'stopped'));
