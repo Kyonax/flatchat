@@ -47,3 +47,20 @@ export {
 } from './built.ts';
 export { type Collider, COLLISION_LIMITS, CollisionError, decodeColliders, encodeColliders, type P3, type Quat } from './collision.ts';
 export { BASE_PARTS, isPart, MAX_PARTS, PART_COLOURS, type PartBox, type PartColour, type PartDef } from './parts.ts';
+export {
+  AVATAR_FORMAT,
+  AVATAR_LIMITS,
+  AVATAR_SOURCE_LIMIT,
+  type AvatarLevel,
+  type AvatarManifest,
+  type AvatarSourceKind,
+  type AvatarStats,
+  checkManifest,
+  type Level,
+  LEVELS,
+  RANK_LIMITS,
+  type Rank,
+  RANKS,
+  rankIndex,
+  rankOf,
+} from './avatar.ts';
