@@ -86,10 +86,10 @@ export async function waitFor<T>(what: string, ms: number, probe: () => Promise<
 
 /** Signs up with an invitation and signs in the way the client does (a PKCE login request, the
  *  sign-in page's form, the code exchange), playing the browser over HTTP. Returns the access token;
- *  never print it. */
-export async function signUpAndIn(coreUrl: string, invitation: string, email: string, password: string, displayName: string): Promise<string> {
-  const form = { 'content-type': 'application/x-www-form-urlencoded' };
-  const json = { 'content-type': 'application/json' };
+ *  never print it. `extra` goes with every request (a forwarded address, for a core behind a tunnel). */
+export async function signUpAndIn(coreUrl: string, invitation: string, email: string, password: string, displayName: string, extra: Record<string, string> = {}): Promise<string> {
+  const form = { 'content-type': 'application/x-www-form-urlencoded', ...extra };
+  const json = { 'content-type': 'application/json', ...extra };
   const signup = await fetch(`${coreUrl}/signup?lang=en`, {
     method: 'POST',
     headers: form,

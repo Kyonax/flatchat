@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // One headless player on the real protocol and a real transport. It seals its own connect token
-// (in the spike the bots stand in for the core, holding the world's key), joins with hello, waits
+// (in the spike the bots stand in for the core, holding the world's key) or uses one the core
+// issued to a real account (Stage 3's acceptance, S3.13), joins with hello, waits
 // for its spawn, then sends its pose at 20 Hz, voice frames at 50 Hz while it talks, a chat line
 // now and then and a ping every second. It decodes everything the server sends, as a client
 // would, and counts it by message type.
@@ -50,6 +51,10 @@ export interface BotOptions {
   goal?: { x: number; z: number };
   /** Called when the world says the bot walked into a portal. */
   onPortal?: (to: { world: string; spawn: string }) => void;
+  /** A connect token the core issued to a real account (S3.13); the bot seals its own without it. */
+  token?: () => Promise<Uint8Array>;
+  /** Stays where it was placed: sends no poses (a listener in a zone, S3.13). */
+  still?: boolean;
 }
 
 export type BotState = 'new' | 'connecting' | 'joined' | 'refused' | 'failed' | 'closed';
@@ -104,7 +109,20 @@ export class Bot {
   entity: number | undefined;
   lostReason = '';
   refuseReason = '';
+  /** The refusal's detail: an entry rule's own words, a ban's reason. */
+  refuseDetail = '';
   joinMs = 0;
+  /** Voice frames heard, by speaker entity; chat lines read, by sender entity (S3.13). */
+  readonly heard = new Map<number, number>();
+  readonly read = new Map<number, number>();
+  /** The entities the world keeps apart from this bot (blocks), as it last said. */
+  hidden: readonly number[] = [];
+  /** A moderator's mute in force, with its reason (the `muted` message). */
+  heldMute: string | undefined;
+  /** How the world removed the bot, when it did (kicked, banned, closing). */
+  removed: { reason: string; detail: string } | undefined;
+  /** Who is in the world, by account: their entities and roles (the roster). */
+  readonly people = new Map<string, { entity: number; role: string }>();
   /** Where the server placed the bot at its join. */
   spawnAt: { x: number; z: number } | undefined;
   private joinedAt = 0;
@@ -140,6 +158,7 @@ export class Bot {
     // A retry starts clean: a first attempt's failure is not a loss once the bot is in.
     this.lostReason = '';
     this.refuseReason = '';
+    this.refuseDetail = '';
     const started = performance.now();
     try {
       this.link = t.transport === 'udp' ? await connectUdp({ host: t.host, port: t.udpPort }) : await connectRtc({ signalUrl: t.signalUrl, ...(t.iceBind ? { iceBind: t.iceBind } : {}) });
@@ -155,10 +174,21 @@ export class Bot {
       this.stoppedAt ||= performance.now();
       this.settle?.();
     });
-    const token = await sealToken(
-      { account: this.options.account ?? randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30, owner: false, contact: 'everyone', friends: [], blocks: [] },
-      { key: t.worldKey, world: t.worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 },
-    );
+    let token: Uint8Array;
+    try {
+      token = this.options.token
+        ? await this.options.token()
+        : await sealToken(
+            { account: this.options.account ?? randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30, owner: false, contact: 'everyone', friends: [], blocks: [] },
+            { key: t.worldKey, world: t.worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 },
+          );
+    } catch (err) {
+      // The core gave no token (a platform ban, a guardian not yet asked): no join.
+      this.state = 'failed';
+      this.lostReason = err instanceof Error ? err.message : String(err);
+      this.link.close('no token');
+      return;
+    }
     const answered = new Promise<void>((resolve) => {
       this.settle = resolve;
     });
@@ -183,7 +213,7 @@ export class Bot {
   tick(slot: number, now: number): void {
     if (this.state !== 'joined' || !this.placed || this.stopping) return;
     const s = slot + this.options.index;
-    if (s % 5 === 0) {
+    if (s % 5 === 0 && !this.options.still) {
       const dt = this.lastPoseAt === 0 ? 0.05 : Math.min(0.5, (now - this.lastPoseAt) / 1000);
       this.lastPoseAt = now;
       const p = this.brain.step(dt);
@@ -245,6 +275,11 @@ export class Bot {
     };
   }
 
+  /** Sends one message as this player (a moderator's action, a block, a role). */
+  act(message: Message): void {
+    this.send(message);
+  }
+
   private send(message: Message): void {
     if (!this.link) return;
     const bytes = encodeMessage(message);
@@ -277,6 +312,7 @@ export class Bot {
         break;
       case 'refuse':
         this.refuseReason = m.reason;
+        this.refuseDetail = m.detail;
         this.state = 'refused';
         this.settle?.();
         break;
@@ -310,10 +346,23 @@ export class Bot {
       case 'voiceBundle':
         this.window.voiceFrames += m.frames.length;
         this.total.voiceFrames += m.frames.length;
+        for (const f of m.frames) this.heard.set(f.from, (this.heard.get(f.from) ?? 0) + 1);
         break;
       case 'chat':
         this.window.chats += 1;
         this.total.chats += 1;
+        if (m.from !== undefined) this.read.set(m.from, (this.read.get(m.from) ?? 0) + 1);
+        break;
+      case 'roster':
+        if (m.full) this.people.clear();
+        for (const p of m.players) this.people.set(p.account, { entity: p.entity, role: p.role });
+        for (const gone of m.left) for (const [account, p] of this.people) if (p.entity === gone) this.people.delete(account);
+        break;
+      case 'hidden':
+        this.hidden = m.entities;
+        break;
+      case 'muted':
+        this.heldMute = m.on ? m.reason : undefined;
         break;
       case 'pong': {
         const rtt = ((Math.floor(performance.now()) >>> 0) - m.time) >>> 0;
@@ -323,6 +372,7 @@ export class Bot {
       }
       case 'leave':
         if (!this.stopping) this.lostReason = `server: ${m.reason}`;
+        this.removed = { reason: m.reason, detail: m.detail };
         break;
       case 'portal':
         this.options.onPortal?.({ world: m.world, spawn: m.spawn });
