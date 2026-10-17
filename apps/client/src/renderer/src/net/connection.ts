@@ -29,6 +29,8 @@ export interface JoinOptions {
   build?: string;
   /** The spawn group a portal named (S2.11); the world's own spawn points when left out. */
   spawn?: string;
+  /** The player's chosen height in centimetres (S2.07); the platform's default when left out. */
+  height?: number;
   timeoutMs?: number;
   /** Gets every message from the first one, the welcome, the join's roster and its snapshot included. */
   onMessage?: (m: Message) => void;
@@ -137,7 +139,7 @@ export class WorldConnection {
       const reply = Promise.race([conn.next('welcome', () => true, timeout), conn.next('refuse', () => true, timeout)]);
       const placed = conn.next('snapshot', (s) => s.correction?.seq === 0, timeout);
       placed.catch(() => undefined); // a refused join never gets one
-      conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '' });
+      conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '', height: Math.max(0, Math.min(1023, Math.round(options.height ?? 0))) });
       const first = await reply;
       if (first.type === 'refuse') throw new JoinRefused(first.reason, first.detail);
       conn.welcome = first;

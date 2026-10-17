@@ -18,6 +18,9 @@ export interface AvatarPose {
   speaking: number;
   /** Hidden: the player's own body in first person. */
   hidden?: boolean;
+  /** The player's height over the standard body's (S2.07); 1 when left out. */
+  scale?: number;
+  sitting?: boolean;
 }
 
 export type TagFactory = (name: string) => THREE.Sprite;
@@ -96,6 +99,9 @@ export class CrowdView {
     const scale = new THREE.Vector3(1, 1, 1);
     for (const a of avatars) {
       if (a.hidden || n >= CAPACITY) continue;
+      const s = a.scale ?? 1;
+      // A seated placeholder folds to about two thirds of its height.
+      scale.set(s, a.sitting ? s * 0.68 : s, s);
       this.q.setFromAxisAngle(this.up, a.yaw);
       this.m.compose(new THREE.Vector3(a.x, a.y, a.z), this.q, scale);
       this.bodies.setMatrixAt(n, this.m);
@@ -103,8 +109,8 @@ export class CrowdView {
       this.visors.setMatrixAt(n, this.m);
       n += 1;
       if (a.speaking > 0.05) {
-        const s = 0.8 + Math.min(1, a.speaking) * 0.6;
-        this.m.compose(new THREE.Vector3(a.x, a.y, a.z), this.q, new THREE.Vector3(s, 1, s));
+        const r = (0.8 + Math.min(1, a.speaking) * 0.6) * s;
+        this.m.compose(new THREE.Vector3(a.x, a.y, a.z), this.q, new THREE.Vector3(r, scale.y, r));
         this.rings.setMatrixAt(speakers, this.m);
         speakers += 1;
       }
@@ -144,7 +150,7 @@ export class CrowdView {
         this.tags.set(a.entity, tag);
         this.group.add(tag.sprite);
       }
-      tag.sprite.position.set(a.x, a.y + BODY.height + 0.45, a.z);
+      tag.sprite.position.set(a.x, a.y + (BODY.height + 0.45) * (a.scale ?? 1) * (a.sitting ? 0.7 : 1), a.z);
     }
   }
 

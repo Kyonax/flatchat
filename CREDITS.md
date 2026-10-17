@@ -12,6 +12,7 @@ Rules for every entry:
 | Item | Path | Creator | Source | Licence | Retrieved | Changes |
 |---|---|---|---|---|---|---|
 | The libopus 1.6.1 licence text | `apps/client/third_party/opus/COPYING` | Xiph.Org Foundation and the Opus contributors | [xiph/opus, v1.6.1](https://github.com/xiph/opus/blob/v1.6.1/COPYING) | BSD-3-Clause | 2026-10-17 | None |
+| The Recast & Detour licence text | `apps/client/third_party/recast/License.txt` | Mikko Mononen | [recastnavigation/recastnavigation](https://github.com/recastnavigation/recastnavigation/blob/main/License.txt) | Zlib | 2026-10-17 | None |
 
 ## Packages that ship
 
@@ -36,7 +37,7 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 | @fastify/websocket, with ws | the core | the Fastify contributors; Einar Otto Stangvik and the ws contributors | [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket), [websockets/ws](https://github.com/websockets/ws) | MIT | 11.3.4, 8.22.0 |
 | glTF Transform (`@gltf-transform/*`) | the host tool (the converter) | Don McCurdy and the glTF Transform contributors | [donmccurdy/glTF-Transform](https://github.com/donmccurdy/glTF-Transform) | MIT | 4.5.1 |
 | meshoptimizer | the host tool (the converter) | Arseny Kapoulkine | [zeux/meshoptimizer](https://github.com/zeux/meshoptimizer) | MIT | 1.3.0 |
-| recast-navigation-js, with Recast and Detour inside | the host tool (the converter) | Isaac Mason; Recast and Detour by Mikko Mononen | [isaac-mason/recast-navigation-js](https://github.com/isaac-mason/recast-navigation-js), [recastnavigation/recastnavigation](https://github.com/recastnavigation/recastnavigation) | MIT; Recast and Detour zlib | 0.43.1 |
+| recast-navigation-js, with Recast and Detour inside | the client (click to move), the world server (where teleports land), the host tool (the converter) | Isaac Mason; Recast and Detour by Mikko Mononen | [isaac-mason/recast-navigation-js](https://github.com/isaac-mason/recast-navigation-js), [recastnavigation/recastnavigation](https://github.com/recastnavigation/recastnavigation) | MIT; Recast and Detour zlib | 0.43.1 |
 | ktx2-encoder, with Basis Universal inside | the host tool (the converter) | gz65555; Basis Universal by Binomial LLC | [gz65555/ktx2-encoder](https://github.com/gz65555/ktx2-encoder), [BinomialLLC/basis_universal](https://github.com/BinomialLLC/basis_universal) | MIT; Basis Universal Apache-2.0 | 0.6.0 |
 | pngjs | the host tool (the converter) | Luke Page and the pngjs contributors | [pngjs/pngjs](https://github.com/pngjs/pngjs) | MIT | 7.0.0 |
 | jpeg-js | the host tool (the converter) | Eugene Ware and the jpeg-js contributors | [jpeg-js/jpeg-js](https://github.com/jpeg-js/jpeg-js) | BSD-3-Clause | 0.4.4 |

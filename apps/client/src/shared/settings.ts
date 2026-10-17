@@ -3,7 +3,7 @@
 // shows and changes them). Pure: no Node.js, no Electron, no DOM. Anything malformed falls back to
 // its default field by field, so a damaged file never stops the client.
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'view', 'chat', 'talk', 'mute', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -16,6 +16,13 @@ export const DEFAULT_KEYS: Bindings = {
   right: ['KeyD', 'ArrowRight'],
   run: ['ShiftLeft'],
   jump: ['Space'],
+  // Flying (where a world allows it): F turns it on and off, Space rises, C sinks (S2.06).
+  down: ['KeyC'],
+  fly: ['KeyF'],
+  // Sit on the nearest seat or stand up; walk to, or teleport to, the spot under the crosshair.
+  sit: ['KeyE'],
+  goto: ['KeyG'],
+  teleport: ['KeyH'],
   view: ['KeyV'],
   chat: ['Enter'],
   talk: ['KeyT'],
@@ -54,6 +61,14 @@ export interface ViewSettings {
   invertY: boolean;
 }
 
+/** How tall the player is (S2.07, Q-M30): free within this range; each world fits it into its own. */
+export const HEIGHT_RANGE = { min: 0.3, max: 5, default: 1.75 } as const;
+
+export interface AvatarSettings {
+  /** Metres. */
+  height: number;
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -62,6 +77,7 @@ export interface Settings {
   keys: Bindings;
   voice: VoiceSettings;
   view: ViewSettings;
+  avatar: AvatarSettings;
 }
 
 export function defaultSettings(): Settings {
@@ -72,6 +88,7 @@ export function defaultSettings(): Settings {
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1 },
     view: { person: 'third', sensitivity: 12, invertY: false },
+    avatar: { height: HEIGHT_RANGE.default },
   };
 }
 
@@ -104,6 +121,7 @@ export function cleanSettings(raw: unknown): Settings {
   const r = obj(raw);
   const voice = obj(r['voice']);
   const view = obj(r['view']);
+  const avatar = obj(r['avatar']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -122,6 +140,10 @@ export function cleanSettings(raw: unknown): Settings {
       sensitivity: num(view['sensitivity'], 1, 60, d.view.sensitivity),
       invertY: bool(view['invertY'], d.view.invertY),
     },
+    avatar: {
+      // Centimetre steps, as the protocol carries it.
+      height: Math.round(num(avatar['height'], HEIGHT_RANGE.min, HEIGHT_RANGE.max, d.avatar.height) * 100) / 100,
+    },
   };
 }
 
@@ -133,6 +155,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     ...p,
     voice: { ...current.voice, ...obj(p['voice']) },
     view: { ...current.view, ...obj(p['view']) },
+    avatar: { ...current.avatar, ...obj(p['avatar']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

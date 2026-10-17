@@ -15,7 +15,8 @@ import { Controls, PITCH_LIMIT } from '../src/renderer/src/world/controls';
 import { CrowdView } from '../src/renderer/src/world/crowd-view';
 import { buildWorldScene } from '../src/renderer/src/world/plaza-scene';
 import { angleDelta, Remotes } from '../src/renderer/src/world/remotes';
-import { ACTIONS, actionFor, bind, cleanSettings, DEFAULT_KEYS, defaultSettings, mergeSettings, unbind } from '../src/shared/settings';
+import { PathWalker } from '../src/renderer/src/world/walker';
+import { ACTIONS, actionFor, bind, cleanSettings, DEFAULT_KEYS, defaultSettings, HEIGHT_RANGE, mergeSettings, unbind } from '../src/shared/settings';
 
 describe('settings', () => {
   it('fall back field by field and never keep a code twice', () => {
@@ -44,6 +45,16 @@ describe('settings', () => {
     expect(merged.voice).toMatchObject({ mode: 'push', volume: 1 });
     expect(merged.view.person).toBe('first');
     for (const a of ACTIONS) expect(DEFAULT_KEYS[a].length).toBeGreaterThan(0);
+  });
+
+  it('give an older file the new actions and a height kept in centimetre steps within the range (S2.06, S2.07)', () => {
+    const old = cleanSettings({ keys: { forward: ['KeyW'], jump: ['Space'] } });
+    expect([old.keys.fly, old.keys.down, old.keys.sit, old.keys.goto, old.keys.teleport]).toEqual([['KeyF'], ['KeyC'], ['KeyE'], ['KeyG'], ['KeyH']]);
+    expect(old.avatar.height).toBe(HEIGHT_RANGE.default);
+    expect(cleanSettings({ avatar: { height: 1.8333 } }).avatar.height).toBe(1.83);
+    expect(cleanSettings({ avatar: { height: 99 } }).avatar.height).toBe(HEIGHT_RANGE.max);
+    expect(cleanSettings({ avatar: { height: 'tall' } }).avatar.height).toBe(HEIGHT_RANGE.default);
+    expect(mergeSettings(defaultSettings(), { avatar: { height: 0.1 } }).avatar.height).toBe(HEIGHT_RANGE.min);
   });
 });
 
@@ -109,6 +120,53 @@ describe('the camera', () => {
     const wall = [{ min: { x: 60, y: 0, z: 77 }, max: { x: 68, y: 5, z: 78 } }];
     const pulled = cameraPose('third', feet, 0, 0, wall);
     expect(pulled.position.z).toBeLessThan(77 - 0.25 + 0.01);
+  });
+
+  it('grows and shrinks with the player’s height (S2.07)', () => {
+    const feet = { x: 64, y: 0, z: 76 };
+    expect(cameraPose('first', feet, 0, 0, [], 2).position.y).toBeCloseTo(1.62 * 2);
+    expect(cameraPose('first', feet, 0, 0, [], 0.5).position.y).toBeCloseTo(1.62 * 0.5);
+    const tall = cameraPose('third', feet, 0, 0, [], 2);
+    const short = cameraPose('third', feet, 0, 0, [], 0.3);
+    expect(tall.position.z - feet.z).toBeCloseTo(7.2);
+    expect(short.position.z - feet.z).toBeCloseTo(1.2);
+  });
+});
+
+describe('walking to a spot (S2.06)', () => {
+  /** Walks a point along the walker's input at 3.6 m/s, as the movement rules would. */
+  function walk(w: PathWalker, from: { x: number; y: number; z: number }, yaw: number, seconds: number): { x: number; y: number; z: number } {
+    const at = { ...from };
+    for (let t = 0; t < seconds && !w.done; t += 1 / 60) {
+      const i = w.input(at, yaw, 1 / 60);
+      // packages/sim's wishVelocity: facing (-sin yaw, -cos yaw), right (cos yaw, -sin yaw).
+      at.x += (-Math.sin(yaw) * i.forward + Math.cos(yaw) * i.right) * 3.6 / 60;
+      at.z += (-Math.cos(yaw) * i.forward - Math.sin(yaw) * i.right) * 3.6 / 60;
+    }
+    return at;
+  }
+
+  it('turns each corner of a path into the keys’ own input, whatever way the player faces', () => {
+    const w = new PathWalker([{ x: 0, y: 0, z: -4 }]);
+    expect(w.input({ x: 0, y: 0, z: 0 }, 0, 1 / 60)).toEqual({ forward: 1, right: expect.closeTo(0, 6) });
+    const side = new PathWalker([{ x: 4, y: 0, z: 0 }]);
+    const i = side.input({ x: 0, y: 0, z: 0 }, 0, 1 / 60);
+    expect(i.forward).toBeCloseTo(0, 6);
+    expect(i.right).toBeCloseTo(1, 6);
+    for (const yaw of [0, 1, -2.5]) {
+      const path = new PathWalker([{ x: 5, y: 0, z: 0 }, { x: 5, y: 0, z: -6 }, { x: -2, y: 0, z: -6 }]);
+      const end = walk(path, { x: 0, y: 0, z: 0 }, yaw, 20);
+      expect(path.done).toBe(true);
+      expect(Math.hypot(end.x + 2, end.z + 6)).toBeLessThan(0.4);
+    }
+  });
+
+  it('gives up when it stops getting closer', () => {
+    const w = new PathWalker([{ x: 10, y: 0, z: 0 }]);
+    const stuck = { x: 0, y: 0, z: 0 };
+    for (let k = 0; k < 120 && !w.done; k++) w.input(stuck, 0, 1 / 60);
+    expect(w.done).toBe(true);
+    expect(new PathWalker([]).done).toBe(true);
   });
 });
 

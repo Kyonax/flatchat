@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, type Settings, unbind, validCode } from '../../../shared/settings';
+import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, type Settings, unbind, validCode } from '../../../shared/settings';
 import { keyLabel, mouseCode } from './keys';
 
 const props = defineProps<{ settings: Settings }>();
@@ -61,6 +61,7 @@ const resetKeys = (): void => emit('change', { keys: Object.fromEntries(ACTIONS.
 const clear = (a: Action, slot: 0 | 1): void => emit('change', { keys: unbind(props.settings.keys, a, slot) });
 const voice = (patch: Partial<Settings['voice']>): void => emit('change', { voice: { ...props.settings.voice, ...patch } });
 const view = (patch: Partial<Settings['view']>): void => emit('change', { view: { ...props.settings.view, ...patch } });
+const avatar = (patch: Partial<Settings['avatar']>): void => emit('change', { avatar: { ...props.settings.avatar, ...patch } });
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -180,6 +181,23 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
         >
         <span>{{ t('settings.invertY') }}</span>
       </label>
+
+      <h2>{{ t('settings.avatar') }}</h2>
+      <label class="row">
+        <span class="grow">{{ t('settings.height', { m: settings.avatar.height.toFixed(2) }) }}</span>
+        <input
+          type="range"
+          :min="HEIGHT_RANGE.min"
+          :max="HEIGHT_RANGE.max"
+          step="0.05"
+          :value="settings.avatar.height"
+          data-test="height"
+          @change="avatar({ height: num($event) })"
+        >
+      </label>
+      <p class="muted small">
+        {{ t('settings.heightHint') }}
+      </p>
 
       <h2>{{ t('settings.voice') }}</h2>
       <div class="row">

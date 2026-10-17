@@ -3,6 +3,13 @@
 // times a second and corrected by the server), everyone else drawn smoothly in the past, the
 // camera, text chat and proximity voice. The page shows `state` and calls the methods; the
 // browser's input events come in through `attach`.
+//
+// The full movement set (S2.06): flying where the world allows it (F; Space up, C down); sitting
+// on a seat within reach (E; any move stands up); walking to the spot under the crosshair (G: along
+// the world's navigation mesh, or straight on a map made in code) or teleporting there (H: the
+// world checks it and answers `placed`). Heights (S2.07): the player's chosen height goes in the
+// hello and in `appearance`; everyone is drawn, and the camera placed, at the height the world
+// fitted (the roster's).
 import { type Collider, decodeColliders } from '@flatchat/content';
 import { decodeCellBlock, type Message, type MessageOf, toHex } from '@flatchat/protocol';
 import { BODY, type MoveInput, type WorldMap } from '@flatchat/sim';
@@ -14,10 +21,12 @@ import { cameraPose } from './camera';
 import { Controls } from './controls';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
+import { Navigation } from './navigation';
 import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
+import { PathWalker } from './walker';
 
 const CELL = 32;
 const POSE_MS = 50;
@@ -57,6 +66,9 @@ export interface WorldState {
   download: Progress | undefined;
   /** The built world's name, once it has loaded. */
   world: string;
+  flying: boolean;
+  /** A short notice the page words in its language ('' for none). */
+  notice: '' | 'noFlying' | 'noSeat' | 'teleportRefused' | 'nothingThere';
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -120,6 +132,18 @@ export class WorldSession {
   typing = false;
   /** Called when the player walks into a portal (S2.11): the page takes them there. */
   onTravel: ((to: Travel) => void) | undefined;
+  // The movement set (S2.06) and heights (S2.07).
+  private camera: THREE.PerspectiveCamera | undefined;
+  private navigation: Navigation | undefined;
+  private walker: PathWalker | undefined;
+  private seats: Array<{ x: number; y: number; z: number; yaw: number }> = [];
+  private pickables: THREE.Object3D[] = [];
+  private readonly ray = new THREE.Raycaster();
+  private canFly = false;
+  private sitting = false;
+  private readonly heights = new Map<number, number>();
+  private readonly stances = new Map<number, string>();
+  private noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(canvas: HTMLCanvasElement, map: WorldMap, settings: Settings, onChange: (state: WorldState) => WorldState = (s) => s) {
     this.canvas = canvas;
@@ -142,6 +166,8 @@ export class WorldSession {
       person: settings.view.person,
       download: undefined,
       world: '',
+      flying: false,
+      notice: '',
     });
   }
 
@@ -172,6 +198,7 @@ export class WorldSession {
     this.controls.yaw = this.map.spawn.yaw;
     this.lastFrame = performance.now();
     this.fpsAt = this.lastFrame;
+    this.camera = view.camera;
     await renderer.setAnimationLoop(() => this.frame(view.scene, view.camera));
 
     try {
@@ -180,6 +207,7 @@ export class WorldSession {
         token: ticket.token,
         iceServers: ticket.iceServers ?? [],
         ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
+        height: Math.round(this.settings.avatar.height * 100),
         onMessage: (m) => this.message(m),
       });
     } catch (err) {
@@ -207,6 +235,8 @@ export class WorldSession {
     } else {
       this.physics = new Physics(mapColliders(this.map), this.me);
       this.cameraSolids = this.map.solids;
+      this.canFly = this.map.flying;
+      this.pickables = this.mapMeshes;
     }
     this.physics!.teleport(this.me.x, this.me.y, this.me.z);
     this.state.status = 'joined';
@@ -272,6 +302,8 @@ export class WorldSession {
   }
 
   applySettings(s: Settings): void {
+    // A new height goes to the world, which fits it and tells everyone (S2.07).
+    if (s.avatar.height !== this.settings.avatar.height && this.state.status === 'joined') this.conn?.send({ type: 'appearance', height: Math.round(s.avatar.height * 100) });
     this.settings = s;
     this.controls.keys = s.keys;
     this.controls.sensitivity = s.view.sensitivity;
@@ -336,11 +368,30 @@ export class WorldSession {
     if (!this.typing) {
       if (this.controls.took('view')) this.state.person = this.state.person === 'first' ? 'third' : 'first';
       if (this.controls.took('mute')) this.toggleMute();
+      if (this.state.status === 'joined') {
+        if (this.controls.took('fly')) this.toggleFlying();
+        if (this.controls.took('sit')) this.sitOrStand();
+        if (this.controls.took('goto')) this.toSpot(false);
+        if (this.controls.took('teleport')) this.toSpot(true);
+      }
     }
     if (this.state.status === 'joined' && this.physics) {
-      const axes = this.typing ? { forward: 0, right: 0 } : this.controls.axes();
-      const input: MoveInput = { ...axes, run: !this.typing && this.controls.held('run'), jump: !this.typing && this.controls.held('jump'), yaw: this.controls.yaw };
-      this.me = this.physics.step(input, dt);
+      let axes = this.typing ? { forward: 0, right: 0 } : this.controls.axes();
+      const keys = axes.forward !== 0 || axes.right !== 0;
+      const jump = !this.typing && this.controls.held('jump');
+      // A key takes over from a walk to a spot; any move stands a seated player up.
+      if (keys) this.walker = undefined;
+      if (this.sitting && (keys || jump)) this.sitting = false;
+      if (this.walker) {
+        axes = this.walker.input(this.me, this.controls.yaw, dt);
+        if (this.walker.done) this.walker = undefined;
+      }
+      if (!this.sitting) {
+        const flying = this.physics.flying;
+        const up = flying && !this.typing ? (jump ? 1 : 0) - (this.controls.held('down') ? 1 : 0) : 0;
+        const input: MoveInput = { ...axes, run: !this.typing && this.controls.held('run'), jump: jump && !flying, yaw: this.controls.yaw };
+        this.me = this.physics.step(input, dt, up);
+      }
     }
     if (this.chain) {
       const push = this.settings.voice.mode === 'push';
@@ -348,7 +399,7 @@ export class WorldSession {
       this.state.talking = this.chain.sending;
       this.placeVoices();
     }
-    const pose = cameraPose(this.state.person, this.me, this.controls.yaw, this.controls.pitch, this.cameraSolids);
+    const pose = cameraPose(this.state.person, this.me, this.controls.yaw, this.controls.pitch, this.cameraSolids, this.scaleOf(this.entity) * (this.sitting ? 0.7 : 1));
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     this.crowd?.update(this.avatars(now), camera.position);
@@ -365,11 +416,22 @@ export class WorldSession {
   private avatars(now: number): AvatarPose[] {
     const list: AvatarPose[] = [];
     const myLevel = this.state.talking ? 0.6 : 0;
-    list.push({ entity: this.entity, x: this.me.x, y: this.me.y, z: this.me.z, yaw: this.controls.yaw, name: '', speaking: myLevel, hidden: this.state.person === 'first' || this.state.status !== 'joined' });
+    list.push({
+      entity: this.entity,
+      x: this.me.x,
+      y: this.me.y,
+      z: this.me.z,
+      yaw: this.controls.yaw,
+      name: '',
+      speaking: myLevel,
+      hidden: this.state.person === 'first' || this.state.status !== 'joined',
+      scale: this.scaleOf(this.entity),
+      sitting: this.sitting,
+    });
     for (const entity of this.remotes.entities()) {
       const p = this.remotes.at(entity, now);
       if (!p) continue;
-      list.push({ entity, ...p, name: this.names.get(entity) ?? '', speaking: (this.chain?.mouthOf(entity)?.level ?? 0) / 15 });
+      list.push({ entity, ...p, name: this.names.get(entity) ?? '', speaking: (this.chain?.mouthOf(entity)?.level ?? 0) / 15, scale: this.scaleOf(entity), sitting: this.stances.get(entity) === 'sitting' });
     }
     return list;
   }
@@ -380,16 +442,16 @@ export class WorldSession {
     const speakers = new Map<number, { x: number; y: number; z: number }>();
     for (const entity of this.remotes.entities()) {
       const p = this.remotes.at(entity, now);
-      if (p) speakers.set(entity, { x: p.x, y: p.y + BODY.eye, z: p.z });
+      if (p) speakers.set(entity, { x: p.x, y: p.y + BODY.eye * this.scaleOf(entity), z: p.z });
     }
-    this.chain.place({ x: this.me.x, y: this.me.y + BODY.eye, z: this.me.z }, this.controls.yaw, speakers);
+    this.chain.place({ x: this.me.x, y: this.me.y + BODY.eye * this.scaleOf(this.entity), z: this.me.z }, this.controls.yaw, speakers);
   }
 
   private sendPose(): void {
     if (!this.conn || this.state.status !== 'joined') return;
     this.seq = (this.seq + 1) & 0xffff;
     const m = this.me;
-    const stance = m.grounded ? 'standing' : m.vy > 0 ? 'jumping' : 'falling';
+    const stance = this.sitting ? 'sitting' : this.physics?.flying ? 'flying' : m.grounded ? 'standing' : m.vy > 0 ? 'jumping' : 'falling';
     this.conn.send({ type: 'pose', seq: this.seq, position: { x: m.x, y: m.y, z: m.z }, yaw: this.controls.yaw, look: this.controls.pitch, stance });
   }
 
@@ -426,6 +488,9 @@ export class WorldSession {
       case 'portal':
         if (this.state.status === 'joined') this.onTravel?.({ world: m.world, spawn: m.spawn });
         break;
+      case 'placed':
+        this.placed(m);
+        break;
       default:
         break;
     }
@@ -441,7 +506,9 @@ export class WorldSession {
     for (const bytes of s.blocks) {
       const block = decodeCellBlock(bytes);
       for (const e of block.full) {
-        if (e.id !== this.entity) this.remotes.push(e.id, now, { x: block.cx * CELL + e.x, y: e.y, z: block.cz * CELL + e.z, yaw: e.yaw });
+        if (e.id === this.entity) continue;
+        this.remotes.push(e.id, now, { x: block.cx * CELL + e.x, y: e.y, z: block.cz * CELL + e.z, yaw: e.yaw });
+        this.stances.set(e.id, e.stance);
       }
       for (const e of block.coarse) {
         if (e.id !== this.entity) this.remotes.push(e.id, now, { x: block.cx * CELL + e.x, y: e.y, z: block.cz * CELL + e.z, yaw: e.yaw });
@@ -452,13 +519,18 @@ export class WorldSession {
   private roster(r: MessageOf<'roster'>): void {
     if (r.full) this.names.clear();
     for (const p of r.players) {
+      // A change lists a player again (a new height): only a new entity is an arrival.
+      const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
-      if (this.rosterSeen && p.entity !== this.entity) this.chatLine({ from: '', text: p.name, notice: 'joined' });
+      this.heights.set(p.entity, p.height / 100);
+      if (arriving && this.rosterSeen && p.entity !== this.entity) this.chatLine({ from: '', text: p.name, notice: 'joined' });
     }
     for (const id of r.left) {
       const name = this.names.get(id);
       if (name !== undefined && id !== this.entity) this.chatLine({ from: '', text: name, notice: 'left' });
       this.names.delete(id);
+      this.heights.delete(id);
+      this.stances.delete(id);
       this.remotes.forget(id);
     }
     this.rosterSeen = true;
@@ -489,6 +561,17 @@ export class WorldSession {
     for (const scene of world.scenes) {
       const group = await loadScene(this.renderer!, files.get(scene.glb)!);
       this.scene?.add(group);
+      this.pickables.push(group);
+    }
+    this.canFly = world.manifest.flying;
+    this.seats = world.scenes.flatMap((sc) => sc.seats.map((seat) => ({ x: seat.position[0], y: seat.position[1], z: seat.position[2], yaw: seat.yaw })));
+    const mesh = world.navmesh ? files.get(world.navmesh) : undefined;
+    if (mesh) {
+      try {
+        this.navigation = await Navigation.load(mesh);
+      } catch {
+        // No paths: walking to a spot goes straight there.
+      }
     }
     this.cameraSolids = colliders.filter((c) => c.type === 'box').map((c) => ({
       min: { x: c.position[0] - c.half[0], y: c.position[1] - c.half[1], z: c.position[2] - c.half[2] },
@@ -496,6 +579,73 @@ export class WorldSession {
     }));
     this.state.world = world.manifest.name;
     this.state.download = undefined;
+  }
+
+  /** A player's drawn size: the world's fitted height over the standard body's. */
+  private scaleOf(entity: number): number {
+    const h = this.heights.get(entity);
+    return h ? h / BODY.height : 1;
+  }
+
+  private notice(key: WorldState['notice']): void {
+    this.state.notice = key;
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
+    this.noticeTimer = setTimeout(() => (this.state.notice = ''), 3000);
+  }
+
+  private toggleFlying(): void {
+    if (!this.physics) return;
+    if (!this.canFly) return this.notice('noFlying');
+    this.physics.flying = !this.physics.flying;
+    this.state.flying = this.physics.flying;
+    this.sitting = false;
+  }
+
+  /** Stands a seated player up, or asks the world for the nearest seat within 2.5 m. */
+  private sitOrStand(): void {
+    if (this.sitting) {
+      this.sitting = false;
+      return;
+    }
+    let best = -1;
+    let bestD = 2.5;
+    this.seats.forEach((seat, i) => {
+      const d = Math.hypot(seat.x - this.me.x, seat.z - this.me.z);
+      if (d <= bestD) {
+        best = i;
+        bestD = d;
+      }
+    });
+    if (best < 0) return this.notice('noSeat');
+    const seat = this.seats[best]!;
+    this.conn?.send({ type: 'teleport', position: { x: seat.x, y: seat.y, z: seat.z }, yaw: seat.yaw, seat: best });
+  }
+
+  /** The spot under the crosshair: walk there (along the navigation mesh when the world has one),
+   *  or ask the world to teleport there. */
+  private toSpot(teleport: boolean): void {
+    if (!this.camera) return;
+    this.ray.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    this.ray.far = 60;
+    const hit = this.ray.intersectObjects(this.pickables, true)[0];
+    if (!hit) return this.notice('nothingThere');
+    const to = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+    if (teleport) {
+      this.conn?.send({ type: 'teleport', position: to, yaw: this.controls.yaw });
+      return;
+    }
+    this.sitting = false;
+    this.walker = new PathWalker(this.navigation?.path(this.me, to) ?? [to]);
+  }
+
+  /** The world's answer to a seat or a teleport. */
+  private placed(m: MessageOf<'placed'>): void {
+    if (!m.accepted) return this.notice('teleportRefused');
+    this.walker = undefined;
+    this.me = { x: m.position.x, y: m.position.y, z: m.position.z, vy: 0, grounded: true };
+    this.physics?.teleport(m.position.x, m.position.y, m.position.z);
+    this.controls.yaw = m.yaw;
+    this.sitting = m.stance === 'sitting';
   }
 
   /** Leaves the world (`travel` through a portal) and lets go of the renderer, the microphone and the loops. */
@@ -510,6 +660,8 @@ export class WorldSession {
     this.downloader?.cancel();
     this.conn?.close(reason === 'travel' ? 'went through a portal' : 'left the world', reason);
     this.physics?.dispose();
+    this.navigation?.dispose();
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();
     void this.renderer?.setAnimationLoop(null);

@@ -154,7 +154,19 @@ onBeforeUnmount(() => {
         data-test="players"
         :data-players="state.players"
       > · {{ t('world.connected', { n: state.players }) }} · {{ t('world.rtt', { n: state.rttMs }) }}</span>
+      <span
+        v-if="state?.flying"
+        data-test="flying"
+      > · {{ t('world.flying') }}</span>
       <span class="muted small"> · {{ t('world.frames', { backend: state?.backend ?? '', n: state?.fps ?? 0 }) }}</span>
+    </div>
+    <div
+      v-if="state?.notice"
+      class="whud toast"
+      role="status"
+      data-test="notice"
+    >
+      {{ t(`world.${state.notice}`) }}
     </div>
     <div
       v-if="travel"
@@ -382,6 +394,12 @@ onBeforeUnmount(() => {
 
 .voice {
   bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.toast {
+  bottom: 56px;
   left: 50%;
   transform: translateX(-50%);
 }

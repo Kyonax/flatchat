@@ -23,6 +23,8 @@ const BUNDLED = [
   { package: '@intlify/shared', note: 'inside vue-i18n' },
   { name: 'libopus', version: '1.6.1', licence: 'BSD-3-Clause', text: 'third_party/opus/COPYING', note: 'compiled to WebAssembly inside libopus-wasm' },
   { package: '@dimforge/rapier3d-compat', note: 'the physics the player moves with (S2.06)' },
+  { package: 'recast-navigation', note: 'paths for click to move (S2.06), with @recast-navigation/core and @recast-navigation/wasm under the same licence' },
+  { name: 'Recast & Detour', version: 'inside @recast-navigation/wasm 0.43.1', licence: 'Zlib', text: 'third_party/recast/License.txt', note: 'compiled to WebAssembly inside recast-navigation, by Mikko Mononen' },
   { package: '@flatchat/content', note: 'FlatChat’s own content formats, Apache-2.0' },
   { package: 'smol-toml', note: 'world.toml, inside @flatchat/content' },
   { name: 'Basis Universal transcoder', version: 'three.js r186', licence: 'Apache-2.0', text: 'third_party/basis/LICENSE', note: 'KTX2 textures of downloaded worlds (shipped with three.js, by Binomial LLC)' },
