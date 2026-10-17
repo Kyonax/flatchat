@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
-import { cleanIceServers, cleanWorlds, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
+import { cleanAvatars, cleanIceServers, cleanWorlds, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
 import { listOffline } from '../src/main/offline';
 import en from '../src/renderer/src/i18n/en';
@@ -233,6 +233,45 @@ describe("the core's API", () => {
     const ticket = await api.join('a', '00000000-0000-4000-8000-000000000001');
     expect([...ticket.token]).toEqual([1, 2, 3]);
     await expect(api.join('a', '../../me')).rejects.toBeInstanceOf(CoreError);
+  });
+});
+
+describe('avatars on the client side (S4.01, S4.04)', () => {
+  it('keeps only well-formed avatars', () => {
+    const id = '00000000-0000-4000-8000-0000000000aa';
+    expect(
+      cleanAvatars([
+        { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true },
+        { id: 'nope', status: 'ready' },
+        { id, status: 'exploded' },
+        { id, name: 7, status: 'refused', problems: ['no humanoid', 3], manifest: 'not-a-hash' },
+      ]),
+    ).toEqual([
+      { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true },
+      { id, name: '', status: 'refused', rank: null, problems: ['no humanoid'], manifest: null, createdAt: '', wearing: false },
+    ]);
+  });
+
+  it('uploads to the slot the core gives, follows only the core’s own links, and takes files only within their size', async () => {
+    const calls: string[] = [];
+    let slot = 'https://core.example.org/api/v1/avatars/x/source?e=1&s=sig';
+    const fetchFake: Fetch = async (url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      const path = new URL(url).pathname;
+      if (path === '/api/v1/avatars' && init?.method === 'POST') return new Response(JSON.stringify({ id: 'x', upload: { url: slot, method: 'PUT' } }), { status: 201 });
+      if (path.endsWith('/source')) return new Response(JSON.stringify({ status: 'converting' }), { status: 202 });
+      if (path.startsWith('/api/v1/files/')) return new Response(new Uint8Array(10), { status: 200, headers: { 'content-length': path.includes('big') ? String(200 * 1024 * 1024) : '10' } });
+      return new Response('{}', { status: 404 });
+    };
+    const api = new CoreApi(coreBase('https://core.example.org')!, fetchFake);
+    const s = await api.avatarSlot('tok', { name: 'M', bytes: 30, sha256: 'b'.repeat(64) });
+    await api.sendAvatar(s.url, new Uint8Array(30));
+    expect(calls).toEqual(['POST https://core.example.org/api/v1/avatars', `PUT ${slot}`]);
+    slot = 'https://evil.example.com/steal';
+    await expect(api.avatarSlot('tok', { name: 'M', bytes: 30, sha256: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'bad-answer' });
+    expect((await api.file('https://core.example.org/api/v1/files/ok')).length).toBe(10);
+    await expect(api.file('https://core.example.org/api/v1/files/big')).rejects.toMatchObject({ code: 'too-large' });
+    await expect(api.file('https://elsewhere.example.org/api/v1/files/ok')).rejects.toMatchObject({ code: 'bad-answer' });
   });
 });
 

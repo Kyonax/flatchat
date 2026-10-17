@@ -12,8 +12,9 @@
 // folder's VRM avatars served read-only (avatar-files.ts), every process's memory sampled each
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
+import { basename, join } from 'node:path';
+import { AVATAR_SOURCE_LIMIT, checkManifest, LEVELS } from '@flatchat/content';
+import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
 import { runCensus } from './census/probe';
@@ -260,6 +261,90 @@ ipcMain.handle('flatchat:report', async (_event, raw: unknown) => {
 ipcMain.handle('flatchat:reports', async () => {
   try {
     return { ok: true, reports: (await auth?.reports()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
+// Avatars (S4.01): the account's own, an upload (a file the person picks, read and sent by this
+// process: the page never sees the file or the token), wearing and deleting; and a worn avatar's
+// files through the content cache (S4.04), each checked against its name.
+ipcMain.handle('flatchat:avatars', async () => {
+  try {
+    return { ok: true, avatars: (await auth?.avatars()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:avatars:upload', async (event) => {
+  if (!auth) return { ok: false, error: 'signed-out' };
+  const window = BrowserWindow.fromWebContents(event.sender);
+  // The end-to-end test's file, in place of a dialog it cannot click (S4.12).
+  const e2e = process.env['FLATCHAT_E2E_AVATAR'];
+  const picked = e2e
+    ? { canceled: false, filePaths: [e2e] }
+    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an avatar', filters: [{ name: 'Avatars (VRM, GLB)', extensions: ['vrm', 'glb'] }], properties: ['openFile'] });
+  const path = picked.canceled ? undefined : picked.filePaths[0];
+  if (!path) return { ok: false, error: 'cancelled' };
+  try {
+    if (statSync(path).size > AVATAR_SOURCE_LIMIT) return { ok: false, error: 'too-large' };
+    const bytes = new Uint8Array(readFileSync(path));
+    return { ok: true, id: await auth.uploadAvatar(basename(path).replace(/\.(vrm|glb)$/i, ''), bytes) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:avatars:wear', async (_event, id: unknown) => {
+  if ((id !== null && typeof id !== 'string') || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.wearAvatar(id);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:avatars:delete', async (_event, id: unknown) => {
+  if (typeof id !== 'string' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.deleteAvatar(id);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
+/** Delivery answers (manifest and signed links) for 50 minutes: the links last an hour. */
+const deliveries = new Map<string, { at: number; d: Promise<{ manifest: unknown; links: Record<string, string> }> }>();
+const downloads = new Map<string, Promise<Uint8Array>>();
+ipcMain.handle('flatchat:avatar-file', async (_event, manifest: unknown, level: unknown) => {
+  if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || !auth || !cache) return { ok: false, error: 'bad-request' };
+  if (level !== 'manifest' && level !== 'thumbnail' && !(LEVELS as readonly unknown[]).includes(level)) return { ok: false, error: 'bad-request' };
+  try {
+    let entry = deliveries.get(manifest);
+    if (!entry || Date.now() - entry.at > 50 * 60_000) {
+      entry = { at: Date.now(), d: auth.avatarFiles(manifest) };
+      deliveries.set(manifest, entry);
+      entry.d.catch(() => deliveries.delete(manifest));
+    }
+    const d = await entry.d;
+    const m = checkManifest(d.manifest);
+    const hash = level === 'manifest' ? manifest : level === 'thumbnail' ? m.thumbnail : m.levels[level as (typeof LEVELS)[number]].file;
+    const link = d.links[level as string];
+    if (!hash || !link) return { ok: false, error: 'not-found' };
+    const fetchOne = async (): Promise<Uint8Array> => {
+      const hit = cache!.get(hash);
+      if (hit) return hit;
+      const bytes = await auth!.file(link);
+      if (!cache!.put(hash, bytes)) throw new CoreError(502, 'bad-file', 'the file is not the one asked for');
+      return bytes;
+    };
+    let job = downloads.get(hash);
+    if (!job) {
+      job = fetchOne().finally(() => downloads.delete(hash));
+      downloads.set(hash, job);
+    }
+    const bytes = await job;
+    return { ok: true, manifest: m, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
   } catch (err) {
     return failure(err);
   }

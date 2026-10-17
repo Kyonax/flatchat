@@ -6,7 +6,7 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type Person, type ReportBody, type WorldSummary } from './core-api';
+import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type Person, type ReportBody, type WorldSummary } from './core-api';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -194,6 +194,33 @@ export class Auth {
 
   async setBlock(account: string, on: boolean): Promise<void> {
     return this.api.setBlock(await this.access(), account, on);
+  }
+
+  async avatars(): Promise<AvatarItem[]> {
+    return this.api.avatars(await this.access());
+  }
+
+  /** Uploads a file: its slot first, then the file to the slot's link. */
+  async uploadAvatar(name: string, bytes: Uint8Array): Promise<string> {
+    const slot = await this.api.avatarSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+    await this.api.sendAvatar(slot.url, bytes);
+    return slot.id;
+  }
+
+  async wearAvatar(id: string | null): Promise<void> {
+    return this.api.wearAvatar(await this.access(), id);
+  }
+
+  async deleteAvatar(id: string): Promise<void> {
+    return this.api.deleteAvatar(await this.access(), id);
+  }
+
+  async avatarFiles(manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    return this.api.avatarFiles(await this.access(), manifest);
+  }
+
+  async file(url: string): Promise<Uint8Array> {
+    return this.api.file(url);
   }
 
   async mutes(): Promise<string[]> {

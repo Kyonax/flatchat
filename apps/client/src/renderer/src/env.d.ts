@@ -29,6 +29,18 @@ interface FlatchatWorld {
 
 type FlatchatResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+/** One of the account's avatars (S4.01). */
+interface FlatchatAvatar {
+  id: string;
+  name: string;
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  rank: string | null;
+  problems: string[];
+  manifest: string | null;
+  createdAt: string;
+  wearing: boolean;
+}
+
 interface FlatchatPerson {
   account: string;
   name: string;
@@ -69,6 +81,11 @@ interface FlatchatBridge {
   // Reports (S3.02): one from the world view, and the account's own with their decisions.
   report(report: import('./world/report').ReportPayload): Promise<FlatchatResult<{ receipt: string }>>;
   reports(): Promise<FlatchatResult<{ reports: Array<{ receipt: string; category: string; status: string; decision: string; createdAt: string }> }>>;
+  avatars(): Promise<FlatchatResult<{ avatars: FlatchatAvatar[] }>>;
+  uploadAvatar(): Promise<FlatchatResult<{ id: string }>>;
+  wearAvatar(id: string | null): Promise<FlatchatResult<object>>;
+  deleteAvatar(id: string): Promise<FlatchatResult<object>>;
+  avatarFile(manifest: string, level: 'manifest' | 'thumbnail' | 'lod0' | 'lod1' | 'lod2' | 'impostor'): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AvatarManifest; bytes: ArrayBuffer }>>;
   // Appeals against a world's ban (S3.07).
   appealBan(worldId: string, reason: string, text: string): Promise<FlatchatResult<object>>;
   banAppeal(worldId: string): Promise<FlatchatResult<{ appeal: { status: 'pending' | 'upheld' | 'reversed'; note: string } | null }>>;

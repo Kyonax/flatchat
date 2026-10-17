@@ -94,6 +94,46 @@ export interface MyReport {
   createdAt: string;
 }
 
+/** One of the account's avatars (S4.01). */
+export interface AvatarItem {
+  id: string;
+  name: string;
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  rank: string | null;
+  problems: string[];
+  /** The converted avatar's manifest hash (what others fetch it by). */
+  manifest: string | null;
+  createdAt: string;
+  wearing: boolean;
+}
+
+const STATUSES = new Set(['uploading', 'converting', 'ready', 'refused', 'failed']);
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** Keeps only well-formed avatars from the core's answer. */
+export function cleanAvatars(raw: unknown): AvatarItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 100).flatMap((a): AvatarItem[] => {
+    const v = a as Record<string, unknown>;
+    if (typeof v['id'] !== 'string' || !/^[0-9a-f-]{36}$/.test(v['id']) || typeof v['status'] !== 'string' || !STATUSES.has(v['status'])) return [];
+    return [
+      {
+        id: v['id'],
+        name: typeof v['name'] === 'string' ? v['name'].slice(0, 64) : '',
+        status: v['status'] as AvatarItem['status'],
+        rank: typeof v['rank'] === 'string' ? v['rank'].slice(0, 16) : null,
+        problems: Array.isArray(v['problems']) ? v['problems'].filter((p): p is string => typeof p === 'string').slice(0, 10).map((p) => p.slice(0, 300)) : [],
+        manifest: typeof v['manifest'] === 'string' && HEX64.test(v['manifest']) ? v['manifest'] : null,
+        createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
+        wearing: v['wearing'] === true,
+      },
+    ];
+  });
+}
+
+/** The largest file the client fetches through a link (a level, a manifest, a thumbnail). */
+export const FILE_MAX = 128 * 1024 * 1024;
+
 /** Where an appeal against a world's ban stands (S3.07). */
 export interface BanAppeal {
   status: 'pending' | 'upheld' | 'reversed';
@@ -319,6 +359,81 @@ export class CoreApi {
 
   /** An appeal against a world's ban, to its owner (S3.07): the reason the world gave, and why it
    *  is wrong. */
+  // ---------------------------------------------------------------- avatars (S4.01, S4.04)
+
+  async avatars(access: string): Promise<AvatarItem[]> {
+    return cleanAvatars((await this.call<{ avatars?: unknown }>('GET', '/api/v1/avatars', undefined, access)).avatars);
+  }
+
+  /** An upload slot for a file of this size and SHA-256. */
+  async avatarSlot(access: string, file: { name: string; bytes: number; sha256: string }): Promise<{ id: string; url: string }> {
+    const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown } }>('POST', '/api/v1/avatars', file, access);
+    if (typeof r.id !== 'string' || typeof r.upload?.url !== 'string' || r.upload.method !== 'PUT') throw new CoreError(502, 'bad-answer', 'the core sent no upload slot');
+    return { id: r.id, url: this.onCore(r.upload.url) };
+  }
+
+  /** The file to its slot. Only the core's own links are followed (its R2 store's come later). */
+  async sendAvatar(url: string, bytes: Uint8Array): Promise<void> {
+    const target = this.onCore(url);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(target, { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: bytes as unknown as BodyInit, signal: AbortSignal.timeout(10 * 60_000), redirect: 'error' });
+    } catch (err) {
+      throw new CoreError(0, 'unreachable', `the upload did not finish: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new CoreError(res.status, typeof data['error'] === 'string' ? data['error'] : 'error', typeof data['message'] === 'string' ? data['message'] : `HTTP ${res.status}`);
+    }
+  }
+
+  async wearAvatar(access: string, id: string | null): Promise<void> {
+    if (id !== null && !/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an avatar id');
+    await this.call('PUT', '/api/v1/me/avatar', { avatar: id }, access);
+  }
+
+  async deleteAvatar(access: string, id: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an avatar id');
+    await this.call('DELETE', `/api/v1/avatars/${id}`, undefined, access);
+  }
+
+  /** A worn avatar's manifest and signed links to its files. */
+  async avatarFiles(access: string, manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    if (!HEX64.test(manifest)) throw new CoreError(400, 'bad-request', 'not a manifest hash');
+    const r = await this.call<{ manifest?: unknown; links?: unknown }>('GET', `/api/v1/avatar-files/${manifest}`, undefined, access);
+    const links = (r.links && typeof r.links === 'object' ? r.links : {}) as Record<string, unknown>;
+    return { manifest: r.manifest, links: Object.fromEntries(Object.entries(links).filter((e): e is [string, string] => typeof e[1] === 'string').map(([k, v]) => [k, this.onCore(v)])) };
+  }
+
+  /** A file through a signed link, at most FILE_MAX bytes. */
+  async file(url: string): Promise<Uint8Array> {
+    const target = this.onCore(url);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(target, { signal: AbortSignal.timeout(5 * 60_000), redirect: 'error' });
+    } catch (err) {
+      throw new CoreError(0, 'unreachable', `the file did not come: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!res.ok) throw new CoreError(res.status, res.status === 410 ? 'link-expired' : 'error', `HTTP ${res.status}`);
+    const length = Number(res.headers.get('content-length') ?? 0);
+    if (length > FILE_MAX) throw new CoreError(413, 'too-large', 'the file is too large');
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length > FILE_MAX) throw new CoreError(413, 'too-large', 'the file is too large');
+    return bytes;
+  }
+
+  /** A link only if it points at the core itself. */
+  private onCore(url: string): string {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      throw new CoreError(502, 'bad-answer', 'the core sent a link that is not one');
+    }
+    if (u.origin !== this.base.origin) throw new CoreError(502, 'bad-answer', 'the core sent a link elsewhere');
+    return u.href;
+  }
+
   async appealBan(access: string, worldId: string, reason: string, text: string): Promise<void> {
     if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
     await this.call('POST', `/api/v1/worlds/${worldId}/appeals`, { reason: reason.slice(0, 500), text: text.slice(0, 2000) }, access);

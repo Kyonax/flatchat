@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld('flatchat', {
   setBlock: (account: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('flatchat:set-block', account, on),
   setMute: (account: string, on: boolean): Promise<unknown> => ipcRenderer.invoke('flatchat:set-mute', account, on),
   reports: (): Promise<unknown> => ipcRenderer.invoke('flatchat:reports'),
+  avatars: (): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars'),
+  uploadAvatar: (): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:upload'),
+  wearAvatar: (id: string | null): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:wear', id),
+  deleteAvatar: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:delete', id),
+  avatarFile: (manifest: string, level: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatar-file', manifest, level),
   banAppeal: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:ban-appeal', worldId),
   // Offline mode (S2.13): a world in the main process, its messages over IPC.
   offlineWorlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-worlds'),
