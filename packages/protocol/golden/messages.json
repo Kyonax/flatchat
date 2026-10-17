@@ -162,7 +162,8 @@
             "account": "6b0e2c1a-7f3d-4e8a-9c21-5d4f3a2b1c0e",
             "name": "Kyonax",
             "trust": 4,
-            "height": 175
+            "height": 175,
+            "role": "owner"
           },
           {
             "entity": 2,
@@ -170,12 +171,13 @@
             "name": "Ñandú 🎮",
             "trust": 0,
             "avatar": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "height": 162
+            "height": 162,
+            "role": "moderator"
           }
         ],
         "left": []
       },
-      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f48a0000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a20000"
+      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f40a050000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a20800"
     },
     {
       "name": "roster-change",
@@ -315,7 +317,8 @@
               "level": 9
             },
             "opus": "78a1b2c3d4e5f60718293a4b5c6d7e8f",
-            "start": false
+            "start": false,
+            "gain": 8
           },
           {
             "from": 2,
@@ -329,11 +332,12 @@
               "level": 0
             },
             "opus": "f8",
-            "start": true
+            "start": true,
+            "gain": 12
           }
         ]
       },
-      "hex": "3102010064001ee622210078a1b2c3d4e5f60718293a4b5c6d7e8f020007000100000200f8"
+      "hex": "3102010064001ee622110278a1b2c3d4e5f60718293a4b5c6d7e8f020007000100003800f8"
     },
     {
       "name": "voice-bundle-empty",
@@ -414,6 +418,121 @@
         "spawn": ""
       },
       "hex": "500000000000004000800000000000000100"
+    },
+    {
+      "name": "put",
+      "value": {
+        "type": "put",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "offset": 0,
+        "total": 40000,
+        "data": "0001020304fffefd"
+      },
+      "hex": "459f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00000000409c0000080001020304fffefd"
+    },
+    {
+      "name": "publish",
+      "value": {
+        "type": "publish",
+        "world": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+      },
+      "hex": "469f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
+    },
+    {
+      "name": "published",
+      "value": {
+        "type": "published",
+        "ok": true,
+        "detail": ""
+      },
+      "hex": "470100"
+    },
+    {
+      "name": "published-refused",
+      "value": {
+        "type": "published",
+        "ok": false,
+        "detail": "world.json: scenes[0].file is missing"
+      },
+      "hex": "474a00776f726c642e6a736f6e3a207363656e65735b305d2e66696c65206973206d697373696e67"
+    },
+    {
+      "name": "got",
+      "value": {
+        "type": "got",
+        "hash": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+        "offset": 16384
+      },
+      "hex": "489f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f00400000"
+    },
+    {
+      "name": "role",
+      "value": {
+        "type": "role",
+        "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
+        "role": "moderator"
+      },
+      "hex": "60c3a1f2e45b6d4c7e8f90a1b2c3d4e5f602"
+    },
+    {
+      "name": "moderate-ban",
+      "value": {
+        "type": "moderate",
+        "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
+        "action": "ban",
+        "minutes": 1440,
+        "reason": "Acoso en el chat"
+      },
+      "hex": "61c3a1f2e45b6d4c7e8f90a1b2c3d4e5f6012d0000800041636f736f20656e20656c2063686174"
+    },
+    {
+      "name": "moderate-kick",
+      "value": {
+        "type": "moderate",
+        "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
+        "action": "kick",
+        "minutes": 0,
+        "reason": ""
+      },
+      "hex": "61c3a1f2e45b6d4c7e8f90a1b2c3d4e5f6000000000000"
+    },
+    {
+      "name": "muted",
+      "value": {
+        "type": "muted",
+        "on": true,
+        "reason": "Shouting over the stage"
+      },
+      "hex": "622f0053686f7574696e67206f76657220746865207374616765"
+    },
+    {
+      "name": "block",
+      "value": {
+        "type": "block",
+        "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
+        "on": true
+      },
+      "hex": "63c3a1f2e45b6d4c7e8f90a1b2c3d4e5f601"
+    },
+    {
+      "name": "hidden",
+      "value": {
+        "type": "hidden",
+        "entities": [
+          3,
+          17,
+          200
+        ]
+      },
+      "hex": "640303001100c800"
+    },
+    {
+      "name": "hidden-none",
+      "value": {
+        "type": "hidden",
+        "entities": []
+      },
+      "hex": "6400"
     }
   ]
 }

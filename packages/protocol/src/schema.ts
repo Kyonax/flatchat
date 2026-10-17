@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -70,6 +70,13 @@ const mouth = struct({ aa: uint(4), ih: uint(4), ou: uint(4), ee: uint(4), oh: u
  *  its range; 0 in a hello means the platform's default. */
 const centimetres = uint(10);
 
+/** A player's role in one world (version 5, S3.06), rights growing along the list: a builder may
+ *  replace the world's files, a moderator kicks, bans and mutes, an admin also gives roles, and the
+ *  owner (the account the core approved the world for, from the connect token) gives any of them.
+ *  The world keeps the others in its own database. */
+export const ROLES = ['visitor', 'builder', 'moderator', 'admin', 'owner'] as const;
+const role = oneOf(ROLES);
+
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
  *  core's asset store, never from the host; `height` is the world's fitted height. */
 const player = struct({
@@ -79,6 +86,7 @@ const player = struct({
   trust: uint(3),
   avatar: optional(fixedBytes(32)),
   height: centimetres,
+  role,
 });
 
 export const REFUSE_REASONS = [
@@ -97,6 +105,14 @@ export const REFUSE_REASONS = [
 ] as const;
 
 export const LEAVE_REASONS = ['quit', 'travel', 'kicked', 'banned', 'timeout', 'closing', 'error'] as const;
+
+/** What a moderator does to an account in one world (version 5, S3.07); a ban's or mute's
+ *  `minutes` of 0 lasts until lifted. */
+export const MOD_ACTIONS = ['kick', 'ban', 'unban', 'mute', 'unmute'] as const;
+
+/** Who may reach a player by voice and text (version 5, S3.10): everyone for adults; friends for an
+ *  account aged 13 to 17 unless its guardian widened or narrowed it. */
+export const CONTACT = ['everyone', 'friends', 'none'] as const;
 
 /** Who may send a message: the decoder refuses it from the other side. */
 export type Sender = 'client' | 'server' | 'either';
@@ -118,7 +134,7 @@ export const MESSAGES = {
     channel: 'reliable',
     // `spawn` (version 3): the spawn group a portal named (S2.11), empty for the world's own.
     // `height` (version 4): the player's chosen height, which the world fits into its range.
-    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(256), spawn: str(32), height: centimetres }),
+    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(4096), spawn: str(32), height: centimetres }),
   },
   welcome: {
     id: 0x02,
@@ -172,7 +188,9 @@ export const MESSAGES = {
     id: 0x31,
     from: 'server',
     channel: 'unreliable',
-    body: struct({ frames: list(struct({ from: u16, seq: u16, start: bool, mouth, opus: bytes(255) }), 16) }),
+    // `gain` (version 5, S3.08): the speaker's loudness as the world sets it (a stage, a plugin),
+    // 0 to 15 in eighths: 8 is as spoken.
+    body: struct({ frames: list(struct({ from: u16, seq: u16, start: bool, mouth, gain: uint(4), opus: bytes(255) }), 16) }),
   },
   // World content (version 2, S2.04): the server names its built world by the SHA-256 of its
   // world.json; the client fetches what its cache lacks, file by file, from any offset (resuming
@@ -182,20 +200,39 @@ export const MESSAGES = {
   chunk: { id: 0x42, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32), offset: u32, total: u32, data: bytes(16_384) }) },
   unfetch: { id: 0x43, from: 'client', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
   notFound: { id: 0x44, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32) }) },
+  // A new build of the world from someone with build rights (version 5, S3.06): its files in
+  // pieces, each acknowledged with `got` (how many bytes of that file the world holds, so the sender
+  // keeps only a window in flight), then world.json's hash; the world checks the whole build and
+  // answers with `published`.
+  put: { id: 0x45, from: 'client', channel: 'reliable', body: struct({ hash: fixedBytes(32), offset: u32, total: u32, data: bytes(16_384) }) },
+  publish: { id: 0x46, from: 'client', channel: 'reliable', body: struct({ world: fixedBytes(32) }) },
+  published: { id: 0x47, from: 'server', channel: 'reliable', body: struct({ ok: bool, detail: str(160) }) },
+  got: { id: 0x48, from: 'server', channel: 'reliable', body: struct({ hash: fixedBytes(32), offset: u32 }) },
   // Travel (version 3, S2.11): the player walked into a portal; the client asks the core to join
   // that world (the world never hands out a connect token itself) and names the spawn group.
   portal: { id: 0x50, from: 'server', channel: 'reliable', body: struct({ world: uuid, spawn: str(32) }) },
+  // Roles and moderation (version 5, S3.06 and S3.07): what a player asks the world to do to an
+  // account, checked against the asker's role; `muted` tells a player a moderator muted them.
+  role: { id: 0x60, from: 'client', channel: 'reliable', body: struct({ account: uuid, role }) },
+  moderate: { id: 0x61, from: 'client', channel: 'reliable', body: struct({ account: uuid, action: oneOf(MOD_ACTIONS), minutes: u32, reason: str(160) }) },
+  muted: { id: 0x62, from: 'server', channel: 'reliable', body: struct({ on: bool, reason: str(160) }) },
+  // Blocks (version 5, S3.11): a player blocked or unblocked an account during the visit (the core
+  // keeps it); `hidden` lists the entities this player and the world keep apart, both ways.
+  block: { id: 0x63, from: 'client', channel: 'reliable', body: struct({ account: uuid, on: bool }) },
+  hidden: { id: 0x64, from: 'server', channel: 'reliable', body: struct({ entities: list(u16, 256) }) },
 } as const satisfies Record<string, MessageDef>;
 
 /** The connect token's format version, written as its first byte. */
-export const TOKEN_VERSION = 0;
+export const TOKEN_VERSION = 1;
 
 /** The token's readable part, also the additional data its encryption authenticates. The nonce
  *  is random per token, so a world server can refuse a token it has already seen. */
 export const TOKEN_HEADER = struct({ version: u8, world: uuid, expiresAt: u64, nonce: fixedBytes(12) });
 
 /** What the core vouches for, encrypted for one world (docs/protocol.md, "The connect token").
- *  A minor's birth date never travels: only `under18`. */
+ *  A minor's birth date never travels: only `under18`. Format 1 (version 5) adds whether the
+ *  account owns the world, who may reach it, a minor's accepted friends and the accounts kept apart
+ *  from it by a block in either direction, 100 of each at most. */
 export const TOKEN_CLAIMS = struct({
   account: uuid,
   name: str(64),
@@ -204,4 +241,8 @@ export const TOKEN_CLAIMS = struct({
   emailVerified: bool,
   under18: bool,
   ageDays: u16,
+  owner: bool,
+  contact: oneOf(CONTACT),
+  friends: list(uuid, 100),
+  blocks: list(uuid, 100),
 });

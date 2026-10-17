@@ -1,4 +1,4 @@
-# The FlatChat protocol, version 4
+# The FlatChat protocol, version 5
 
 How FlatChat's programs talk: the client, the world server, the bots and the core. This page is the specification; the reference implementation is [`packages/protocol`](../packages/protocol) (TypeScript, Apache-2.0), the machine-readable schema is [`golden/schema.json`](../packages/protocol/golden/schema.json), and the golden packets in the same folder pin every byte. Version 0 was the first, built in Stage 0 (S0.06) and measured with 200 bots in spike S0.07. Version 1 (spike S0.08) gives every voice frame a `start` bit and makes its `seq` count 20 ms slots: see [Versions](#versions).
 
@@ -74,7 +74,7 @@ A world server may send **several snapshots for one tick**, each kept to about o
 
 | Message | Type | Sent by | Channel | Fields | What it does |
 |---|---|---|---|---|---|
-| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token, spawn, height | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most), the connect token (256 bytes at most), the spawn group a portal named (32 bytes at most; empty for the world's own spawn points) and the player's chosen height in centimetres (0 for the platform's default), which the world fits into its range |
+| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token, spawn, height | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most), the connect token (4,096 bytes at most), the spawn group a portal named (32 bytes at most; empty for the world's own spawn points) and the player's chosen height in centimetres (0 for the platform's default), which the world fits into its range |
 | `welcome` | 0x02 | server | reliable | protocol, build, world, entity, tickHz, tick | Accepts the join: the server's version and build, the world's ID, the player's entity number, the tick rate and the current tick |
 | `refuse` | 0x03 | server | reliable | reason, protocolMin, protocolMax, detail | Refuses the join, with a reason (below), the versions the server accepts and a detail of 160 bytes at most |
 | `leave` | 0x04 | either | reliable | reason, detail | Ends the connection: `quit`, `travel`, `kicked`, `banned`, `timeout`, `closing` or `error` |
@@ -82,20 +82,29 @@ A world server may send **several snapshots for one tick**, each kept to about o
 | `pong` | 0x06 | either | unreliable | id, time | Answers a ping with its id and time, for the round trip |
 | `pose` | 0x10 | client | unreliable | seq, position, yaw, look, stance | The player's own avatar, 20 times a second, numbered by `seq` (wrapping at 2^16) |
 | `snapshot` | 0x11 | server | unreliable | tick, ack, correction, blocks | The server's tick, the last pose it applied (`ack`), where it put the player when a pose broke the rules (`correction`: seq, position, yaw) and the cell blocks this player sees (each 4,096 bytes at most, 256 at most) |
-| `roster` | 0x12 | server | reliable | full, players, left | Who is in the world: the whole list at join (`full`), then changes; each player has an entity number, account ID, display name (64 bytes at most), trust level (0 to 7), the avatar's content hash, which the client fetches from the core, never from the host, and the player's height in centimetres as the world fitted it; a change lists the player again with the new values |
+| `roster` | 0x12 | server | reliable | full, players, left | Who is in the world: the whole list at join (`full`), then changes; each player has an entity number, account ID, display name (64 bytes at most), trust level (0 to 7), the avatar's content hash, which the client fetches from the core, never from the host, the player's height in centimetres as the world fitted it, and the player's role in this world (`visitor`, `builder`, `moderator`, `admin` or `owner`); a change lists the player again with the new values |
 | `appearance` | 0x13 | client | reliable | height | A new height in centimetres; the world fits it into its range and sends a roster change (at most one a second) |
 | `teleport` | 0x14 | client | reliable | position, yaw, seat | Asks to be placed: on a seat of the built world (`seat`, its index), or at a clicked spot. The world checks the reach, the ground under it and the pace (one a second) |
 | `placed` | 0x15 | server | reliable | position, yaw, stance, accepted | The answer to `teleport`: where the player is now, sitting or standing, and whether the world moved them |
 | `say` | 0x20 | client | reliable | text | A chat line from the player, 1,024 bytes at most; the server's own length and rate limits apply on top |
 | `chat` | 0x21 | server | reliable | from, text | A chat line to show: from an entity, or from the world when `from` is absent; always shown as text, never as HTML |
 | `voice` | 0x30 | client | unreliable | seq, start, mouth, opus | One 20 ms Opus frame (255 bytes at most) and the mouth shapes that go with it; `seq` counts 20 ms slots, the silent ones too, and `start` marks the first frame after silence |
-| `voiceBundle` | 0x31 | server | unreliable | frames | Up to 16 speakers' frames for one listener and one 20 ms step, each with the speaker's entity number, its `seq` and `start` as sent |
+| `voiceBundle` | 0x31 | server | unreliable | frames | Up to 16 speakers' frames for one listener and one 20 ms step, each with the speaker's entity number, its `seq` and `start` as sent, and its `gain`: the speaker's loudness as the world sets it (a stage, a plugin), 0 to 15 in eighths, 8 as spoken |
 | `content` | 0x40 | server | reliable | world, size | The world's built content: the SHA-256 of its `world.json` (32 bytes) and that file's size; sent after `welcome` |
 | `fetch` | 0x41 | client | reliable | hash, from | Asks for one file by its SHA-256, from a byte offset (0, or where a lost connection stopped) |
 | `chunk` | 0x42 | server | reliable | hash, offset, total, data | Up to 16,384 bytes of a file, at `offset`, of `total`; the server paces them so content never starves the game |
 | `unfetch` | 0x43 | client | reliable | hash | Stops a fetch (the player left, or found the file elsewhere) |
 | `notFound` | 0x44 | server | reliable | hash | The server does not have that file |
+| `put` | 0x45 | client | reliable | hash, offset, total, data | A piece of a file of a new build of the world (16,384 bytes at most), from someone with build rights there: a builder, an admin or the owner (S3.06). Pieces of one file come in order |
+| `publish` | 0x46 | client | reliable | world | The new build is complete: the SHA-256 of its `world.json`. The world checks the whole build as it checks one at start |
+| `published` | 0x47 | server | reliable | ok, detail | The world's answer to a build, or why it stopped taking one (160 bytes at most). A world that took a build puts it in place and restarts on it: it leaves everyone with `closing` and the detail `updating`, and clients join again once it is back |
+| `got` | 0x48 | server | reliable | hash, offset | How many bytes of a file of the new build the world holds: the sender keeps only a window of bytes in flight, since a connection refuses messages beyond its send queue |
 | `portal` | 0x50 | server | reliable | world, spawn | The player walked into a portal (S2.11): the world it leads to and the spawn group there. Sent once on entering the portal's box; the client asks the core for a connect token to that world, leaves with `travel`, and joins it with `spawn` in its `hello` |
+| `role` | 0x60 | client | reliable | account, role | Gives an account a role in this world (S3.06). The world allows it only from an admin or the owner, only for a role below the giver's own, never over someone at or above it, never `owner` (the owner is the account the core approved the world for); the roster announces the change |
+| `moderate` | 0x61 | client | reliable | account, action, minutes, reason | A moderator's action on an account here (S3.07): `kick`, `ban`, `unban`, `mute` or `unmute`, for `minutes` (0: until lifted), with the reason the player is told (160 bytes at most). Allowed from a moderator, an admin or the owner, over someone below them |
+| `muted` | 0x62 | server | reliable | on, reason | A moderator muted the player, or lifted it, and why: the world forwards none of the player's voice while it lasts |
+| `block` | 0x63 | client | reliable | account, on | The player blocked or unblocked an account during the visit (S3.11; the core keeps the block) |
+| `hidden` | 0x64 | server | reliable | entities | The entities this player and the world keep apart, both ways: blocked one way or the other. The world forwards no voice or chat between them, and the client draws none of them; the whole list, sent when it changes |
 
 A world's content travels over the world connection itself (S2.04): no second port, no web server, no certificate for the host. The client checks every file's SHA-256 before it uses it, keeps it in a cache by hash (a file shared by two worlds downloads once), and reads `world.json` (the built world: [world-format.md](world-format.md) and `packages/content`) as untrusted data.
 
@@ -107,7 +116,7 @@ A speaker's client sends voice only while it hears speech. Its `seq` still advan
 
 1. The client asks the core for a connect token for one world, and gets the world's address, the relay's address when it needs one, and the sealed token.
 2. The client connects and sends `hello`.
-3. The world server checks, in order: the version (below), the token (its checks, then a nonce it has already seen is refused), then its entry rules, its capacity and its bans.
+3. The world server checks, in order: the version (below), the token (its checks, then a nonce it has already seen is refused), then its capacity, its bans and its entry rules (the plugins', S3.05).
 4. It answers `welcome` and the full `roster`, then snapshots; or `refuse`.
 
 **Versions.** A world server accepts its own protocol version, raised to the core's minimum when the core sets one higher (risk R-17: hosts run their own servers, and old ones must be turned away cleanly). The client's `fingerprint` must equal the schema fingerprint of the version it claims, so two development builds with different schemas under one number refuse each other instead of misreading each other.
@@ -133,14 +142,14 @@ The core vouches for a player to one world with a connect token, the pattern of 
 
 | Bytes | Field |
 |---|---|
-| 0 | format version (0) |
+| 0 | format version (1) |
 | 1–16 | the world's ID (UUID) |
 | 17–24 | `expiresAt`: unix time in seconds (u64) |
 | 25–36 | `nonce`: 12 random bytes, new for every token |
 | 37 to the end − 16 | the claims, encrypted |
 | the last 16 | the authentication tag |
 
-The cipher is AES-256-GCM, with the world's key, the nonce as the IV, bytes 0–36 as the additional data and a 128-bit tag, so the readable part cannot be changed either. The claims are a struct: `account` (UUID), `name` (string, 64 bytes at most), `trust` (uint 3), `tester`, `emailVerified`, `under18` (bool each) and `ageDays` (u16, the account's age). A minor's birth date never travels: only `under18`.
+The cipher is AES-256-GCM, with the world's key, the nonce as the IV, bytes 0–36 as the additional data and a 128-bit tag, so the readable part cannot be changed either. The claims are a struct: `account` (UUID), `name` (string, 64 bytes at most), `trust` (uint 3), `tester`, `emailVerified`, `under18` (bool each), `ageDays` (u16, the account's age), `owner` (bool: the account owns this world), `contact` (`everyone`, `friends` or `none`: who may reach the player by voice and text; `friends` for an account aged 13 to 17 unless its guardian changed it), `friends` (a minor's accepted friends, 100 account IDs at most; empty for adults) and `blocks` (the accounts this one blocked or that blocked it, 100 at most: the world keeps each pair apart). A minor's birth date never travels: only `under18`. Format 1 (protocol version 5) added the last four.
 
 A world server checks: at least 53 bytes (else `malformed`), the format version (`unsupported-version`), the world (`wrong-world`), the time (`expired` once the clock reaches `expiresAt`), the tag (`invalid`), and that the claims parse (`malformed`). It then refuses a nonce it has accepted before, until that token expires.
 
@@ -177,3 +186,4 @@ The golden writer refuses step 3 without step 2, the tests fail while the golden
 | 2 | `content`, `fetch`, `chunk`, `unfetch` and `notFound`: worlds download over the world connection (S2.04) |
 | 3 | `portal`, and `spawn` in `hello`: travel between worlds through portals (S2.11) |
 | 4 | `height` in `hello` and the roster, `appearance`: heights within the world's range (S2.07); `teleport` and `placed`: seats and teleports (S2.06) |
+| 5 | Stage 3: `role` in the roster and the `role` message (S3.06); `put`, `publish`, `published` and `got`: new builds from the people with build rights (S3.06); `moderate` and `muted` (S3.07); `gain` in each `voiceBundle` frame (S3.08); `block` and `hidden` (S3.11); the connect token's format 1 with `owner`, `contact`, `friends` and `blocks`, and `hello`'s token up to 4,096 bytes (S3.06, S3.10, S3.11) |

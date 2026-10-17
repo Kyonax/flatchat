@@ -22,6 +22,10 @@ const claims: TokenClaims = {
   emailVerified: true,
   under18: false,
   ageDays: 30,
+  owner: false,
+  contact: 'everyone',
+  friends: [],
+  blocks: [],
 };
 
 async function errorCode(p: Promise<unknown>): Promise<string> {

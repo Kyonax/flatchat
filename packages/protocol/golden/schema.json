@@ -1,6 +1,6 @@
 {
-  "protocol": 4,
-  "fingerprint": "59c0945e",
+  "protocol": 5,
+  "fingerprint": "78e23a01",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -40,7 +40,7 @@
               "name": "token",
               "type": {
                 "kind": "bytes",
-                "maxBytes": 256
+                "maxBytes": 4096
               }
             },
             {
@@ -497,6 +497,20 @@
                         "kind": "uint",
                         "bits": 10
                       }
+                    },
+                    {
+                      "name": "role",
+                      "type": {
+                        "kind": "enum",
+                        "bits": 3,
+                        "values": [
+                          "visitor",
+                          "builder",
+                          "moderator",
+                          "admin",
+                          "owner"
+                        ]
+                      }
                     }
                   ]
                 }
@@ -885,6 +899,13 @@
                       }
                     },
                     {
+                      "name": "gain",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 4
+                      }
+                    },
+                    {
                       "name": "opus",
                       "type": {
                         "kind": "bytes",
@@ -1024,6 +1045,112 @@
         }
       },
       {
+        "name": "put",
+        "id": 69,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            },
+            {
+              "name": "offset",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "total",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "data",
+              "type": {
+                "kind": "bytes",
+                "maxBytes": 16384
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "publish",
+        "id": 70,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "world",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "published",
+        "id": 71,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "ok",
+              "type": {
+                "kind": "bool"
+              }
+            },
+            {
+              "name": "detail",
+              "type": {
+                "kind": "string",
+                "maxBytes": 160
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "got",
+        "id": 72,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "hash",
+              "type": {
+                "kind": "fixedBytes",
+                "length": 32
+              }
+            },
+            {
+              "name": "offset",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            }
+          ]
+        }
+      },
+      {
         "name": "portal",
         "id": 80,
         "from": "server",
@@ -1042,6 +1169,151 @@
               "type": {
                 "kind": "string",
                 "maxBytes": 32
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "role",
+        "id": 96,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "account",
+              "type": {
+                "kind": "uuid"
+              }
+            },
+            {
+              "name": "role",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "visitor",
+                  "builder",
+                  "moderator",
+                  "admin",
+                  "owner"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "moderate",
+        "id": 97,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "account",
+              "type": {
+                "kind": "uuid"
+              }
+            },
+            {
+              "name": "action",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "kick",
+                  "ban",
+                  "unban",
+                  "mute",
+                  "unmute"
+                ]
+              }
+            },
+            {
+              "name": "minutes",
+              "type": {
+                "kind": "uint",
+                "bits": 32
+              }
+            },
+            {
+              "name": "reason",
+              "type": {
+                "kind": "string",
+                "maxBytes": 160
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "muted",
+        "id": 98,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "on",
+              "type": {
+                "kind": "bool"
+              }
+            },
+            {
+              "name": "reason",
+              "type": {
+                "kind": "string",
+                "maxBytes": 160
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "block",
+        "id": 99,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "account",
+              "type": {
+                "kind": "uuid"
+              }
+            },
+            {
+              "name": "on",
+              "type": {
+                "kind": "bool"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "hidden",
+        "id": 100,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "entities",
+              "type": {
+                "kind": "list",
+                "max": 256,
+                "of": {
+                  "kind": "uint",
+                  "bits": 16
+                }
               }
             }
           ]
@@ -1198,7 +1470,7 @@
       ]
     },
     "token": {
-      "version": 0,
+      "version": 1,
       "cipher": "AES-256-GCM",
       "header": {
         "kind": "struct",
@@ -1277,6 +1549,44 @@
             "type": {
               "kind": "uint",
               "bits": 16
+            }
+          },
+          {
+            "name": "owner",
+            "type": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "contact",
+            "type": {
+              "kind": "enum",
+              "bits": 2,
+              "values": [
+                "everyone",
+                "friends",
+                "none"
+              ]
+            }
+          },
+          {
+            "name": "friends",
+            "type": {
+              "kind": "list",
+              "max": 100,
+              "of": {
+                "kind": "uuid"
+              }
+            }
+          },
+          {
+            "name": "blocks",
+            "type": {
+              "kind": "list",
+              "max": 100,
+              "of": {
+                "kind": "uuid"
+              }
             }
           }
         ]
