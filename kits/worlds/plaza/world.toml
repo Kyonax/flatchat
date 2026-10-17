@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Stage 1's greybox plaza, made by tools/converter/scripts/make-plaza.ts from packages/sim.
+format = 1
+name = "The Plaza"
+description = "A paved square with a fountain, a stage and platforms: where FlatChat started."
+
+[capacity]
+recommended = 40
+maximum = 60
+
+[persistence]
+mode = "reset"
+
+[movement]
+flying = false
+
+[voice]
+range = 25
+
+[[scenes]]
+id = "plaza"
+file = "scenes/plaza.glb"
