@@ -74,7 +74,7 @@ Node.js removes `import type` lines before it runs a file, so the plugin needs n
 | `on_tick` | Every state tick (20 a second by default) | `tick` | Nothing |
 | `on_voice_settings` | Arrives with the voice controls (S3.08); not called yet | `player` | `{ range, gain }`. Needs `voice` |
 
-A player's facts come from the connect token the core sealed for this world: `entity` (its number in this world), `account`, `name`, `trust` (0 to 7), `tester`, `emailVerified`, `ageDays` (the account's age) and `under18`. A world never learns a player's email or birth date.
+A player's facts come from the connect token the core sealed for this world: `entity` (its number in this world), `account`, `name`, `trust` (0 to 7), `tester`, `emailVerified`, `ageDays` (the account's age) and `under18`; and `role`, the player's role in this world (`visitor`, `builder`, `moderator`, `admin` or `owner`, S3.06). A world never learns a player's email or birth date.
 
 Plugins load in the order of their folders' names. Entry rules run in that order and the first refusal wins; chat lines pass through each `on_chat` in turn.
 

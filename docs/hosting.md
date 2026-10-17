@@ -90,6 +90,18 @@ A world folder's `plugins/` holds the world's own code ([plugins.md](plugins.md)
 
 Change a rule's settings in its `plugin.toml` (for the closed test: `host plugins my-world add entry-trust`, then `testers_only = true` in `my-world/plugins/entry-trust/plugin.toml`). `host plugins my-world` lists what is installed and names any plugin the world server would refuse. The world's log says `plugin-loaded` for each plugin it runs.
 
+### Roles and builds by others
+
+The account that requested the world is its owner: the core's connect token says so, and the world shows it with an Owner badge in the People panel (Tab in the client). There the owner gives the other roles, each a step up: a **builder** may replace the world's files, a **moderator** also kicks, bans and mutes, an **admin** also gives the roles below its own. The world keeps the roles in its own database, so they come back after a restart and are never cleared by a `reset` world.
+
+A builder, an admin or the owner sends a new build from their own PC, without access to yours:
+
+```sh
+npm run host -- push my-world --world-id WORLD_ID      # builds my-world, then sends the build to the running world
+```
+
+The world checks the whole build as it checks one at start, puts it in place of its built folder (`my-world/.built` on your PC) and restarts on it: `host run` starts it again by itself (a world server started by hand exits with code 75 for you to start it again), and players are brought back in. A build you make yourself later with `host build` or `host run` replaces a pushed one, so keep the world's source folders in step with your builders.
+
 ## 4. When the UDP port cannot be reached: TURN
 
 Carrier-grade NAT (common in Colombia: the census in [spikes/s-home.md](spikes/s-home.md) measures how common) means no port can be mapped. Then the game traffic goes through a TURN relay. The core hands out credentials that last an hour, so none is ever built into a client:
