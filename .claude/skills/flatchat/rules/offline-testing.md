@@ -17,7 +17,11 @@ This rule governs how code is tested when the real thing (a GPU, Electron, an NV
 | Inline-source tests | Plain Node, sources as strings | A checker's findings on planted mistakes | `tools/harness/test/trap-lint.test.ts` |
 | Temporary-folder tests | `mkdtempSync` under the OS temp folder, removed in `afterEach` | A checker over a whole folder tree | `tools/harness/test/skill-check.test.ts` |
 | Process tests | `spawn(process.execPath, ['src/main.ts', …])`, reading stdout | Flags, log lines, exit codes, signals | `apps/world-server/test/main.test.ts` |
-| Smoke runs | The built client on a display (CI: Xvfb or the Windows desktop) | That it draws on some backend | `--smoke` (client rule) |
+| Simulated-wire tests | Plain Node: two transport sessions joined by an in-memory wire that drops, repeats or tampers with datagrams, serviced as time passes | Reliability under loss, replay and tamper refusal, reassembly | `apps/world-server/test/net.test.ts` (`wire()`) |
+| Loopback tests | Real sockets on 127.0.0.1 (raw UDP, WebRTC with `iceBind: '127.0.0.1'`), any free port | Handshakes and both channels end to end; the join flow with real tokens | `apps/world-server/test/net.test.ts`, `server.test.ts`; the harness's `bots` check |
+| Golden-file tests | Plain Node, fixed values against exact bytes in checked-in files | That an encoding never changes by accident, in every program that links it | `packages/protocol/test/golden.test.ts`, `apps/world-server/test/protocol.test.ts` |
+| Fuzz tests | Plain Node, seeded random and damaged inputs | That a parser of strangers' bytes fails only in its own error type | `packages/protocol/test/messages.test.ts` |
+| Smoke runs | The built client on a display (CI: Xvfb or the Windows desktop) | That it draws on some backend, and the protocol's golden packets pass in the bundled renderer | `--smoke` (client rule) |
 
 Tests never need a GPU, Electron's binary, sudo, `nvidia-smi`, network access or a display. Anything that does is a smoke or bench run, not a test.
 
@@ -31,6 +35,8 @@ Tests never need a GPU, Electron's binary, sudo, `nvidia-smi`, network access or
 | A script that runs commands (sudo, `nvidia-smi`, `systemd-run`) | A planner that returns the commands, and an executor that takes a `Runner` | A recorder `Runner`: assert the calls and their order, and simulate failures and interrupts |
 | A checker over files | A function over `{ rel, text }` sources, separate from file walking | Inline strings; one test per finding and one clean case |
 | A long-running process | Its CLI, printing JSON lines | A process test with a timeout |
+| A world tick, interest tiers, voice routing | `World` and `VoiceRouter`, which take the time and return encoded messages | Tick them by hand and decode what they return |
+| A transport's reliability | A session class whose datagram sender is injected | The in-memory wire above |
 
 The recorder pattern, as the stand-in's tests use it:
 ```ts

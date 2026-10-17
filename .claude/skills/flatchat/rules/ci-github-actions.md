@@ -14,8 +14,8 @@ Triggers: `push` and `pull_request`. Permissions: `contents: read`. Concurrency:
 | Job | Runner | Limit | Steps |
 |---|---|---|---|
 | `checks` (Harness) | `ubuntu-24.04` | 15 min | checkout, setup-node, `npm ci`, `npm run harness` |
-| `client-linux` | `ubuntu-24.04` | 20 min | checkout, setup-node, `npm ci`, `npm run dist:linux -w @flatchat/client`, the AppArmor sysctl, the smoke test under Xvfb with SwiftShader, the no-renderer smoke test that must fail, upload `linux-unpacked` (7 days) |
-| `client-windows` | `windows-2025` | 20 min | checkout, setup-node, `npm ci`, `npm run dist:win -w @flatchat/client`, the smoke test from PowerShell, upload the zip (7 days) |
+| `client-linux` | `ubuntu-24.04` | 20 min | checkout, setup-node, `npm ci`, `npm run dist:linux -w @flatchat/client`, the AppArmor sysctl, the smoke test under Xvfb with SwiftShader, joining a world server over WebRTC (`npm run bots -- client-check -- …`), the no-renderer smoke test that must fail, upload `linux-unpacked` (7 days) |
+| `client-windows` | `windows-2025` | 20 min | checkout, setup-node, `npm ci`, `node tools/bots/src/run.ts smoke` (node-datachannel's Windows binary, both transports; `node` directly, so PowerShell and npm cannot reshape the `--` arguments), `npm run dist:win -w @flatchat/client`, the smoke test joining a world server, from PowerShell, upload the zip (7 days) |
 
 Actions used (all at major v7 on 2026-10-16): `actions/checkout@v7`, `actions/setup-node@v7` with `node-version-file: .tool-versions` and `cache: npm`, `actions/upload-artifact@v7`.
 
@@ -27,7 +27,7 @@ Actions used (all at major v7 on 2026-10-16): `actions/checkout@v7`, `actions/se
 | `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before running Electron on Ubuntu 24.04 | Ubuntu blocks the unprivileged user namespaces Chromium's sandbox needs; Electron aborts | T15 |
 | `xvfb-run -a … --smoke --enable-unsafe-swiftshader` | No display, or no WebGL at all: Chromium no longer falls back to SwiftShader for WebGL by itself, so the scene cannot start | T15 |
 | The smoke run with `--disable-gpu` that must exit non-zero | Nothing proves the smoke test can fail; a client that draws nothing could pass | — |
-| The Windows smoke test through `Start-Process … -PassThru -Wait` and `exit $app.ExitCode` | The client is a GUI program: PowerShell would not wait for it or pass its exit code on | — |
+| The smoke tests through `npm run bots -- client-check -- CLIENT …` | It starts a WebRTC world server on loopback, seals a connect token, runs the client with `--join` and `--join-token`, waits for it (Node waits for a GUI program, where PowerShell alone would not) and exits non-zero unless the client passed and the server saw its join; on Windows `exit $LASTEXITCODE` after printing the file | — |
 | `--smoke-out=FILE`, then printing the file | A GUI program's stdout is not captured on Windows | — |
 
 A smoke run with `--disable-gpu` is the deliberate exception to T15; the linter skips it.
@@ -39,7 +39,7 @@ A smoke run with `--disable-gpu` is the deliberate exception to T15; the linter 
 | `ubuntu-24.04` | WebGL2 | ANGLE on Vulkan SwiftShader (about 8 fps at 1280×720) |
 | `windows-2025` | WebGL2 | ANGLE on Direct3D 11, Microsoft Basic Render Driver (WARP; about 38 fps) |
 
-These prove the client starts and draws; they are never performance numbers.
+These prove the client starts and draws; they are never performance numbers. Each smoke JSON also carries the `protocol` check (the golden packets run in the packaged renderer; a single failing packet fails the job) and the `net` check (Chromium's own WebRTC joined the world server: `joinMs`, `entity`, `snapshots`; `ok: false` fails the job).
 
 ## Reading a Run (Read-Only)
 

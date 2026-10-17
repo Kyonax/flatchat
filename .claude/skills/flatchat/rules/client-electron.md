@@ -37,6 +37,7 @@ The preload exposes one object, `window.flatchat`, with one named function per c
 | Function | Channel (`ipcMain.handle`) | Purpose |
 |---|---|---|
 | `versions` | — (a plain object) | Electron, Chromium and Node versions for the HUD |
+| `signal(url, offer)` | `flatchat:signal` | WebRTC signaling: the main process checks the URL (`signalTarget`), posts the offer and returns the answer |
 | `smokeReport(report)` | `flatchat:smoke-report` | The smoke mode's single report |
 | `benchReport(report)` | `flatchat:bench-report` | The bench mode's report with every frame time |
 
@@ -47,9 +48,11 @@ Rules: channel names are string literals of the form `flatchat:<noun>-<verb or n
 `src/renderer/index.html` carries:
 ```html
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
 ```
-Scripts come only from the app itself: no `'unsafe-eval'`, no `'unsafe-inline'` for scripts (T07). Vue's single-file components compile ahead of time, so the runtime never needs `eval`. Widen `img-src`, `connect-src` or `media-src` only for a named origin when a feature needs it (for example the asset CDN), never with `*`.
+The policy also has `connect-src 'self' blob: flatchat-avatar:` and `img-src 'self' data: blob:`: the crowd bench fetches avatars from its read-only scheme, and GLTFLoader fetches a model's embedded images as blob URLs.
+
+Scripts come only from the app itself: no `'unsafe-eval'`, no `'unsafe-inline'` for scripts (T07). `'wasm-unsafe-eval'` lets the page compile WebAssembly (the voice chain's Opus codec, libopus-wasm, which ships inside the app) and nothing else: it does not allow `eval` or `new Function`, and T07 tells the two apart. Vue's single-file components compile ahead of time, so the runtime never needs `eval`. Widen `img-src`, `connect-src` or `media-src` only for a named origin when a feature needs it (for example the asset CDN), never with `*`. The page has no `connect-src` beyond itself: WebRTC signaling goes through the main process (`signal()` on the bridge, `src/main/signal.ts`), which allows only http(s) URLs at `/rtc` on 127.0.0.1, an RFC 1918 address or a private overlay network's 100.64.0.0/10 (Tailscale) in Stage 0 (`signalTarget`, tested). Permissions: `lockPermissions()` refuses every permission request except audio capture in the voice lounge (Electron grants everything when no handler is set). WebRTC connections themselves are not governed by the CSP.
 
 ## The Menu
 
@@ -65,13 +68,18 @@ Outside development the main process calls `Menu.setApplicationMenu(null)` befor
 |---|---|
 | `--smoke` | Draw the scene for about 3 s, then report once and quit |
 | `--smoke-out=FILE` | Also write the smoke report (one JSON line) to FILE |
+| `--voice-test=SECONDS` with `--join`, `--join-token`, `--listen-token` [`--voice-out=FILE`] | Spike S0.08: join twice and measure the voice chain end to end (`voice-chain`); exits 0 when 90 % of the bursts were heard |
+| `--voice-load=SECONDS` [`--voice-out=FILE`] | Spike S0.08: 16 voices through the hearing chain with no network; the report adds each process's CPU from `app.getAppMetrics()` |
+| `--census` [`--census-out=FILE`] | Spike S0.10: the network census in the main process (`src/main/census/`) and the GPU from `app.getGPUInfo('complete')`; one JSON line, then quit, with no window. Every probe only asks: two public STUN servers from one socket (the NAT's mapping), STUN over IPv6, UPnP's GetExternalIPAddress (only a LAN description URL is fetched), NAT-PMP and PCP to the gateway; the report keeps derived facts and the ISP's name from reverse DNS, never the public address |
+| `--join=http://ADDRESS:PORT/rtc` with `--join-token=HEX` | Smoke or voice-test mode only, this machine or the local network only (the signaling bridge's own rule, `signalTarget`): also join that world server over WebRTC data channels (`src/renderer/src/net-check.ts`: Chromium's RTCPeerConnection, the two pre-negotiated channels, hello, the spawn, one acknowledged pose); `npm run bots -- client-check -- …` supplies both |
 | `--bench=SECONDS` | Bench: draw a fixed-size frame with no frame-rate cap; after a 2 s warm-up, log every frame time for SECONDS (1–3600) |
+| `--crowd=SECONDS --avatars=DIR` [`--crowd-full`, `--crowd-lod`, `--crowd-present`, `--crowd-springs`, `--crowd-swap`, `--crowd-texture-mb`, `--crowd-lod-ratio`, `--crowd-merge`, `--crowd-headroom`, `--crowd-out`, `--crowd-shot`] | Spike S0.09's crowd bench (`avatars-and-crowds`): runs alone; the main process serves DIR read-only as `flatchat-avatar://bench/` (registered before ready, served before the window opens), samples every process's memory each second, judges the pass lines and can save a PNG of the window (`capturePage`). Exit 0 when it drew and finished |
 | `--bench-out=FILE` | Write the full bench report, every frame time included |
 | `--bench-size=WxH` | The drawing buffer (default `1280x720`; 64–7680 by 64–4320) |
 
 `--smoke` and `--bench` cannot run together; a bad value prints `{"event":"error","errors":[…]}` and exits 2. In bench mode the main process appends Chromium's `disable-frame-rate-limit` and `disable-gpu-vsync` switches before `app` is ready, so frame times show the work, not the display's refresh.
 
-Each mode prints one JSON line to stdout: `event` (`smoke`, `bench`, or `smoke-timeout` / `bench-timeout`), the renderer's report (`backend`, `adapter`, `fps` or `summary`, `width`, `height`), Chromium's `gpu` feature status and the `platform`. The bench line leaves out `frameTimesMs`; the file has it. **Exit code:** 0 only when `backend` is `WebGPU` or `WebGL2`; a scene that could not start reports `backend: 'none'` and exits 1; no report within 30 s (smoke) or SECONDS + 60 s (bench) exits 1. This is what makes a GPU-less machine that draws nothing fail its smoke test instead of passing it.
+Each mode prints one JSON line to stdout: `event` (`smoke`, `bench`, or `smoke-timeout` / `bench-timeout`), the renderer's report (`backend`, `adapter`, `fps` or `summary`, `width`, `height`), Chromium's `gpu` feature status and the `platform`. The bench line leaves out `frameTimesMs`; the file has it. The smoke report also carries `protocol` (`protocol`, `fingerprint`, `cases`, `failures`): in smoke mode the renderer loads `@flatchat/protocol/golden` as its own chunk (`src/renderer/src/protocol-check.ts`) and runs every golden packet through the library as Vite bundled it, so CI proves the packaged client speaks the server's bytes on Linux and Windows. With `--join` the report also carries `net` (`ok`, `joinMs`, `entity`, `snapshots`, `error`). **Exit code:** 0 only when `backend` is `WebGPU` or `WebGL2`, and, for a smoke run, every golden packet passed and any join asked for worked (`exitCodeFor(report, mode, { join })` in `flags.ts`); a scene that could not start reports `backend: 'none'` and exits 1; no report within 30 s (smoke) or SECONDS + 60 s (bench) exits 1. This is what makes a GPU-less machine that draws nothing, or a bundle that misreads the protocol, fail its smoke test instead of passing it.
 
 | Command | What it does |
 |---|---|

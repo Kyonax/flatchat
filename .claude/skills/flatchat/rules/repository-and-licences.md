@@ -2,7 +2,7 @@
 title: Repository Layout, npm Workspaces, Licences by Folder and SPDX Headers
 impact: CRITICAL
 impactDescription: A source file without its folder's SPDX header, a new licensed folder missing from layout.json or a top-level folder outside the allowed five fails the layout check and CI, and code merged under the wrong licence cannot be relicensed afterwards.
-tags: repository, layout, monorepo, workspaces, npm workspaces, apps, packages, tools, kits, docs, licence, license, licensing, spdx, spdx header, MPL-2.0, AGPL-3.0-or-later, Apache-2.0, GPL-3.0-or-later, CC-BY-4.0, check-layout, layout.json, LICENSING.md, CREDITS.md, third party, third_party, new folder, new package, new workspace, inbound outbound, README
+tags: repository, layout, shipwright, secret scanner, high-entropy-assignment, publishing, THIRD_PARTY_NOTICES, notices.mjs, packages that ship, monorepo, workspaces, npm workspaces, apps, packages, tools, kits, docs, licence, license, licensing, spdx, spdx header, MPL-2.0, AGPL-3.0-or-later, Apache-2.0, GPL-3.0-or-later, CC-BY-4.0, check-layout, layout.json, LICENSING.md, CREDITS.md, third party, third_party, new folder, new package, new workspace, inbound outbound, README
 ---
 
 This rule governs where code lives in the repository and which licence covers it. Each folder carries a licence chosen for its role, and the choice is recorded in three places that must agree: the folder's own `LICENSE` file, the table in `LICENSING.md`, and `tools/repo/layout.json`. `npm run check:layout` reads `layout.json` and checks all three, plus an SPDX header in every source file; the harness and CI run it on every change. A contribution takes the licence of the folder it lands in (inbound = outbound); there is no contributor licence agreement.
@@ -14,7 +14,7 @@ This rule governs where code lives in the repository and which licence covers it
 | `apps/client` | The Electron desktop client: main process, preload, renderer | `MPL-2.0` | `@flatchat/client` |
 | `apps/world-server` | The world server, run headless by its host | `MPL-2.0` | `@flatchat/world-server` |
 | `apps/core` | The central service: accounts, registry, uploads, gallery, moderation | `AGPL-3.0-or-later` | not yet |
-| `packages/protocol` | Network messages, codecs, connect tokens, version handshake | `Apache-2.0` | not yet |
+| `packages/protocol` | Network messages, codecs, connect tokens, version handshake | `Apache-2.0` | `@flatchat/protocol` |
 | `packages/sim` | Movement rules shared by client prediction and server checks | `Apache-2.0` | not yet |
 | `packages/content` | World and avatar manifests, ranks and budgets, the world validator | `Apache-2.0` | not yet |
 | `packages/plugin-sdk` | The world-plugin host interface | `Apache-2.0` | not yet |
@@ -26,7 +26,7 @@ This rule governs where code lives in the repository and which licence covers it
 | `tools/repo` | The layout check (`check-layout.mjs`) and `layout.json` | `MPL-2.0` (unlisted, so the default) | — |
 | `kits` | The body kits and the base library's sources | `CC-BY-4.0` | — |
 | `docs` | Specs, spike reports (`docs/spikes`), help pages | `CC-BY-4.0` | — |
-| Everything else: root files, `.github/`, `.claude/` | | `MPL-2.0`, the root `LICENSE` | — |
+| Everything else: root files, `.github/`, `.claude/`, `.shipwright/` | | `MPL-2.0`, the root `LICENSE` | — |
 
 A file's licence is that of the **longest listed folder** that contains it; a file in no listed folder gets `MPL-2.0`.
 
@@ -78,6 +78,12 @@ Copy a `LICENSE` from a folder with the same licence (for example `tools/bots/LI
 ## Third-Party Material
 
 Third-party code, models, textures, sounds and fonts keep their own licences. Each gets a row in `CREDITS.md` (who made it, where it came from, its licence, what was changed) and lives in a `third_party/` folder (skipped by the header check) or keeps its own header. Assets must be CC0 or CC BY; credit the person who made a work, not the site it was found on. Nothing from other games: no models, textures, sounds, names or logos.
+
+npm packages that ship inside a built program (bundled into the client, or loaded by the world server) get a row in `CREDITS.md`'s "Packages that ship" table. A package bundled into the client also gets an entry in `BUNDLED` in `apps/client/scripts/notices.mjs`, which `npm run build` runs to write `out/THIRD_PARTY_NOTICES.txt` from each package's `LICENSE` (a licence the package does not carry, like libopus's inside libopus-wasm, is kept in `apps/client/third_party/`); `electron-builder.yml` puts that file beside the executable. The bundle keeps `@license` comments but drops other notices, so without it a BSD notice would not travel with the package.
+
+## Publishing Through Shipwright
+
+The maintainer publishes with shipwright under `.shipwright/contract.toml` (AGENTS.md, rule 9). Before it commits, its secret scanner reads every added line, and one finding stops the whole publication. Besides provider key formats, it flags a high-entropy assignment: a word like `token`, `pass`, `secret`, `auth` or `key`, then `:` or `=`, then 16 or more characters of mixed text. Ordinary code matches it: a `token` property set to `flags.join.token`, a `pass` property set to `Object.fromEntries(...)` and a `token` property set to `fromHex(hex)` each vetoed the first publication's scan, and so did this paragraph while it quoted them as code. Write such lines with shorthand properties (`const { token } = flags.join; return { token }`) or short local names, never by allow-listing a file. Check pending files the way a run will: `git status --porcelain --untracked-files=all | sed 's/^...//' > /tmp/paths && python3 <shipwright checkout>/lib/secrets.py scan . --paths-file /tmp/paths` (exit 0 is clean).
 
 ## Correct vs. Incorrect
 

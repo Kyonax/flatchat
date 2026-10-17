@@ -24,7 +24,7 @@ Strings and comments that mention these names never trigger the linter: it parse
 | Source | Arrives in | Rule |
 |---|---|---|
 | Display names, chat text, world names and descriptions | Client UI (Vue), world server, core | Text only, rendered with `{{ }}`; length-limited and validated where it enters |
-| Network messages | World server, client, core | Decoded by the protocol's codecs with size limits; reject unknown or oversized messages, never `JSON.parse` a raw packet into trusted state |
+| Network messages | World server, client, core | `decodeMessage(bytes, sender)` only: it refuses unknown, malformed, oversized and wrong-direction messages with a `ProtocolError` (rule `protocol-and-codecs`); drop the packet and count the code, never let it stop a tick, never `JSON.parse` a raw packet into trusted state. The world server also refuses a message on the wrong channel, closes a link after 50 malformed messages, and rate-limits voice (60 frames a second) and chat (one line a second) per player (`world-networking`) |
 | Uploaded models, textures, animations, effects | The core's upload path, then `tools/converter` | Converted to the platform's own format, validated and ranked before anyone downloads them |
 | World and avatar files downloaded by a client | Client | Only the platform's format, from the core's asset store, checked against its manifest |
 | World plugins | World server | Their own process and permissions, declared in `plugin.toml`; never `node:vm`, never `eval` |

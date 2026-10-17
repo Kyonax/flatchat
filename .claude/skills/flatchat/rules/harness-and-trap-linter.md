@@ -2,7 +2,7 @@
 title: The Harness and the Trap Linter — One Command for Every Headless Check, and How to Add a Check or a Trap
 impact: HIGH
 impactDescription: Work declared done without the harness's full pass misses whichever check was skipped, a trap added without its rule text or test fails the skill check or catches nothing, and a suppression without a reason hides a real security finding.
-tags: harness, npm run harness, check.ts, checks, lock-check, package-lock, npm ci, verify, verification, done, layout, skill, skill-check, traps, trap linter, trap-lint, lint:traps, lint, eslint, types, typecheck, tests, server, client, --with-client, --only, --skip, --list, --verbose, github actions groups, adding a trap, adding a check, TRAPS table, suppress, allow comment, exit codes, json output, --strict
+tags: harness, npm run harness, check.ts, checks, lock-check, package-lock, npm ci, verify, verification, done, layout, skill, skill-check, traps, trap linter, trap-lint, lint:traps, lint, eslint, types, typecheck, tests, server, bots, client, --with-client, --only, --skip, --list, --verbose, github actions groups, adding a trap, adding a check, TRAPS table, suppress, allow comment, exit codes, json output, --strict
 ---
 
 This rule governs `tools/harness`: the single command that tells whether the repository is healthy, the trap linter inside it, and how either grows. Agents finish every change by running `npm run harness`; CI runs the same command, so a green harness locally predicts a green checks job.
@@ -18,7 +18,8 @@ This rule governs `tools/harness`: the single command that tells whether the rep
 | `lint` | `npm run lint` (ESLint 10 over the whole repository) | No ESLint error |
 | `types` | `npm run typecheck` (every workspace's `tsc` or `vue-tsc`) | No type error |
 | `tests` | `npm test` (every workspace's `vitest run`) | Every test passes |
-| `server` | `node apps/world-server/src/main.ts --port 0 --tick-hz 50 --ticks 50` | A `ready` line with a port, a `stopped` line with `tick-limit` and 50 ticks, exit 0 |
+| `server` | `node apps/world-server/src/main.ts --port 0 --tick-hz 50 --ticks 50` | A `ready` line with a port, the protocol version and the schema fingerprint; a `stopped` line with `tick-limit` and 50 ticks; exit 0 |
+| `bots` | `node tools/bots/src/run.ts smoke` | A world server and 12 bots on each transport (raw UDP and WebRTC, at once) for 4 s on loopback: every bot joins, none is lost, each gets snapshots and pongs, voice is forwarded, no correction or malformed message (`bots-and-load-tests`) |
 | `client` (only with `--with-client`) | `npm run client:smoke` | The built client draws on a backend (needs a display) |
 
 | Option | Effect |
@@ -64,6 +65,7 @@ Skipped folders: `node_modules out dist build release coverage .cache third_part
 | T14 CI job without a time limit | error | `ci-github-actions` |
 | T15 Linux client smoke test that cannot draw | error | `ci-github-actions` |
 | T16 external link opened unchecked | warning | `client-electron` |
+| T17 Node.js API in a shared package (`packages/*/src/`) | error | `protocol-and-codecs` |
 
 A reviewed exception is marked on the line or the line above: `// trap-lint: allow T13 because the command is a fixed literal`. Several ids may follow `allow`. Never add an allow comment to make a run pass; fix the code.
 

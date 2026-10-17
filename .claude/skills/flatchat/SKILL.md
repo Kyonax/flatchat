@@ -1,15 +1,15 @@
 ---
 name: flatchat
-description: "The engine skill for this repository, FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU with its WebGL2 fallback, smoke and bench modes); the world server run as TypeScript by Node; licences by folder and SPDX headers; untrusted-input security; offline tests without GPU or Electron; the harness (npm run harness) and its trap linter (T01-T16); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in (Iris Xe, Radeon 680M) with nvidia-smi clock locks. Use for any change, test, CI failure, build or performance measurement in this repository, and before calling work done."
+description: "The engine skill for this repository, FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU with its WebGL2 fallback, smoke and bench modes); the world server run as TypeScript by Node, its transports (WebRTC data channels via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds and the crowd bench; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T17); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement in this repository, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.0.0"
-  verified: "2026-10-16"
+  version: "1.3.0"
+  verified: "2026-10-17"
 ---
 
 # FlatChat
 
-How to build, test and verify FlatChat in this repository: where each kind of code lives and under which licence, the client's security model, how it draws and how frames are measured, the world server, how to test without a GPU, the harness that every change must pass, CI, packaging, and the stand-in that turns a desktop into a weak laptop. Every fact here was checked on the code and on real runs (Linux desktop with an NVIDIA card, a Windows VM without a GPU, GitHub's runners) on 2026-10-16.
+How to build, test and verify FlatChat in this repository: where each kind of code lives and under which licence, the client's security model, how it draws and how frames are measured, the world server, the wire protocol every program shares, how to test without a GPU, the harness that every change must pass, CI, packaging, and the stand-in that turns a desktop into a weak laptop. Every fact here was checked on the code and on real runs (Linux desktop with an NVIDIA card, a Windows VM without a GPU, GitHub's runners) on 2026-10-16.
 
 ## Core Principle: Prove It Headless, Keep Strangers' Input Inert
 
@@ -25,7 +25,11 @@ Everything that can be decided without a GPU is decided in pure modules and prov
 | The client, live | `npm run client` |
 | The client draws (needs a display) | `npm run client:smoke` |
 | A world server | `npm run server -- --port 0 --ticks 100` |
+| Bots on both transports, 4 s (part of the harness) | `npm run bots -- smoke` |
+| A measured load test (read `bots-and-load-tests` first) | `npm run bots -- run --transport rtc --bots 200 --minutes 30 --server-cpus 0-1 --bot-cpus 2-7` |
+| The protocol's golden files up to date | `npm run golden -w @flatchat/protocol` |
 | Measure on the weak-laptop stand-in (read first) | `npm run standin -- plan --target iris-xe` |
+| The avatar crowd bench (read `avatars-and-crowds` first) | `apps/client/release/linux-unpacked/flatchat --crowd=300 --avatars=DIR --crowd-out=FILE` |
 
 ## When to Apply
 
@@ -35,6 +39,10 @@ Reference these guidelines when:
 *   Touching the client's main process, preload, IPC, window settings, content security policy or menu.
 *   Drawing anything, choosing a three.js entry point, or quoting a frame rate.
 *   Changing the world server, its tick loop, flags or log lines.
+*   Changing how programs connect: the transports, joins, interest management, snapshots, voice forwarding or chat.
+*   Running bots, load-testing a world server, or quoting a bandwidth, tick or capacity number.
+*   Touching voice: capture, the codec, the playout buffer, spatial sound or mouth shapes.
+*   Adding or changing a network message, a codec, the connect token or the version handshake; reading packets from other players.
 *   Handling chat, names, world or avatar files, uploads, plugins or network messages.
 *   Writing tests, or making code testable without a GPU, Electron or sudo.
 *   A harness check, a trap-linter finding or a CI job fails.
@@ -52,6 +60,11 @@ Reference these guidelines when:
 | Chat, display names, world or avatar files, uploads, plugins, network messages | `rules/security-untrusted-input.md` |
 | Rendering, three.js, WebGPU or WebGL2, adapters, frame rates and frame times | `rules/rendering-three-webgpu.md` |
 | The world server: ticks, flags, JSON log lines, shutdown, Node-run TypeScript | `rules/world-server-node.md` |
+| The transports (raw UDP, WebRTC), joins, interest management, snapshots, voice forwarding, chat | `rules/world-networking.md` + `rules/protocol-and-codecs.md` + `rules/security-untrusted-input.md` |
+| Bots, load tests, measured runs, the S0.07 pass lines, the devlog view | `rules/bots-and-load-tests.md` + `rules/world-networking.md` |
+| Voice: capture, Opus, the playout buffer, distance, HRTF, mouth shapes, the S0.08 tests | `rules/voice-chain.md` + `rules/client-electron.md` |
+| Avatars: VRM loading, merged materials, texture budgets, levels of detail, proxies, crowds, the S0.09 bench | `rules/avatars-and-crowds.md` + `rules/rendering-three-webgpu.md` + `rules/security-untrusted-input.md` |
+| The protocol: messages, codecs, connect tokens, the version handshake, golden packets | `rules/protocol-and-codecs.md` + `rules/security-untrusted-input.md` |
 | Writing or fixing tests; testing without a GPU, Electron, sudo or the network | `rules/offline-testing.md` |
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
@@ -69,10 +82,15 @@ A trap-linter finding names its rule; read that rule.
 | `toolchain-versions` | Node 24 via `.tool-versions`, npm workspaces commands, every pinned version and why (TypeScript ~6.0), install quirks, upgrades. |
 | `client-electron` | Main/preload/renderer split, locked window settings, the bridge and IPC, CSP, menu, smoke and bench flags and exit codes (T01–T04, T07–T10, T16). |
 | `rendering-three-webgpu` | WebGPURenderer start-up, backend and adapter, software renderers per machine, fixed-size bench, frame-time statistics. |
-| `world-server-node` | TypeScript Node can strip, the drift-free ticker, flags, JSON log lines, clean shutdown, process tests. |
+| `world-server-node` | TypeScript Node can strip, the server's files and exports, the drift-free ticker, flags, JSON log lines (ready, metrics, stopped), clean shutdown, process tests. |
+| `world-networking` | The Link seam; raw UDP's handshake, encryption and reliable stream; WebRTC through node-datachannel (one ICE port, negotiated channels, its traps); the join flow; interest tiers, encoding once per cell, snapshot packing; voice bundles; chat. |
+| `voice-chain` | The client's voice: Opus as WebAssembly (why not WebCodecs), the capture and playout worklets, the playout buffer's rules, distance and HRTF, mouth shapes, the voice and load tests. |
+| `avatars-and-crowds` | VRM on the WebGPU renderer (MToon node materials, shared textures, VRM 0.x poses), what the converter must do (merge materials, texture budgets), paced swaps, the crowd bench and S0.09's pass lines, the test-avatar sets. |
+| `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
+| `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
 | `security-untrusted-input` | Never run, render as HTML or load raw what strangers made: eval, innerHTML/v-html, raw loaders, node:vm, exec (T05, T06, T11–T13). |
 | `offline-testing` | Pure modules, scene-graph and recorder tests, inline sources, process tests, test conventions. |
-| `harness-and-trap-linter` | The harness's checks and options, the skill check, the linter's inputs and 16 traps, allow comments, adding traps and checks. |
+| `harness-and-trap-linter` | The harness's checks and options, the skill check, the linter's inputs and 17 traps, allow comments, adding traps and checks. |
 | `ci-github-actions` | The three jobs, AppArmor and SwiftShader steps, time limits, runner renderers, reading red runs, green/red proof (T14, T15). |
 | `packaging-windows-linux` | electron-builder settings, Linux folder and Windows zip from Linux, checking a Windows build without a GPU or desktop. |
 | `weak-laptop-stand-in` | Imitating Iris Xe or 680M: clock locks, CPU and memory caps, profile derivation and format, commands, verdicts, tuning. |
