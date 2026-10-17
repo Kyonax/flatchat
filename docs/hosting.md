@@ -130,7 +130,20 @@ The world server receives its own credentials from the core over its WebSocket, 
 
 To check a relay, start the client with `--relay-only`: it then connects to worlds only through the TURN servers the core hands out, as a player behind a NAT that lets nothing else through would. If the join fails with `--relay-only` and works without it, the relay is not reachable or its credentials do not match the core's settings. CI runs the end-to-end test this way against coturn on every change (`node tools/bots/src/e2e.ts CLIENT --relay`).
 
-## 5. Inviting friends
+## 5. Mail: verification links (S3.03)
+
+The core mails a link to confirm an address that no invitation vouched for, and, for a teenager's account, its guardian's invitation (S3.04). It sends through Resend's API (the free plan sends 3,000 mails a month): make an account, add the sending domain (Resend shows the SPF and DKIM records; put them in Cloudflare's DNS once the domain is there), make an API key, and set in `core.env`:
+
+```sh
+FLATCHAT_CORE_MAIL=resend
+FLATCHAT_CORE_RESEND_KEY=re_…
+FLATCHAT_CORE_MAIL_FROM=FlatChat <noreply@example.org>
+FLATCHAT_CORE_SIGNUP=open          # or leave it out: invitations only, the closed test
+```
+
+`FLATCHAT_CORE_MAIL=folder` with `FLATCHAT_CORE_MAIL_FOLDER=/some/folder` writes each mail as a file instead, for trying it on one machine. The core never writes an address or a link to its log.
+
+## 6. Inviting friends
 
 ```sh
 node --env-file=$HOME/.config/flatchat/core.env apps/core/src/admin.ts invite --email friend@example.org --note "friend"
