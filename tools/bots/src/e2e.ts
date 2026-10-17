@@ -178,7 +178,21 @@ try {
     await page.keyboard.press('Tab');
     // A report from inside the world (S3.02): the menu, the form, the receipt.
     await page.keyboard.press('Escape');
-    await page.locator('[data-test=report-world]').click({ timeout: 10_000 });
+    const reportWorld = page.locator('[data-test=report-world]');
+    await reportWorld.waitFor({ timeout: 10_000 });
+    await snap('2c-menu');
+    // Where the menu's buttons are, and how big the window is: the record if a click goes astray.
+    // (Run in the page, which has a DOM; this program does not.)
+    steps['menu'] = await page.evaluate(`({
+      view: [innerWidth, innerHeight, devicePixelRatio],
+      buttons: [...document.querySelectorAll('.menu button')].map((b) => {
+        const r = b.getBoundingClientRect();
+        return [b.dataset.test ?? '', Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+      }),
+    })`);
+    // The keyboard's way, which every player has: focus the button and press Enter.
+    await reportWorld.focus();
+    await page.keyboard.press('Enter');
     await page.locator('[data-test=report-category]').selectOption('harassment');
     await page.locator('[data-test=report-text]').fill('A test report from the end-to-end test.');
     await page.locator('[data-test=report-send]').click();
