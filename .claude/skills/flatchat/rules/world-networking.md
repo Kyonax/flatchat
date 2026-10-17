@@ -77,6 +77,16 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 
 `--world BUILT_DIR` serves a built world (the converter's `world.json` and `content/<sha256>`): `loadBuiltWorld` checks world.json with `parseBuiltWorld` and every file's hash, and `builtOptions` takes the world's bounds, spawn points (from every scene, each with its group; a join picks among the first scene's, or among the group its `hello` names when the world has it, S2.11), portals (from every scene), solids (an axis-aligned box around each collider, for the height check), flying and maximum capacity. After `welcome` the server sends `content`; a player's `fetch` queues a file (64 at most), `unfetch` drops it, an unknown hash gets `notFound`. `ContentServer.step()` runs on the voice ticker (50 Hz): 16 KB chunks, at most 2 MB/s a player and 6 MB/s in total, so downloads never starve the game. The client downloads, checks and caches it (`client-app`).
 
+## Heights, Seats and Teleports (`src/server.ts`, S2.06, S2.07)
+
+| Part | Rule |
+|---|---|
+| Heights | `fitHeight(cm)`: 0 becomes `DEFAULT_HEIGHT_CM` (175, `BODY.height`), then clamped into the world's range (`heights`, from `[avatars]` in world.toml; `DEFAULT_HEIGHTS` 0.5–3 m for maps made in code). The roster carries the fitted height; `appearance` changes it at most once a second and goes out as a roster change |
+| Seats | `teleport` with `seat`: the built world's seats from every scene, in order (`seats` in `builtOptions`); within `TELEPORT.seatReach` (3 m) of the player, placed at the seat with stance `sitting` |
+| Teleports | A clicked spot within `TELEPORT.range` (40 m), at most one teleport or seat a second (`TELEPORT.everyMs`), inside the world. Where it lands (`landing`): anywhere in a flying world; on a built world, the nearest point of its navigation mesh within 0.5 m across and 1 m up or down (`WalkableSurface` in `src/world/navigation.ts`, recast-navigation in Node, loaded by `main.ts` from the converter's mesh; the mesh lies within a cell height, 0.1 m, of the surface); on a map made in code, not inside a box and at most 0.6 m above the ground under it (`groundBelow`), snapped down to it |
+| The answer | `placed`, accepted or not, with where the player is. `World.place` moves the player, updates the cell and resets the pose clock, so a pose the client sent from the old place is corrected back to the new one. Events `teleport:placed`, `teleport:refused`, `appearance` |
+| Typing | The world server's tsconfig uses Bundler resolution, like the converter's: recast-navigation's declarations use extensionless imports |
+
 ## Portals (`src/server.ts`, S2.11)
 
 After each applied `pose` the server checks the player's position against the portal boxes (`insideBox` from `packages/content`: a box turned about y). Entering one sends `portal` (the world id and the spawn group, cut to 32 bytes) once; the player must leave the box before the next. A player who spawns inside a portal starts as already in it, so arrivals are never bounced straight back. The world never hands out a connect token for the other world: the client asks the core (`client-app`). A player arriving with a spawn group skips a persistent world's remembered place. Events `portal` and `leave:travel` count it.

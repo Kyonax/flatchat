@@ -22,7 +22,7 @@ Horizontal movement resolves one axis at a time against the boxes (step up, else
 
 ## The Server's Check
 
-`checkMove(from, to, dt, limits, boxes)` returns `ok`, `too-fast` (more ground than `maxSpeed × dt + slack`; running plus 15 %, slack 0.75 m) or `too-high` (rising, with flying off, above the highest surface within 4 m plus `JUMP_APEX` plus slack). Falling is always allowed; walls are not checked yet. `World.applyPose` corrects any verdict but `ok`: the next snapshot carries the server's position with the pose's sequence number, and the client snaps back to it.
+`checkMove(from, to, dt, limits, boxes)` returns `ok`, `too-fast` (more ground than `maxSpeed × dt + slack`; running plus 15 %, slack 0.75 m) or `too-high` (rising, with flying off, above the highest surface within 4 m plus `JUMP_APEX` plus slack). Falling is always allowed; walls are not checked yet. `World.applyPose` corrects any verdict but `ok`: the next snapshot carries the server's position with the pose's sequence number, and the client snaps back to it. Moves a walk cannot make (a seat, a teleport, S2.06) go through `teleport` and the world server's own rules (`world-networking`), never through a pose.
 
 ## Maps
 
