@@ -1,8 +1,8 @@
 ---
-title: Reports and Safety — Reports With Evidence and the Voice Clip, the Public Form, the Triage Queue, Under-Age Reports, Keeping and Purging Evidence
+title: Reports and Safety — Reports With Evidence and the Voice Clip, the Public Form, the Triage Queue, Under-Age Reports, Keeping and Purging Evidence, the Abuse Path
 impact: CRITICAL
 impactDescription: A voice clip that leaves a player's computer without a report, a report queue that hides threats behind spam, evidence kept forever or lost too soon, or an under-age report that changes nothing breaks the promises the platform makes to minors and to the people who report.
-tags: reports, report, guardian, guardian link, guardians.ts, guardian_links, guardian-pending, FLATCHAT_CORE_MINORS, S3.04, friends, friend requests, blocks, block, hidden, minors, under18, contact, tokenLists, befriend, setBlock, S3.10, S3.11, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
+tags: abuse path, abuse.ts, abuse_cases, abuse_forms, openAbuseCase, runDrill, abuse drill, exportCase, markSent, markRemoved, purgeCases, evidenceKey, sealBytes, openBytes, T21, revoked, hosts.revoke, onRevoked, TAKE IT DOWN, 48-hour clock, NCMEC, CyberTipline, Te Protejo, CAI Virtual, NCA, CEOP, PhotoDNA, S3.12, OQ-17, reports, report, guardian, guardian link, guardians.ts, guardian_links, guardian-pending, FLATCHAT_CORE_MINORS, S3.04, friends, friend requests, blocks, block, hidden, minors, under18, contact, tokenLists, befriend, setBlock, S3.10, S3.11, S3.02, OQ-12, OQ-18, cl-013, ClipRecorder, takeClip, clip, voice clip, rolling buffer, WAV, CLIP_SECONDS, CLIP_RATE, buildReport, ReportDraft, ReportEvidence, reportOf, ReportForm, my reports, receipt, decision, public form, /report, REPORT_CATEGORIES, csam, grooming, threats, intimate, underage, harassment, URGENT, triage queue, priority, reportQueue, decideReport, underage-confirmed, underage-cleared, deleteAccount, KEEP_DAYS, purgeReports, keep_until, purged, CLIP_MAX, bodyLimit, media-src, T20
 ---
 
 Reports (S3.02) carry evidence to the core's owner, who decides on the admin page's triage queue (S3.07). The player is told a receipt at once and the decision later.
@@ -51,6 +51,21 @@ Reports (S3.02) carry evidence to the core's owner, who decides on the admin pag
 | `/guardian`: its own session (`guardian_sessions`, cookie on `/guardian`, CSRF per form), the teens' friends with Remove, contact friends/everyone/none | `guardianPage` |
 | Tests make a minor by moving a test account's birth year and inserting an authorized `guardian_links` row | `test/social.test.ts`, `test/guardian.test.ts` |
 
+## The Abuse Path (S3.12, OQ-17)
+
+| Rule | Where |
+|---|---|
+| A case opens from a report on the admin page (the queue's Abuse path form, open on `csam` and `intimate` reports) or `openAbuseCase`: a report about a world revokes it, one about a player, an avatar or an item bans the account; anything else waits for `markRemoved` (by hand) | `apps/core/src/abuse.ts`, `POST /admin/reports/:id/abuse` |
+| A revoked world is told over its host channel at once (`hosts.revoke`: `{type:'revoked'}`, then close 4010); the world server's relay calls `onRevoked`, `main.ts` stops with reason `revoked` (its players see "FlatChat took this world down"), and the host tool's `run` loop does not restart it (exit 0) | `hosts.ts`, `net/relay.ts`, `main.ts`, client `WorldView.vue` |
+| What the target is told stays neutral (`ACCOUNT_REASON`, `WORLD_NOTE`): a statement of reasons that tips no one off | `abuse.ts` |
+| The package (the report with its evidence and WAV clip, the world's or account's records, files such as Stage 4's uploads) is sealed with AES-256-GCM under `evidenceKey(secret)` (HKDF of the core's secret), the case id as its label, with its SHA-256 kept; `purgeCases` drops it after `PRESERVE_DAYS` (365) and keeps the case | `secrets.ts`, migration 0011 |
+| Only `abuse.ts` opens a package (`openBytes`), and only it and the admin command line call `exportCase` (written 0600 with `--out`, never to the terminal): no web route serves evidence (T21) | `tools/harness/src/trap-lint.ts` |
+| Abuse material drafts Te Protejo, CAI Virtual and NCMEC's CyberTipline, plus the NCA (CEOP) when UK-linked (the box, or the account or the world's host in `GB`); intimate images draft none | `DESTINATIONS` |
+| Nothing is ever sent: the owner files each draft on the official site and records the reference (`markSent`, the page's Filed, `abuse sent`) | `abuse_forms` |
+| Intimate images carry the 48-hour clock from the report (`due_at`, `clock`: within or past, logged with the case) | `logClock` |
+| The drill (`admin.ts abuse drill`, `runDrill`) runs it all with a stand-in world, account (`@drill.invalid`, GB) and harmless file; every draft starts `DRILL: DO NOT SEND`; the stand-ins are deleted, the drill's cases stay marked | `abuse.ts`, `test/abuse.test.ts` |
+| Uploaded textures (Stage 4) get a hash check once Microsoft's PhotoDNA accepts the platform; until then they are reviewed by hand | the plan's S3.12 note |
+
 ## Correct vs. Incorrect
 
 **Incorrect:** sending the last seconds of voice along with something else, or for diagnostics.
@@ -62,3 +77,13 @@ void bridge.voiceReport({ stats: chain.stats(), clip: this.recorder.takeClip(per
 const clip = draft.withClip ? recorder?.takeClip(now) : undefined;
 ```
 **Why:** players were promised that what they hear leaves their computer only in their own report (OQ-18); the trap linter enforces it (T20).
+
+**Incorrect:** a web route that serves a case's preserved evidence.
+```ts
+app.get('/admin/abuse/:id/export', async (req, reply) => reply.send(await exportCase(o.db, o.secret, id)));
+```
+**Correct:** only the admin command line opens it, into a file only its owner reads.
+```ts
+writeFileSync(out, JSON.stringify(opened.pack, null, 2), { mode: 0o600, flag: 'wx' });
+```
+**Why:** preserved abuse material must never be one stolen admin cookie away; the trap linter enforces it (T21).
