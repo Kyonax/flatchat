@@ -10,6 +10,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
 import { PNG } from 'pngjs';
+import { importNavMesh, init as initRecast, NavMeshQuery } from 'recast-navigation';
 import { describe, expect, it } from 'vitest';
 import { addBox, type MeshSpec, writeGlb } from '../src/glb-writer.ts';
 import { ConvertError, convertWorld, decompose, halve, readFolder } from '../src/world.ts';
@@ -78,6 +79,27 @@ function ball(segments = 64, rings = 32): MeshSpec {
   }
   return m;
 }
+
+describe('the navigation mesh', () => {
+  it('gives click to move a path around the plaza’s fountain (S2.06)', async () => {
+    const { world: w, out } = await convertWorld(readFolder(PLAZA), { ktx2: false });
+    await initRecast();
+    const { navMesh } = importNavMesh(out.get(`content/${w.navmesh}`)!);
+    const query = new NavMeshQuery(navMesh);
+    try {
+      // From the spawn, south of the fountain, to the far side of it: the straight line crosses it.
+      const r = query.computePath({ x: 64, y: 0.15, z: 76 }, { x: 64, y: 0.15, z: 54 }, { halfExtents: { x: 1, y: 2, z: 1 } });
+      expect(r.success).toBe(true);
+      expect(r.path.length).toBeGreaterThan(2);
+      const end = r.path.at(-1)!;
+      expect(Math.hypot(end.x - 64, end.z - 54)).toBeLessThan(0.5);
+      expect(r.path.some((p) => Math.abs(p.x - 64) > 2)).toBe(true);
+    } finally {
+      query.destroy();
+      navMesh.destroy();
+    }
+  });
+});
 
 describe('levels of detail', () => {
   it('gives a dense mesh two simpler copies as marked child nodes, and a small one none', async () => {
