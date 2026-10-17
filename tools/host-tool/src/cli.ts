@@ -5,27 +5,34 @@
 //   host new DIR [--from plaza]     a new world folder (from the plaza, or an empty starter)
 //   host check DIR                  validate a world folder against the world format
 //   host build DIR [OUT]            convert it into what a world server serves (default OUT: DIR/.built)
-//   host request --name N [--capacity 50] [--unlisted]   ask the core to approve a world hosted here
-//                                   (relayed; at most 200 players; --unlisted: reached by its ID only)
+//   host request --name N [--capacity 50] [--unlisted] --accept-agreement
+//                                   ask the core to approve a world hosted here (relayed; at most 200
+//                                   players; --unlisted: reached by its ID only), accepting the host
+//                                   agreement (S3.07: without the flag, it shows the agreement)
 //   host worlds                     your worlds: status, listed or not, online, players
 //   host listing WORLD_ID on|off    put a world on the public list, or take it off (S2.09)
 //   host key WORLD_ID               fetch an approved world's key (kept in ~/.config/flatchat/worlds)
 //   host run DIR --world-id ID [--map-port] [--ice-server URL]…   build if needed, then run it
 //   host push DIR --world-id ID     build DIR and send the build to the running world, for a builder,
 //                                   an admin or the owner there (S3.06); the world restarts on it
+//   host bans WORLD_ID [--data FILE]   the world's bans in force and its moderators' record (S3.07)
+//   host unban WORLD_ID ACCOUNT [--data FILE]   lift one; a running world sees it at the next join
+//   host appeals WORLD_ID           appeals against the world's bans (S3.07): who, the ban's reason, why
+//   host appeal WORLD_ID APPEAL_ID reverse|uphold [--note N]   decide one: a reversal lifts the ban
 //   host plugins DIR                the world's plugins: version, hooks, what each asks to do, settings
 //   host plugins DIR add NAME|FOLDER   install a plugin into DIR/plugins, showing what it asks for
 //                                   (NAME: entry-open, entry-verified or entry-trust, S3.05)
 //   host advise [--mbps N]          measure the upload (Cloudflare's speed test) and suggest a capacity
 import { spawn } from 'node:child_process';
 import { connectRtc } from '@flatchat/world-server/net';
+import { worldDataFile, WorldStore } from '@flatchat/world-server/store';
 import { cpSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { validateWorld } from '@flatchat/content';
 import { ConvertError, convertWorld, readFolder, writeBuilt } from '@flatchat/converter';
-import { access, api, coreUrl, HostError, loadSession, saveSession, saveWorldKey, signIn, worldEnvFile } from './account.ts';
+import { access, api, coreUrl, HOST_AGREEMENT, HostError, loadSession, saveSession, saveWorldKey, signIn, worldEnvFile } from './account.ts';
 import { advise, measureUpload } from './advisor.ts';
 import { addPlugin, describePlugin, listPlugins } from './plugins.ts';
 import { pushBuild } from './push.ts';
@@ -44,6 +51,9 @@ const { values, positionals } = parseArgs({
     name: { type: 'string' },
     capacity: { type: 'string', default: '50' },
     unlisted: { type: 'boolean', default: false },
+    'accept-agreement': { type: 'boolean', default: false },
+    note: { type: 'string' },
+    data: { type: 'string' },
     'world-id': { type: 'string' },
     'map-port': { type: 'boolean', default: false },
     'ice-server': { type: 'string', multiple: true },
@@ -63,6 +73,16 @@ async function build(dir: string, out: string): Promise<ReadonlyMap<string, Uint
   say(`built "${world.manifest.name}": ${world.files.length} files, ${world.files.reduce((n, f) => n + f.size, 0)} bytes → ${out}`);
   return files;
 }
+
+/** The host agreement every approved host accepts (S3.07), in the core's words (/host-agreement). */
+const AGREEMENT = [
+  `The host agreement, version ${HOST_AGREEMENT}: to have a world approved, its host accepts these rules.`,
+  '1. Do not record anyone’s voice, and do not change the world server to keep it.',
+  '2. Forward reports: do not block, change or hide players’ reports about your world.',
+  '3. Follow takedowns: when FlatChat asks you to remove something from your world, remove it.',
+  '4. Keep the protections for minors: no world server or plugin that loosens them.',
+  '5. If a host breaks these rules, FlatChat revokes the world’s approval.',
+];
 
 /** Exit code of a world server that took a new build (S3.06): start it again on the new build. */
 const RESTART = 75;
@@ -96,7 +116,12 @@ async function main(): Promise<number> {
       return 0;
     }
     case 'request': {
-      if (!values.name) throw new HostError('host request --name "World name"');
+      if (!values.name) throw new HostError('host request --name "World name" --accept-agreement');
+      if (!values['accept-agreement']) {
+        for (const line of AGREEMENT) say(line);
+        say(`the whole agreement: ${coreUrl(values.core ?? loadSession()?.core ?? 'https://core.example.org')}/host-agreement`);
+        throw new HostError('to accept it and ask for the world, add --accept-agreement');
+      }
       const { core, access: a } = await access();
       const w = await api.request(fetch, core, a, values.name, Number(values.capacity), !values.unlisted);
       say(`asked ${core} to approve "${values.name}": ${w.id} (${w.status}${values.unlisted ? ', unlisted' : ''}). Once approved: host key ${w.id}`);
@@ -105,7 +130,7 @@ async function main(): Promise<number> {
     case 'worlds': {
       const { core, access: a } = await access();
       for (const w of (await api.worlds(fetch, core, a)).worlds) {
-        say(`${w.id}  ${w.status.padEnd(8)}  ${w.listed ? 'listed  ' : 'unlisted'}  ${w.online ? `online, ${w.players} of ${w.capacity}` : 'offline'}  ${w.name}`);
+        say(`${w.id}  ${w.status.padEnd(8)}  ${w.listed ? 'listed  ' : 'unlisted'}  ${w.online ? `online, ${w.players} of ${w.capacity}` : 'offline'}  ${w.name}${w.status === 'revoked' ? `  (revoked: ${w.revokedFor || 'no reason given'})` : ''}`);
       }
       return 0;
     }
@@ -178,6 +203,50 @@ async function main(): Promise<number> {
         link.close('pushed');
       }
     }
+    case 'bans':
+    case 'unban': {
+      // The world's own database, on this machine (S2.08): a running world reads bans from it at
+      // every join, so a lifted ban counts at once.
+      if (!a1 || (command === 'unban' && !a2)) throw new HostError(command === 'bans' ? 'host bans WORLD_ID [--data FILE]' : 'host unban WORLD_ID ACCOUNT [--data FILE]');
+      const file = values.data ?? worldDataFile(a1);
+      if (!existsSync(file)) throw new HostError(`no database for world ${a1} at ${file} (--data FILE)`);
+      const store = WorldStore.open(file, 'persistent');
+      try {
+        if (command === 'unban') {
+          store.unban(a2!);
+          store.logModeration({ actor: 'host tool', target: a2!, action: 'unban', minutes: 0, reason: values.note ?? 'lifted by the host' });
+          say(`lifted the ban on ${a2}`);
+          return 0;
+        }
+        const bans = store.bans();
+        if (bans.length === 0) say('no bans in force');
+        for (const b of bans) say(`${b.account}  ${b.until ? `until ${new Date(b.until).toISOString().slice(0, 16).replace('T', ' ')}` : 'until lifted'}  ${b.reason}`);
+        for (const m of store.moderationLog(20)) say(`  ${new Date(m.at).toISOString().slice(0, 16).replace('T', ' ')}  ${m.action}${m.minutes ? ` ${m.minutes} min` : ''}  ${m.target}  by ${m.actor}: ${m.reason}`);
+        return 0;
+      } finally {
+        store.close();
+      }
+    }
+    case 'appeals': {
+      if (!a1) throw new HostError('host appeals WORLD_ID');
+      const { core, access: a } = await access();
+      const { appeals } = await api.appeals(fetch, core, a, a1);
+      if (appeals.length === 0) say('no appeals against this world’s bans');
+      for (const p of appeals) {
+        say(`${p.id}  ${p.status.padEnd(8)}  ${p.createdAt.slice(0, 16).replace('T', ' ')}  ${p.name} (${p.account})`);
+        say(`  banned for: ${p.reason || '(no reason recorded)'}`);
+        say(`  appeal: ${p.text}`);
+        if (p.note) say(`  your answer: ${p.note}`);
+      }
+      return 0;
+    }
+    case 'appeal': {
+      if (!a1 || !a2 || (a3 !== 'reverse' && a3 !== 'uphold')) throw new HostError('host appeal WORLD_ID APPEAL_ID reverse|uphold [--note N]');
+      const { core, access: a } = await access();
+      const r = await api.decide(fetch, core, a, a1, a2, a3, values.note ?? '');
+      say(a3 === 'reverse' ? `reversed: the world lifts the ban${r.delivered ? ' now' : ' when it next connects to the core'}` : 'upheld: the person reads your answer in the client');
+      return 0;
+    }
     case 'plugins': {
       const dir = resolve(a1 ?? '.');
       if (!existsSync(join(dir, 'world.toml'))) throw new HostError(`${dir} is not a world folder (no world.toml)`);
@@ -202,7 +271,7 @@ async function main(): Promise<number> {
       return 0;
     }
     default:
-      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|push|plugins|advise … (see the header of tools/host-tool/src/cli.ts)\n');
+      process.stderr.write('usage: host signin|new|check|build|request|worlds|listing|key|run|push|bans|unban|appeals|appeal|plugins|advise … (see the header of tools/host-tool/src/cli.ts)\n');
       return 2;
   }
 }

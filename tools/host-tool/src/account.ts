@@ -119,15 +119,36 @@ export interface MyWorld {
   listed: boolean;
   online: boolean;
   players: number;
+  /** Why the owner of the core revoked it (S3.07). */
+  revokedFor?: string;
 }
+
+/** An appeal against one of the world's bans (S3.07). */
+export interface WorldAppeal {
+  id: string;
+  account: string;
+  name: string;
+  reason: string;
+  text: string;
+  status: 'pending' | 'upheld' | 'reversed';
+  createdAt: string;
+  note: string;
+}
+
+/** The host agreement's version this tool shows and accepts (the core's /host-agreement). */
+export const HOST_AGREEMENT = 1;
 
 export const api = {
   worlds: (f: Fetch, core: string, a: string): Promise<{ worlds: MyWorld[] }> => call(f, core, 'GET', '/api/v1/my/worlds', undefined, a),
-  request: (f: Fetch, core: string, a: string, name: string, capacity: number, listed = true): Promise<{ id: string; status: string }> =>
-    call(f, core, 'POST', '/api/v1/worlds', { name, address: 'relay', capacity, listed }, a),
+  /** `agreement`: the version of the host agreement the host accepted (S3.07). */
+  request: (f: Fetch, core: string, a: string, name: string, capacity: number, listed = true, agreement = HOST_AGREEMENT): Promise<{ id: string; status: string }> =>
+    call(f, core, 'POST', '/api/v1/worlds', { name, address: 'relay', capacity, listed, agreement }, a),
   update: (f: Fetch, core: string, a: string, id: string, change: { listed?: boolean; capacity?: number }): Promise<{ id: string; name: string; listed: boolean; capacity: number }> =>
     call(f, core, 'POST', `/api/v1/my/worlds/${id}`, change, a),
   key: (f: Fetch, core: string, a: string, id: string): Promise<{ key: string }> => call(f, core, 'GET', `/api/v1/worlds/${id}/key`, undefined, a),
+  appeals: (f: Fetch, core: string, a: string, id: string): Promise<{ appeals: WorldAppeal[] }> => call(f, core, 'GET', `/api/v1/my/worlds/${id}/appeals`, undefined, a),
+  decide: (f: Fetch, core: string, a: string, id: string, appeal: string, decision: 'reverse' | 'uphold', note: string): Promise<{ status: string; delivered?: boolean }> =>
+    call(f, core, 'POST', `/api/v1/my/worlds/${id}/appeals/${appeal}`, { decision, note }, a),
   /** A connect token for a world, as a player gets one (S3.06's `host push` joins with it). */
   join: (f: Fetch, core: string, a: string, id: string): Promise<{ token: string; address: string; iceServers?: Array<{ urls: string | string[]; username?: string; credential?: string }> }> =>
     call(f, core, 'POST', `/api/v1/worlds/${id}/join`, {}, a),
