@@ -5,7 +5,7 @@ import { request } from 'node:http';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
-import { CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
+import { cleanIceServers, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
 import en from '../src/renderer/src/i18n/en';
 import es from '../src/renderer/src/i18n/es';
@@ -171,6 +171,19 @@ describe("the core's API", () => {
     const ticket = await api.join('a', '00000000-0000-4000-8000-000000000001');
     expect([...ticket.token]).toEqual([1, 2, 3]);
     await expect(api.join('a', '../../me')).rejects.toBeInstanceOf(CoreError);
+  });
+});
+
+describe('hosting from home on the client side', () => {
+  it('keeps only STUN and TURN servers, and knows its own core’s relay', () => {
+    expect(cleanIceServers([{ urls: 'stun:a:1' }, { urls: ['turn:t:3478', 'http://x'], username: 'u:1', credential: 'c' }, { urls: 'javascript:alert(1)' }, 'junk', null])).toEqual([
+      { urls: ['stun:a:1'] },
+      { urls: ['turn:t:3478'], username: 'u:1', credential: 'c' },
+    ]);
+    const api = new CoreApi(coreBase('https://core.example.org')!);
+    expect(api.isRelay('https://core.example.org/api/v1/worlds/00000000-0000-4000-8000-000000000001/signal')).toBe(true);
+    expect(api.isRelay('https://evil.example.com/api/v1/worlds/00000000-0000-4000-8000-000000000001/signal')).toBe(false);
+    expect(api.isRelay('https://core.example.org/api/v1/me')).toBe(false);
   });
 });
 

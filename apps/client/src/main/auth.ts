@@ -153,4 +153,12 @@ export class Auth {
   async join(worldId: string): Promise<JoinTicket> {
     return this.api.join(await this.access(), worldId);
   }
+
+  isRelay(url: string): boolean {
+    return this.api.isRelay(url);
+  }
+
+  async relaySignal(url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }> {
+    return this.api.relaySignal(await this.access(), url, offer);
+  }
 }

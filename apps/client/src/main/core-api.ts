@@ -24,12 +24,33 @@ export interface WorldSummary {
   capacity: number;
 }
 
+/** One ICE server, as browsers take it (RTCIceServer). */
+export interface IceServerSpec {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
 export interface JoinTicket {
   /** The connect token, sealed for one world; the client hands it over unread. */
   token: Uint8Array;
-  /** Where the world takes its WebRTC offer. */
+  /** Where the world takes its WebRTC offer: its own signalling URL, or the core's relay. */
   address: string;
   expiresAt: number;
+  /** STUN and TURN servers with short-lived credentials (S1.13). */
+  iceServers: IceServerSpec[];
+}
+
+/** Keeps only well-formed ICE servers with stun: or turn: URLs. */
+export function cleanIceServers(raw: unknown): IceServerSpec[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((s: Partial<IceServerSpec>) => {
+    const urls = (Array.isArray(s?.urls) ? s.urls : [s?.urls]).filter((u): u is string => typeof u === 'string' && /^(stun|stuns|turn|turns):[^\s]{1,200}$/.test(u));
+    if (urls.length === 0) return [];
+    const user = typeof s.username === 'string' ? s.username.slice(0, 256) : '';
+    const pass = typeof s.credential === 'string' ? s.credential.slice(0, 256) : '';
+    return [{ urls, ...(user ? { username: user } : {}), ...(pass ? { credential: pass } : {}) }];
+  });
 }
 
 export class CoreError extends Error {
@@ -154,8 +175,27 @@ export class CoreApi {
 
   async join(access: string, worldId: string): Promise<JoinTicket> {
     if (!/^[0-9a-f-]{36}$/i.test(worldId)) throw new CoreError(400, 'bad-world', 'not a world id');
-    const r = await this.call<{ token?: unknown; address?: unknown; expiresAt?: unknown }>('POST', `/api/v1/worlds/${worldId}/join`, {}, access);
+    const r = await this.call<{ token?: unknown; address?: unknown; expiresAt?: unknown; iceServers?: unknown }>('POST', `/api/v1/worlds/${worldId}/join`, {}, access);
     if (typeof r.token !== 'string' || typeof r.address !== 'string' || typeof r.expiresAt !== 'number') throw new CoreError(502, 'bad-answer', 'the core sent no connect token');
-    return { token: new Uint8Array(Buffer.from(r.token, 'base64url')), address: r.address, expiresAt: r.expiresAt };
+    return { token: new Uint8Array(Buffer.from(r.token, 'base64url')), address: r.address, expiresAt: r.expiresAt, iceServers: cleanIceServers(r.iceServers) };
+  }
+
+  /** Whether `url` is this core's signalling relay for a world hosted from home. */
+  isRelay(url: string): boolean {
+    try {
+      const u = new URL(url);
+      return u.origin === this.base.origin && /\/api\/v1\/worlds\/[0-9a-f-]{36}\/signal$/i.test(u.pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Sends a WebRTC offer to a world through the core's relay and returns the world's answer. */
+  async relaySignal(access: string, url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }> {
+    if (!this.isRelay(url)) throw new CoreError(400, 'bad-relay', 'not this core’s relay');
+    const path = new URL(url).pathname.slice(this.base.pathname.replace(/\/$/, '').length);
+    const r = await this.call<{ type?: unknown; sdp?: unknown }>('POST', path, { type: 'offer', sdp: offer.sdp }, access);
+    if (r.type !== 'answer' || typeof r.sdp !== 'string' || r.sdp.length > 64 * 1024) throw new CoreError(502, 'bad-answer', 'the world sent no answer');
+    return { type: 'answer', sdp: r.sdp };
   }
 }

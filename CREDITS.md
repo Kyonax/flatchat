@@ -31,3 +31,4 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 | libdatachannel, inside node-datachannel | the world server | Paul-Louis Ageneau | [paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | MPL-2.0 | 0.24.5 |
 | Fastify, with the packages it loads (find-my-way, pino, avvio and others) | the core | Matteo Collina, Tomas Della Vedova and the Fastify contributors | [fastify/fastify](https://github.com/fastify/fastify) | MIT | 5.12.7 |
 | node-postgres (`pg`, with `pg-pool` and `pg-protocol`) | the core | Brian Carlson and the node-postgres contributors | [brianc/node-postgres](https://github.com/brianc/node-postgres) | MIT | 8.23.1 |
+| @fastify/websocket, with ws | the core | the Fastify contributors; Einar Otto Stangvik and the ws contributors | [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket), [websockets/ws](https://github.com/websockets/ws) | MIT | 11.3.4, 8.22.0 |

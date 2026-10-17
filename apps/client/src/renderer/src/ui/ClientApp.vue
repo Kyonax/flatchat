@@ -17,7 +17,7 @@ const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
 const systemLocale = ref('en');
 const showSettings = ref(false);
-const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array } } | undefined>(undefined);
+const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[] } } | undefined>(undefined);
 const joining = ref('');
 const joinError = ref('');
 let offAuth: (() => void) | undefined;
@@ -42,7 +42,7 @@ async function join(w: FlatchatWorld): Promise<void> {
     joinError.value = t('home.joinFailed', { reason: r.error });
     return;
   }
-  world.value = { world: w, ticket: { address: r.address, token: r.token } };
+  world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers } };
 }
 
 onMounted(async () => {

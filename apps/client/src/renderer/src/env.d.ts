@@ -43,7 +43,7 @@ interface FlatchatBridge {
   signOut(): Promise<FlatchatAuthState>;
   onAuth(listener: (state: FlatchatAuthState) => void): () => void;
   worlds(): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;
-  joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number }>>;
+  joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[] }>>;
 }
 
 interface Window {

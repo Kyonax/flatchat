@@ -24,6 +24,8 @@ export interface JoinOptions {
   signalUrl: string;
   /** The connect token the core sealed for this world. */
   token: Uint8Array;
+  /** STUN and TURN servers from the core (S1.13); none on a LAN or loopback. */
+  iceServers?: RTCIceServer[];
   build?: string;
   timeoutMs?: number;
   /** Gets every message from the first one, the welcome, the join's roster and its snapshot included. */
@@ -105,7 +107,7 @@ export class WorldConnection {
     const timeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const bridge = window.flatchat;
     if (!bridge) throw new Error('no preload bridge');
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: options.iceServers ?? [] });
     try {
       const reliable = pc.createDataChannel('reliable', { negotiated: true, id: 0 });
       const unreliable = pc.createDataChannel('unreliable', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 });

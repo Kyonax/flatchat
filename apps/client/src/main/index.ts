@@ -141,13 +141,21 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   try {
     const ticket = await auth.join(worldId);
     joinedAddress = ticket.address;
-    return { ok: true, token: ticket.token, address: ticket.address, expiresAt: ticket.expiresAt };
+    return { ok: true, token: ticket.token, address: ticket.address, expiresAt: ticket.expiresAt, iceServers: ticket.iceServers };
   } catch (err) {
     return failure(err);
   }
 });
 
-ipcMain.handle('flatchat:signal', (_event, url: unknown, offer: unknown) => signal(url, offer, joinedAddress));
+ipcMain.handle('flatchat:signal', async (_event, url: unknown, offer: unknown) => {
+  // A world hosted from home takes its offers through the core, with the account's token (S1.13).
+  if (auth && typeof url === 'string' && url === joinedAddress && auth.isRelay(url)) {
+    const o = offer as { type?: unknown; sdp?: unknown } | null;
+    if (!o || o.type !== 'offer' || typeof o.sdp !== 'string' || o.sdp.length > 64 * 1024) throw new Error('not an offer');
+    return auth.relaySignal(url, { type: 'offer', sdp: o.sdp });
+  }
+  return signal(url, offer, joinedAddress);
+});
 
 ipcMain.handle('flatchat:smoke-report', (_event, report: Record<string, unknown>) => {
   if (flags.smoke) finish('smoke', report, flags.smokeOut);

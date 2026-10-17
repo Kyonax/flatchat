@@ -8,7 +8,7 @@ import { CHAT_MAX, WorldSession, type WorldState } from '../world/session';
 import { keyLabel } from './keys';
 import MicQuestion from './MicQuestion.vue';
 
-const props = defineProps<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array }; settings: Settings; paused: boolean }>();
+const props = defineProps<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[] }; settings: Settings; paused: boolean }>();
 const emit = defineEmits<{ leave: []; settings: []; change: [patch: Partial<Settings>] }>();
 const { t } = useI18n();
 

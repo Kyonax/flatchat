@@ -54,6 +54,7 @@ export interface WorldState {
 export interface Ticket {
   address: string;
   token: Uint8Array;
+  iceServers?: RTCIceServer[];
 }
 
 export class WorldSession {
@@ -136,7 +137,7 @@ export class WorldSession {
     await renderer.setAnimationLoop(() => this.frame(view.scene, view.camera));
 
     try {
-      this.conn = await WorldConnection.join({ signalUrl: ticket.address, token: ticket.token, onMessage: (m) => this.message(m) });
+      this.conn = await WorldConnection.join({ signalUrl: ticket.address, token: ticket.token, iceServers: ticket.iceServers ?? [], onMessage: (m) => this.message(m) });
     } catch (err) {
       this.state.status = err instanceof JoinRefused ? 'refused' : 'lost';
       this.state.reason = err instanceof JoinRefused ? err.reason : 'unreachable';
