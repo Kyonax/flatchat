@@ -9,12 +9,15 @@
 //                    [--bind 0.0.0.0] [--rtc-bind ADDR] [--tick-hz 20] [--voice-hz 50] [--ticks N]
 //                    [--capacity 200] [--world-size 256] [--metrics-every 5] [--trace FILE]
 //                    [--world-id UUID] [--seed N] [--spawn X,Z,R] [--map flat|plaza] [--stop-on-stdin]
-//                    [--core URL --relay] [--ice-server URL]… [--map-port]
+//                    [--core URL --relay] [--ice-server URL]… [--map-port] [--world BUILT_DIR]
 //
 // Hosting from home (S1.13): --relay takes players' WebRTC offers through the core at --core (an
 // outbound WebSocket, so no TCP port is opened; the world proves it holds its key), --ice-server adds
 // STUN or TURN servers (the core adds its own over the relay), and --map-port asks the router to
 // forward the WebRTC UDP port (PCP, NAT-PMP or UPnP; it changes the router, so it is opt-in).
+// --world serves a built world (the converter's output: world.json and content/), which players
+// download over their connection (S2.04): its bounds, spawn points, solids, flying and maximum
+// capacity come from it (--capacity still overrides; --map, --world-size and --spawn do not apply).
 // --map plaza serves Stage 1's greybox plaza (packages/sim: a 128 m world with solids, its own
 // spawn; --world-size and --spawn do not apply); the default, flat, is an empty square for load tests.
 // --port 0 takes any free UDP port; --ticks stops after N ticks (tests and smoke checks). The
@@ -31,7 +34,8 @@ import { CoreRelay } from './net/relay.ts';
 import { RtcServer } from './net/rtc.ts';
 import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
-import { DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
+import { builtOptions, DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
+import { ContentServer, loadBuiltWorld } from './world/content.ts';
 
 const VERSION = '0.0.0';
 
@@ -62,7 +66,7 @@ const { values } = parseArgs({
     'tick-hz': { type: 'string', default: '20' },
     'voice-hz': { type: 'string', default: '50' },
     ticks: { type: 'string' },
-    capacity: { type: 'string', default: '200' },
+    capacity: { type: 'string' },
     'world-size': { type: 'string' },
     'metrics-every': { type: 'string', default: '5' },
     trace: { type: 'string' },
@@ -71,6 +75,7 @@ const { values } = parseArgs({
     seed: { type: 'string', default: '1' },
     spawn: { type: 'string' },
     map: { type: 'string', default: 'flat' },
+    world: { type: 'string' },
     core: { type: 'string' },
     relay: { type: 'boolean', default: false },
     'ice-server': { type: 'string', multiple: true },
@@ -139,6 +144,18 @@ try {
   process.exit(1);
 }
 
+let built: ReturnType<typeof builtOptions> | undefined;
+if (values.world !== undefined) {
+  if (values.map !== 'flat' || values['world-size'] !== undefined || values.spawn !== undefined) fail('--world brings its own size, spawn points and solids: leave out --map, --world-size and --spawn');
+  try {
+    const loaded = await loadBuiltWorld(values.world);
+    built = builtOptions(loaded, new ContentServer(loaded));
+    log('world-loaded', { name: loaded.world.manifest.name, hash: loaded.hash, files: loaded.files.size, colliders: loaded.colliders.length });
+  } catch (err) {
+    fail(`--world: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 const traceOut = values.trace ? createWriteStream(values.trace, { flags: 'w' }) : undefined;
 const server = new WorldServer(
   {
@@ -154,6 +171,7 @@ const server = new WorldServer(
     seed,
     ...(spawn ? { spawn } : {}),
     ...(plaza ? mapOptions(PLAZA) : {}),
+    ...(built ? { ...built, capacity: values.capacity !== undefined ? capacity : built.capacity } : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),
   },

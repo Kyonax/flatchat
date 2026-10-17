@@ -16,6 +16,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@flatchat/content": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "*",
     "node-datachannel": "0.33.4"

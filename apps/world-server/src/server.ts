@@ -37,6 +37,7 @@ import type { WorldMap } from '@flatchat/sim';
 import { memory, Samples, seededRandom, Tally } from './metrics.ts';
 import type { Link, ServerTransport, TransportName } from './net/types.ts';
 import { startTicker, type Ticker } from './ticker.ts';
+import { boundsOf, type ContentServer, type ContentSink, type LoadedWorld } from './world/content.ts';
 import { VoiceRouter, type VoiceConfig } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
 
@@ -74,6 +75,10 @@ export interface WorldServerOptions {
   spawn?: { x: number; z: number; r: number; y?: number; yaw?: number };
   /** Checked in order after the capacity; the first refusal wins. */
   entryRules: readonly EntryRule[];
+  /** The built world players download (S2.04); none for a world made in code (flat, plaza). */
+  content?: ContentServer;
+  /** Spawn points of a built world: each join picks one (overrides `spawn`). */
+  spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number }>;
   log: LogFn;
   /** Unix time in seconds, for token expiry. */
   unixNow: () => number;
@@ -103,6 +108,8 @@ export const DEFAULT_SERVER: Omit<WorldServerOptions, 'worldId' | 'worldKey' | '
 
 interface Conn {
   readonly link: Link;
+  /** Where content messages for this player go. */
+  sink?: ContentSink;
   state: 'hello' | 'joining' | 'joined' | 'closed';
   entity?: number;
   account?: string;
@@ -137,6 +144,19 @@ export function cleanChat(text: string): string {
     .replace(/\s+/gu, ' ')
     .trim();
   return [...cleaned].slice(0, CHAT_MAX).join('');
+}
+
+/** A world server's options for a built world (S2.03): its bounds, solids, flying, capacity and
+ *  spawn points, and the content players download. */
+export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'content' | 'capacity'> {
+  const w = loaded.world;
+  const size = Math.max(16, Math.ceil(Math.max(w.bounds.max[0], w.bounds.max[2])));
+  return {
+    world: { size, solids: boundsOf(loaded.colliders), flying: w.manifest.flying },
+    spawnPoints: w.scenes[0]!.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw })),
+    content,
+    capacity: w.manifest.capacity.maximum,
+  };
 }
 
 /** A world server's options for one map: its size, solids, flying and spawn. */
@@ -250,6 +270,7 @@ export class WorldServer {
 
   private accept(link: Link, transport: TransportName): void {
     const conn: Conn = { link, state: 'hello', voiceWindowStart: -Infinity, voiceInWindow: 0, chatTokens: CHAT_BURST, chatAt: performance.now(), spokeAt: -Infinity, badMessages: 0 };
+    conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
     this.conns.add(conn);
     this.events.add(`link:${transport}`, 0);
     conn.helloTimer = setTimeout(() => {
@@ -304,6 +325,13 @@ export class WorldServer {
       case 'ping':
         this.send(conn, 'pong', encodeMessage({ type: 'pong', id: message.id, time: message.time }));
         break;
+      case 'fetch':
+        if (this.options.content && conn.sink) this.options.content.fetch(conn.sink, message.hash, message.from);
+        else if (conn.sink) conn.sink.send('notFound', { hash: message.hash });
+        break;
+      case 'unfetch':
+        if (conn.sink) this.options.content?.unfetch(conn.sink, message.hash);
+        break;
       case 'leave':
         conn.link.close(`leave: ${message.reason}`);
         break;
@@ -354,8 +382,14 @@ export class WorldServer {
     const sp = this.options.spawn;
     const angle = this.random() * Math.PI * 2;
     const radius = sp ? Math.sqrt(this.random()) * sp.r : 0;
-    const at = sp ? { x: sp.x + Math.cos(angle) * radius, y: sp.y ?? 0, z: sp.z + Math.sin(angle) * radius } : { x: this.random() * size, y: 0, z: this.random() * size };
-    const yaw = sp?.yaw ?? this.random() * Math.PI * 2 - Math.PI;
+    const points = this.options.spawnPoints;
+    const point = points && points.length > 0 ? points[Math.floor(this.random() * points.length)] : undefined;
+    const at = point
+      ? { x: point.x, y: point.y, z: point.z }
+      : sp
+        ? { x: sp.x + Math.cos(angle) * radius, y: sp.y ?? 0, z: sp.z + Math.sin(angle) * radius }
+        : { x: this.random() * size, y: 0, z: this.random() * size };
+    const yaw = point?.yaw ?? sp?.yaw ?? this.random() * Math.PI * 2 - Math.PI;
     this.world.add(entity, at, yaw, performance.now());
     this.byEntity.set(entity, conn);
     const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust };
@@ -367,6 +401,7 @@ export class WorldServer {
     const roster = encodeMessage({ type: 'roster', full: true, players: [...this.roster.values()], left: [] });
     this.send(conn, 'roster', roster);
     this.rosterBytes.add(roster.length);
+    if (conn.sink) this.options.content?.announce(conn.sink);
     this.joinMs.add(performance.now() - started);
     this.events.add('join', 0);
   }
@@ -397,6 +432,7 @@ export class WorldServer {
     if (entity === undefined || this.byEntity.get(entity) !== conn) return;
     this.byEntity.delete(entity);
     this.roster.delete(entity);
+    if (conn.sink) this.options.content?.forget(conn.sink);
     this.world.remove(entity);
     this.voice.forget(entity);
     this.freedThisTick.push(entity);
@@ -446,7 +482,16 @@ export class WorldServer {
     }
   }
 
+  private contentBusy = false;
+
   private voiceStep(): void {
+    // Downloads move on at the voice ticker's 50 Hz, one step at a time.
+    if (this.options.content && !this.contentBusy && this.options.content.pending > 0) {
+      this.contentBusy = true;
+      void this.options.content.step().finally(() => {
+        this.contentBusy = false;
+      });
+    }
     const { bundles } = this.voice.step(this.world);
     for (const [entity, bytes] of bundles) {
       const conn = this.byEntity.get(entity);
