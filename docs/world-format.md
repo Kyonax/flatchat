@@ -83,6 +83,10 @@ A scene may use any other extension the converter accepts (`KHR_materials_*`, `K
 
 Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`.
 
+## What the converter makes of it
+
+The host tool's converter ([tools/converter](../tools/converter/README.md)) turns a folder that passes into a built world: `world.json` (the markers in world space, the files by their SHA-256) and the files themselves. Each scene becomes one GLB with meshopt-compressed geometry and KTX2 textures; a mesh of 2,000 triangles or more gets two simpler copies, its levels of detail, which the client switches to with distance, so a detailed world stays drawable on a weak laptop; the solids become `collision.bin`, and a navigation mesh is built for click-to-move. Nothing in the folder needs to change for this.
+
 ## Versions
 
 Version 1 (Stage 2, S2.01): the folder, `world.toml`, the markers above. A change that older tools would misread raises `format`.
