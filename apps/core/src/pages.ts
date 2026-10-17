@@ -49,7 +49,7 @@ input,select,textarea{width:100%;font:inherit;padding:.5rem;border:1px solid var
 button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:#121214;cursor:pointer}
 .error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}
 main.wide{max-width:72rem}table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}table.list th,table.list td{text-align:left;padding:8px;border-top:1px solid var(--line);vertical-align:top}
-table.list form{background:none;border:0;padding:0;display:inline}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}`;
+table.list form,form.inline{background:none;border:0;padding:0;display:inline}form.inline button{width:auto;margin:0 0 0 6px;padding:.2rem .6rem}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}`;
 
 function page(lang: Lang, title: string, body: Raw): string {
   const s = STRINGS[lang];
@@ -191,4 +191,92 @@ ${values.error ? html`<p class="error" role="alert">${values.error}</p>` : ''}
 <label for="contact">${s.reportContact}</label><input id="contact" name="contact" type="email" maxlength="254" value="${values.contact ?? ''}">
 <button type="submit">${s.reportSend}</button></form>`,
   );
+}
+
+/** A teen's step after sign-up (S3.04): name a parent or guardian, and agree to supervision. */
+export function guardianAskPage(lang: Lang, step: string, error?: string): string {
+  const s = STRINGS[lang];
+  return page(
+    lang,
+    s.teenTitle,
+    html`<h1>${s.teenTitle}</h1><p>${s.teenLead}</p>
+<form method="post" action="/guardian/ask?lang=${lang}">
+${error ? html`<p class="error" role="alert">${error}</p>` : ''}
+<input type="hidden" name="step" value="${step}">
+<label for="guardianEmail">${s.teenGuardianEmail}</label><input id="guardianEmail" name="guardianEmail" type="email" required maxlength="254">
+<label class="check"><input type="checkbox" name="agree" value="yes" required> <span>${s.teenAgree}</span></label>
+<button type="submit">${s.teenSend}</button></form>`,
+  );
+}
+
+/** What the guardian reads and signs (S3.04): the plain summary, then sign in or make an adult
+ *  account, and authorize, world servers abroad included. */
+export function guardianInvitePage(lang: Lang, invite: string, teenName: string, contact: string, error?: string): string {
+  const s = STRINGS[lang];
+  const named = (text: string): string => text.replaceAll('{name}', teenName);
+  const consent = html`<label class="check"><input type="checkbox" name="authorize" value="yes" required> <span>${named(s.guardianAuthorize)}</span></label>
+<label class="check"><input type="checkbox" name="abroad" value="yes" required> <span>${named(s.guardianAbroad)}</span></label>`;
+  return page(
+    lang,
+    s.guardianTitle,
+    html`<h1>${s.guardianTitle}</h1><p>${named(s.guardianLead)}</p>
+<ul>${s.guardianSummary.map((p) => html`<li>${p.replace('{contact}', contact)}</li>`)}</ul>
+${error ? html`<p class="error" role="alert">${error}</p>` : ''}
+<h2>${s.guardianHaveAccount}</h2>
+<form method="post" action="/guardian/authorize?lang=${lang}">
+<input type="hidden" name="invite" value="${invite}"><input type="hidden" name="mode" value="existing">
+<label for="g-email">${s.email}</label><input id="g-email" name="email" type="email" autocomplete="username" required>
+<label for="g-password">${s.password}</label><input id="g-password" name="password" type="password" autocomplete="current-password" required>
+${consent}
+<button type="submit">${s.guardianAuthorizeButton}</button></form>
+<h2>${s.guardianNewAccount}</h2>
+<form method="post" action="/guardian/authorize?lang=${lang}">
+<input type="hidden" name="invite" value="${invite}"><input type="hidden" name="mode" value="new">
+<label for="n-email">${s.email}</label><input id="n-email" name="email" type="email" autocomplete="email" required>
+<label for="n-password">${s.password}</label><input id="n-password" name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="256">
+<label for="n-name">${s.displayName}</label><input id="n-name" name="displayName" required minlength="3" maxlength="32">
+<label>${s.birth}</label><div class="row">
+<select name="birthMonth" aria-label="${s.month}" required><option value="">${s.month}</option>${monthOptions(lang, undefined)}</select>
+<input name="birthYear" aria-label="${s.year}" placeholder="${s.year}" inputmode="numeric" pattern="[0-9]{4}" required></div>
+<label for="n-country">${s.country}</label><select id="n-country" name="country" required><option value="">${s.chooseCountry}</option>${countryOptions(lang, undefined)}</select>
+<label class="check"><input type="checkbox" name="consent" value="yes" required> <span>${s.consent} <a href="/privacy?lang=${lang}" target="_blank" rel="noopener">${s.privacyLink}</a></span></label>
+${consent}
+<button type="submit">${s.guardianAuthorizeButton}</button></form>`,
+  );
+}
+
+export function guardianSigninPage(lang: Lang, error?: string): string {
+  const s = STRINGS[lang];
+  return page(
+    lang,
+    s.supervisionTitle,
+    html`<h1>${s.supervisionTitle}</h1><p class="muted">${s.supervisionSignin}</p>
+<form method="post" action="/guardian/signin?lang=${lang}">
+${error ? html`<p class="error" role="alert">${error}</p>` : ''}
+<label for="email">${s.email}</label><input id="email" name="email" type="email" autocomplete="username" required>
+<label for="password">${s.password}</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">${s.signin}</button></form>`,
+  );
+}
+
+export interface GuardedTeen {
+  id: string;
+  name: string;
+  contact: 'friends' | 'everyone' | 'none';
+  friends: Array<{ account: string; name: string }>;
+}
+
+/** The guardian's page (S3.04): each teen's friends, removable, and who may talk to them. */
+export function guardianPage(lang: Lang, csrf: string, teens: readonly GuardedTeen[], notice?: string): string {
+  const s = STRINGS[lang];
+  const option = (t: GuardedTeen, value: GuardedTeen['contact'], label: string): ReturnType<typeof html> =>
+    html`<label class="check"><input type="radio" name="contact" value="${value}"${t.contact === value ? raw(' checked') : ''}> <span>${label}</span></label>`;
+  const teen = (t: GuardedTeen): ReturnType<typeof html> => html`<h2>${t.name}</h2>
+<h3>${s.supervisionFriends}</h3>
+${t.friends.length === 0 ? html`<p class="muted">${s.supervisionNoFriends}</p>` : html`<ul>${t.friends.map((f) => html`<li>${f.name} <form method="post" action="/guardian/teens/${t.id}/unfriend/${f.account}?lang=${lang}" class="inline"><input type="hidden" name="csrf" value="${csrf}"><button type="submit" class="secondary">${s.supervisionRemove}</button></form></li>`)}</ul>`}
+<form method="post" action="/guardian/teens/${t.id}?lang=${lang}"><input type="hidden" name="csrf" value="${csrf}">
+<p>${s.supervisionContact.replace('{name}', t.name)}</p>
+${option(t, 'friends', s.supervisionContactFriends)}${option(t, 'everyone', s.supervisionContactEveryone)}${option(t, 'none', s.supervisionContactNone)}
+<button type="submit">${s.supervisionSave}</button></form>`;
+  return page(lang, s.supervisionTitle, html`<h1>${s.supervisionTitle}</h1>${notice ? html`<p role="status">${notice}</p>` : ''}${teens.length === 0 ? html`<p class="muted">${s.supervisionNone}</p>` : teens.map(teen)}`);
 }

@@ -30,6 +30,8 @@ export interface CoreEnv {
   /** Sign-up by invitation only (the closed test), or open with a verified email (S3.03). */
   signup: 'invite' | 'open';
   mail: Mailer;
+  /** Players aged 13 to 17, with a guardian (S3.04): off until the owner opens Stage 3's gate (OQ-16). */
+  minors: boolean;
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -67,6 +69,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     trust: trusted(env['FLATCHAT_CORE_TRUST']),
     signup: signupMode(env['FLATCHAT_CORE_SIGNUP']),
     mail: mailer(env),
+    minors: env['FLATCHAT_CORE_MINORS'] === 'on',
   };
 }
 

@@ -11,6 +11,7 @@ import type { Db, Sql } from './db.ts';
 import { openWorldKey, sealWorldKey } from './secrets.ts';
 import { DEFAULT_TRUST, type TrustRule, trustOf } from './trust.ts';
 import { tokenLists } from './social.ts';
+import { supervisionOf } from './guardians.ts';
 
 export const TOKEN_SECONDS = 60;
 /** The most players a world may hold in the MVP (Q-L19): its host sets less. */
@@ -166,7 +167,13 @@ export async function worldEvents(db: Sql, id: string): Promise<Array<{ kind: st
 /** What a world learns about a player: never the birth date or the email (S3.10, dp-006); the
  *  trust level it earned or was given (S3.09); whether it owns the world (S3.06); who may reach
  *  it (a minor: friends until a guardian changes it, S3.10). */
-export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST, world?: { ownerId: string }, social: { friends: string[]; blocks: string[] } = { friends: [], blocks: [] }): TokenClaims {
+export function claimsFor(
+  account: Account,
+  now: Date,
+  rules: readonly TrustRule[] = DEFAULT_TRUST,
+  world?: { ownerId: string },
+  social: { friends: string[]; blocks: string[]; contact?: 'friends' | 'everyone' | 'none' } = { friends: [], blocks: [] },
+): TokenClaims {
   const ageDays = Math.max(0, Math.floor((now.getTime() - account.createdAt.getTime()) / 86_400_000));
   const under18 = isMinor(account.birthYear, account.birthMonth, now);
   return {
@@ -178,14 +185,15 @@ export function claimsFor(account: Account, now: Date, rules: readonly TrustRule
     under18,
     ageDays: Math.min(ageDays, 65_535),
     owner: world?.ownerId === account.id,
-    contact: under18 ? 'friends' : 'everyone',
+    // A minor's guardian chooses who may reach it (S3.04); friends until then.
+    contact: under18 ? (social.contact ?? 'friends') : 'everyone',
     // A minor's friends (S3.10) and the accounts kept apart by a block either way (S3.11).
     friends: under18 ? social.friends.slice(0, 100) : [],
     blocks: social.blocks.slice(0, 100),
   };
 }
 
-export type JoinProblem = 'no-world' | 'not-approved' | 'inactive';
+export type JoinProblem = 'no-world' | 'not-approved' | 'inactive' | 'guardian-pending';
 
 export async function connectToken(
   db: Sql,
@@ -200,6 +208,10 @@ export async function connectToken(
   if (row.status !== 'approved' || !row.key_sealed) return { ok: false, problem: 'not-approved' };
   const account = await accountById(db, accountId);
   if (!account || account.status !== 'active') return { ok: false, problem: 'inactive' };
+  // A player aged 13 to 17 plays only once its guardian authorized it (S3.04).
+  const minor = isMinor(account.birthYear, account.birthMonth, now);
+  const supervision = minor ? await supervisionOf(db, account.id) : undefined;
+  if (supervision && supervision.state !== 'authorized') return { ok: false, problem: 'guardian-pending' };
   const expiresAt = Math.floor(now.getTime() / 1000) + TOKEN_SECONDS;
   const key = openWorldKey(sealing, row.id, row.key_sealed);
   // A join is activity: once a day it counts toward trust (S3.09), and this token already carries it.
@@ -208,7 +220,7 @@ export async function connectToken(
     'update accounts set active_days = active_days + 1, last_active_day = $2::date where id = $1 and (last_active_day is null or last_active_day < $2::date) returning active_days',
     [account.id, today],
   );
-  const social = await tokenLists(db, account.id, isMinor(account.birthYear, account.birthMonth, now));
+  const social = { ...(await tokenLists(db, account.id, minor)), ...(supervision ? { contact: supervision.contact } : {}) };
   const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }, social), { key, world: row.id, expiresAt });
   return { ok: true, token, address: row.address, expiresAt };
 }

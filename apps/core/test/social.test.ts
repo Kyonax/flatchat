@@ -42,8 +42,12 @@ async function account(name: string, minor = false): Promise<{ id: string; beare
   });
   expect(r.statusCode).toBe(201);
   const id = (await db.query<{ id: string }>('select id from accounts where email_key = $1', [email]))[0]!.id;
-  // Sign-up refuses minors until Stage 3's gate opens (OQ-16): a test minor is made by hand.
-  if (minor) await db.query('update accounts set birth_year = $2 where id = $1', [id, new Date().getUTCFullYear() - 15]);
+  // Sign-up refuses minors until Stage 3's gate opens (OQ-16): a test minor is made by hand, with
+  // its guardian's authorization already given (S3.04), so it may join worlds.
+  if (minor) {
+    await db.query('update accounts set birth_year = $2 where id = $1', [id, new Date().getUTCFullYear() - 15]);
+    await db.query("insert into guardian_links (teen_id, guardian_email_key, teen_agreed_at, authorized_at, method, created_at) values ($1, 'guardian@example.org', now(), now(), 'test', now())", [id]);
+  }
   return { id, bearer: { authorization: `Bearer ${(await startSession(db, id, new Date())).access}` } };
 }
 

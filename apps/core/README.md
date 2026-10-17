@@ -27,6 +27,7 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_TUNNEL` | `1` when it sits behind a Cloudflare Tunnel |
 | `FLATCHAT_CORE_SIGNUP` | `invite` (the default: the closed test, by invitation) or `open` (anyone, through the age rule, with the email verified by a mailed link: S3.03) |
 | `FLATCHAT_CORE_MAIL` | `none` (the default), `resend` (Resend's API: `FLATCHAT_CORE_RESEND_KEY`, and `FLATCHAT_CORE_RESEND_URL` only for tests) or `folder` (each mail a `.eml` file in `FLATCHAT_CORE_MAIL_FOLDER`, for development); `FLATCHAT_CORE_MAIL_FROM` is the sender, like `FlatChat <noreply@example.org>` |
+| `FLATCHAT_CORE_MINORS` | `on` lets players aged 13 to 17 sign up, each playing only once a parent or guardian authorized it (S3.04); off by default: the owner opens it at Stage 3's gate (OQ-16) |
 | `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
 
 Then:
@@ -63,6 +64,10 @@ The token carries the account's trust level (S3.09), which worlds' entry rules u
 ## Moderation (S3.07)
 
 The owner suspends, bans or lifts accounts on the admin page (`/admin`) or with `admin account EMAIL --status … --reason R`; every decision is recorded with its reason (`moderation_actions`). A suspended or banned account cannot sign in, join a world, or (from Stage 4) upload; when its password checks, the sign-in page shows the decision and its reason, and a one-time form to appeal it. The admin page lists the appeals: reversing one lifts the decision, upholding it shows the person the answer when they sign in again. A player banned from a world appeals to that world's owner (the host tool's `appeals` and `appeal`). Every host accepts the host agreement (`/host-agreement`, English and Spanish) before a world is registered, and the admin page revokes a world with the reason its host reads (`host worlds`).
+
+## The Guardian Link (S3.04)
+
+With `FLATCHAT_CORE_MINORS=on`, a player aged 13 to 17 (not in Brazil, and 16 and over in Australia: the age rule) finishes its sign-up by naming a parent or guardian and agreeing to supervision. The guardian gets a link by mail (`/guardian/invite`), reads a plain summary in English or Spanish, signs in or makes an adult account with the address the teen named, and authorizes, expressly including world servers abroad; the core keeps when, how, which summary and the teen's own agreement (`guardian_links`, and a `guardian-authorization` consent). Until then the teen joins no world (`guardian-pending`). The guardian's page (`/guardian`, its own sign-in) lists the teen's friends, removes them, and chooses who may reach the teen by voice and text (friends, everyone, nobody), which the connect token carries; the teen's client always shows that supervision is on.
 
 ## Reports (S3.02)
 

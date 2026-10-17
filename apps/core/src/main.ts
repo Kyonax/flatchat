@@ -51,6 +51,7 @@ const app = await buildCore({
   trust: env.trust,
   signup: env.signup,
   mailer: env.mail,
+  policy: { minors: env.minors },
   log,
 });
 const address = await app.listen({ port, host: values.bind });

@@ -115,7 +115,7 @@ describe('sign-up by invitation (S1.02, S1.03)', () => {
     expect(a?.email_verified).toBe(true);
     expect(a?.password_hash).toMatch(/^\$argon2id\$/);
     const consents = await db.query<{ kind: string; notice_version: string }>('select kind, notice_version from consents where account_id = $1', [a!.id]);
-    expect(consents).toEqual([{ kind: 'data-processing', notice_version: '2026-10-17.2' }]);
+    expect(consents).toEqual([{ kind: 'data-processing', notice_version: '2026-10-17.3' }]);
     const dup = await signupWith(signupFields(await invite(), { email: 'bea@example.org' }));
     expect(dup.body).toContain('already exists');
   });

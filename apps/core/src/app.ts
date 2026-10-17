@@ -5,7 +5,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import { accountById, checkInvitation, checkSignIn, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
+import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import {
   APPEAL_MAX,
@@ -32,8 +32,23 @@ import { MAX_MUTES, mutesOf, setMute } from './mutes.ts';
 import { MailError, type Mailer, noMailer } from './mail.ts';
 import { newVerification, verifyEmail } from './verify.ts';
 import { emailKey } from './accounts.ts';
+import {
+  askGuardian,
+  authorize,
+  GUARDIAN_COOKIE,
+  GUARDIAN_SESSION_MS,
+  guardianFromCookie,
+  guardianStep,
+  guards,
+  inviteOf,
+  setContact,
+  startGuardianSession,
+  supervisionOf,
+  teensOf,
+} from './guardians.ts';
 import { befriend, blocksOf, friendsOf, MAX_BLOCKS, setBlock, unfriend } from './social.ts';
 import { isMinor } from './age.ts';
+import { guardianAskPage, guardianInvitePage, guardianPage, guardianSigninPage } from './pages.ts';
 import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
 import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
@@ -397,6 +412,11 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     );
     if (result.ok) {
       o.log?.('signup', { account: result.account.id });
+      // Aged 13 to 17 (S3.04): name a guardian and agree to supervision before playing.
+      if (isMinor(result.account.birthYear, result.account.birthMonth, now())) {
+        if (!result.account.emailVerified) await sendVerification(lang, result.account);
+        return htmlPage(reply.code(201), guardianAskPage(lang, await guardianStep(o.db, result.account.id, now())));
+      }
       // An address no invitation vouched for is verified by mail (S3.03).
       if (!result.account.emailVerified) {
         const sent = await sendVerification(lang, result.account);
@@ -592,8 +612,9 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST),
       tester: a.tester,
       // The client keeps a minor's defaults itself too (S3.10): its microphone starts muted, and
-      // it drops strangers' voices and chat.
+      // it drops strangers' voices and chat; the teen always sees its supervision (S3.04).
       under18: isMinor(a.birthYear, a.birthMonth, now()),
+      ...(isMinor(a.birthYear, a.birthMonth, now()) ? { supervision: (await supervisionOf(o.db, a.id)).state } : {}),
       createdAt: a.createdAt.toISOString(),
     };
   });
@@ -699,6 +720,127 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       if (err instanceof ReportError) return sendProblem(reply, problem(400, 'bad-clip', err.message));
       throw err;
     }
+  });
+
+  // ------------------------------------------------------------- the guardian link (S3.04)
+
+  app.post('/guardian/ask', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const step = str(b['step'], 64);
+    const email = cleanEmail(str(b['guardianEmail'], 254));
+    if (!email || b['agree'] !== 'yes') return htmlPage(reply.code(400), guardianAskPage(lang, step, s.teenEmpty));
+    if (!limits.signupByAddress.take(`guardian:${req.ip}`, now().getTime())) return htmlPage(reply.code(429), messagePage(lang, s.teenTitle, s.tooMany, true));
+    const asked = await askGuardian(o.db, step, emailKey(email), now());
+    if (asked === 'expired') return htmlPage(reply.code(410), messagePage(lang, s.teenTitle, s.guardianExpired, true));
+    const teen = await accountById(o.db, asked.teen);
+    const name = teen?.displayName ?? '';
+    try {
+      await mailer.send({
+        to: email,
+        subject: s.guardianMailSubject.replace('{name}', name),
+        text: s.guardianMailText.replaceAll('{name}', name).replace('{link}', `${publicUrl}/guardian/invite?invite=${encodeURIComponent(asked.invite)}&lang=${lang}`),
+      });
+    } catch (err) {
+      if (!(err instanceof MailError)) throw err;
+      o.log?.('mail-failed', { kind: mailer.kind, why: err.message });
+    }
+    o.log?.('guardian-asked', {});
+    return htmlPage(reply, messagePage(lang, s.teenSentTitle, s.teenSent));
+  });
+
+  app.get('/guardian/invite', async (req, reply) => {
+    const q = req.query as Record<string, unknown>;
+    const lang = pickLang(q['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const invite = str(q['invite'], 64);
+    const found = await inviteOf(o.db, invite, now());
+    if (!found) return htmlPage(reply.code(410), messagePage(lang, s.guardianTitle, s.guardianExpired, true));
+    return htmlPage(reply, guardianInvitePage(lang, invite, found.teenName, o.contact));
+  });
+
+  app.post('/guardian/authorize', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const invite = str(b['invite'], 64);
+    const found = await inviteOf(o.db, invite, now());
+    if (!found) return htmlPage(reply.code(410), messagePage(lang, s.guardianTitle, s.guardianExpired, true));
+    const again = (error: string, code = 400) => htmlPage(reply.code(code), guardianInvitePage(lang, invite, found.teenName, o.contact, error));
+    if (b['authorize'] !== 'yes' || b['abroad'] !== 'yes') return again(s.guardianNeedsBoth);
+    const t = now().getTime();
+    if (!limits.signinByAddress.take(req.ip, t)) return again(s.tooMany, 429);
+    let guardianId: string;
+    if (b['mode'] === 'new') {
+      const year = Number(str(b['birthYear'], 8));
+      const month = Number(str(b['birthMonth'], 4));
+      const made = await signUp(
+        o.db,
+        { invitation: '', email: str(b['email'], 254), password: str(b['password'], 1024), displayName: str(b['displayName'], 128), birthYear: year, birthMonth: month, country: str(b['country'], 4), consent: b['consent'] === 'yes' },
+        { now: now(), cost, policy: { minors: false }, open: true },
+      );
+      if (!made.ok) return again(made.problem === 'age' ? s.guardianNotAdult : signupProblem(lang, made.problem));
+      guardianId = made.account.id;
+      // The link reached this address, so it is verified.
+      if (emailKey(made.account.email) === found.emailKey) await o.db.query('update accounts set email_verified = true where id = $1', [guardianId]);
+    } else {
+      const signedIn = await checkSignIn(o.db, str(b['email'], 254), str(b['password'], 1024), decoy);
+      if (!signedIn.ok) return again(s.signinWrong, 401);
+      guardianId = signedIn.account.id;
+    }
+    const guardian = (await accountById(o.db, guardianId))!;
+    const r = await authorize(o.db, invite, { id: guardian.id, emailKey: emailKey(guardian.email), birthYear: guardian.birthYear, birthMonth: guardian.birthMonth }, true, now());
+    if (r !== 'ok') return again(r === 'not-adult' ? s.guardianNotAdult : r === 'wrong-email' ? s.guardianWrongEmail : s.guardianExpired, r === 'expired' ? 410 : 400);
+    o.log?.('guardian-authorized', {});
+    return htmlPage(reply, messagePage(lang, s.guardianDoneTitle, s.guardianDone.replace('{name}', found.teenName).replace('{page}', `${publicUrl}/guardian`)));
+  });
+
+  app.get('/guardian', async (req, reply) => {
+    const q = req.query as Record<string, unknown>;
+    const lang = pickLang(q['lang'], req.headers['accept-language']);
+    const g = await guardianFromCookie(o.db, req.headers.cookie, now());
+    if (!g) return htmlPage(reply, guardianSigninPage(lang));
+    return htmlPage(reply, guardianPage(lang, g.csrf, await teensOf(o.db, g.accountId), str(q['done'], 8) === 'saved' ? STRINGS[lang].supervisionSaved : undefined));
+  });
+
+  app.post('/guardian/signin', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const email = str(b['email'], 254);
+    const t = now().getTime();
+    if (!limits.signinByAddress.take(req.ip, t) || !limits.signinByEmail.take(`guardian:${email.trim().toLowerCase()}`, t)) return htmlPage(reply.code(429), guardianSigninPage(lang, STRINGS[lang].tooMany));
+    const r = await checkSignIn(o.db, email, str(b['password'], 1024), decoy);
+    if (!r.ok) return htmlPage(reply.code(401), guardianSigninPage(lang, STRINGS[lang].signinWrong));
+    const session = await startGuardianSession(o.db, r.account.id, now());
+    return reply
+      .code(303)
+      .header('set-cookie', `${GUARDIAN_COOKIE}=${session.cookie}; Max-Age=${GUARDIAN_SESSION_MS / 1000}; Path=/guardian; HttpOnly; SameSite=Strict${secureCookie}`)
+      .header('location', `/guardian?lang=${lang}`)
+      .send();
+  });
+
+  // A guardian's changes: who may reach the teen, and removing a friend (CSRF-checked).
+  app.post('/guardian/teens/:teen', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const g = await guardianFromCookie(o.db, req.headers.cookie, now());
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!g || !sameToken(str(b['csrf'], 64), g.csrf)) return reply.code(303).header('location', `/guardian?lang=${lang}`).send();
+    const contact = str(b['contact'], 16);
+    if (contact !== 'friends' && contact !== 'everyone' && contact !== 'none') return reply.code(400).send();
+    if (!(await setContact(o.db, g.accountId, (req.params as { teen: string }).teen, contact))) return reply.code(404).send();
+    return reply.code(303).header('location', `/guardian?lang=${lang}&done=saved`).send();
+  });
+
+  app.post('/guardian/teens/:teen/unfriend/:account', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const g = await guardianFromCookie(o.db, req.headers.cookie, now());
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!g || !sameToken(str(b['csrf'], 64), g.csrf)) return reply.code(303).header('location', `/guardian?lang=${lang}`).send();
+    const { teen, account } = req.params as { teen: string; account: string };
+    if (!(await guards(o.db, g.accountId, teen))) return reply.code(404).send();
+    await unfriend(o.db, teen, account);
+    return reply.code(303).header('location', `/guardian?lang=${lang}&done=saved`).send();
   });
 
   // A new verification link for the account's address (S3.03), one every ten minutes.

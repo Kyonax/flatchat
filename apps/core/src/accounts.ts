@@ -61,7 +61,8 @@ function toAccount(r: AccountRow): Account {
 
 /** The version of the short privacy notice every account agrees to (the full policy: S7.02). */
 // .2: worlds also receive ownership, blocks and a minor's friends; moderation decisions are kept (S3.07).
-export const NOTICE_VERSION = '2026-10-17.2';
+// .3: a minor's guardian link and its proof are kept (S3.04).
+export const NOTICE_VERSION = '2026-10-17.3';
 
 // ------------------------------------------------------------------------------ the fields
 
