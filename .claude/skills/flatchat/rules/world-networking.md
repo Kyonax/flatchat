@@ -77,6 +77,10 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 
 `--world BUILT_DIR` serves a built world (the converter's `world.json` and `content/<sha256>`): `loadBuiltWorld` checks world.json with `parseBuiltWorld` and every file's hash, and `builtOptions` takes the world's bounds, spawn points (from every scene, each with its group; a join picks among the first scene's, or among the group its `hello` names when the world has it, S2.11), portals (from every scene), solids (an axis-aligned box around each collider, for the height check), flying and maximum capacity. After `welcome` the server sends `content`; a player's `fetch` queues a file (64 at most), `unfetch` drops it, an unknown hash gets `notFound`. `ContentServer.step()` runs on the voice ticker (50 Hz): 16 KB chunks, at most 2 MB/s a player and 6 MB/s in total, so downloads never starve the game. The client downloads, checks and caches it (`client-app`).
 
+## In One Program (`src/net/local.ts`, S2.13)
+
+`LocalTransport` (transport name `local`) and `LocalLink` let a program host a world and play it without a network: `connect(deliver, ended)` makes a link whose `send` hands the world's messages to `deliver`, whose `receive` takes the player's, and whose `close` ends both sides once. The client's offline mode runs the world server this way in its main process; the package exports it as `@flatchat/world-server/local` (with `./content` and `./navigation`), apart from `./net`, which loads node-datachannel's native binary. `server.ts` takes `performance` from `node:perf_hooks`, so a DOM-typed program (the client) type-checks it.
+
 ## Heights, Seats and Teleports (`src/server.ts`, S2.06, S2.07)
 
 | Part | Rule |
