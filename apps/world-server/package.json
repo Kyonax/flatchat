@@ -19,7 +19,8 @@
     "@flatchat/content": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "*",
-    "node-datachannel": "0.33.4"
+    "node-datachannel": "0.33.4",
+    "recast-navigation": "0.43.1"
   },
   "scripts": {
     "start": "node --min-semi-space-size=16 --max-semi-space-size=16 src/main.ts",

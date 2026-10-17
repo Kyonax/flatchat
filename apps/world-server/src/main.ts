@@ -31,6 +31,7 @@
 // --world-id or FLATCHAT_WORLD_ID (both printed by the core when it approves the world).
 import { randomUUID } from 'node:crypto';
 import { createWriteStream, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -43,6 +44,7 @@ import type { ServerTransport } from './net/types.ts';
 import { UdpServer } from './net/udp.ts';
 import { builtOptions, DEFAULT_SERVER, mapOptions, WorldServer } from './server.ts';
 import { ContentServer, loadBuiltWorld } from './world/content.ts';
+import { WalkableSurface } from './world/navigation.ts';
 import { WorldStore } from './world/store.ts';
 
 const VERSION = '0.0.0';
@@ -156,12 +158,16 @@ try {
 }
 
 let built: ReturnType<typeof builtOptions> | undefined;
+let walkable: WalkableSurface | undefined;
 if (values.world !== undefined) {
   if (values.map !== 'flat' || values['world-size'] !== undefined || values.spawn !== undefined) fail('--world brings its own size, spawn points and solids: leave out --map, --world-size and --spawn');
   try {
     const loaded = await loadBuiltWorld(values.world);
     built = builtOptions(loaded, new ContentServer(loaded));
-    log('world-loaded', { name: loaded.world.manifest.name, hash: loaded.hash, files: loaded.files.size, colliders: loaded.colliders.length });
+    // Teleports land only where the converter's navigation mesh says a player can stand (S2.06).
+    const navmesh = loaded.world.navmesh ? loaded.files.get(loaded.world.navmesh) : undefined;
+    if (navmesh) walkable = await WalkableSurface.load(new Uint8Array(await readFile(navmesh.path)));
+    log('world-loaded', { name: loaded.world.manifest.name, hash: loaded.hash, files: loaded.files.size, colliders: loaded.colliders.length, walkable: walkable !== undefined });
   } catch (err) {
     fail(`--world: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -195,6 +201,7 @@ const server = new WorldServer(
     ...(plaza ? mapOptions(PLAZA) : {}),
     ...(built ? { ...built, capacity: values.capacity !== undefined ? capacity : built.capacity } : {}),
     ...(recommendedFlag !== undefined ? { recommended: recommendedFlag } : {}),
+    ...(walkable ? { walkable } : {}),
     ...(store ? { store } : {}),
     log,
     ...(traceOut ? { trace: (frame) => traceOut.write(`${JSON.stringify(frame)}\n`) } : {}),

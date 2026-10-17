@@ -19,6 +19,13 @@
 // `portal` (the world it leads to and a spawn group there) once, and again only after leaving it.
 // The client gets its connect token for that world from the core, as for any join. A `hello` that
 // names a spawn group lands on that group's spawn points, when the world has them.
+//
+// Heights (S2.07, Q-M30): a player chooses a height and the world fits it into its range
+// (`[avatars]` in world.toml; 0.5 to 3 m by default); the roster carries the fitted height, and
+// `appearance` changes it at most once a second. Seats and teleports (S2.06): `teleport` asks to be
+// put on a seat within 3 m, or on a clicked spot within 40 m, at most once a second; a spot must be
+// walkable (on a built world's navigation mesh, or above a code-made map's ground) unless the world
+// allows flying. The answer is `placed`, accepted or not.
 import { type BuiltPortal, insideBox } from '@flatchat/content';
 import {
   type Channel,
@@ -39,11 +46,12 @@ import {
   type VersionPolicy,
   versionPolicy,
 } from '@flatchat/protocol';
-import type { WorldMap } from '@flatchat/sim';
+import { BODY, type Box, groundBelow, type WorldMap } from '@flatchat/sim';
 import { memory, Samples, seededRandom, Tally } from './metrics.ts';
 import type { Link, ServerTransport, TransportName } from './net/types.ts';
 import { startTicker, type Ticker } from './ticker.ts';
 import { boundsOf, type ContentServer, type ContentSink, type LoadedWorld } from './world/content.ts';
+import type { WalkableSurface } from './world/navigation.ts';
 import type { WorldStore } from './world/store.ts';
 import { VoiceRouter, type VoiceConfig } from './world/voice.ts';
 import { World, type WorldConfig } from './world/world.ts';
@@ -93,6 +101,12 @@ export interface WorldServerOptions {
   spawnPoints?: ReadonlyArray<{ x: number; y: number; z: number; yaw: number; group?: string; main?: boolean }>;
   /** A built world's portals (S2.11). */
   portals?: readonly BuiltPortal[];
+  /** The heights the world fits players into, in metres (S2.07). */
+  heights?: { min: number; max: number };
+  /** A built world's seats, in the built world's order (S2.06). */
+  seats?: ReadonlyArray<{ position: [number, number, number]; yaw: number }>;
+  /** A built world's walkable surface: where a teleport may land (S2.06). */
+  walkable?: WalkableSurface;
   log: LogFn;
   /** Unix time in seconds, for token expiry. */
   unixNow: () => number;
@@ -139,6 +153,10 @@ interface Conn {
   badMessages: number;
   /** The portal the player stands in (its index), -1 for none: `portal` goes out on entering. */
   portal: number;
+  /** The player's height in centimetres, fitted to the world. */
+  height: number;
+  teleportAt: number;
+  appearanceAt: number;
 }
 
 type RosterPlayer = MessageBody<'roster'>['players'][number];
@@ -150,6 +168,12 @@ const TRACE_MS = 250;
 const CHAT_BURST = 5;
 const CHAT_EVERY_MS = 1500;
 const CHAT_MAX = 280;
+/** Heights (S2.07): the platform's default, and the range a world without its own uses. */
+export const DEFAULT_HEIGHT_CM = Math.round(BODY.height * 100);
+export const DEFAULT_HEIGHTS = { min: 0.5, max: 3 };
+const APPEARANCE_EVERY_MS = 1000;
+/** Teleports and seats (S2.06). */
+export const TELEPORT = { range: 40, seatReach: 3, everyMs: 1000 };
 
 /** A chat line as others may see it: no control or direction characters (C0, C1 and the bidi
  *  overrides and isolates), whitespace collapsed, at most 280 characters; empty means dropped. */
@@ -172,13 +196,15 @@ export function fitBytes(text: string, max: number): string {
 
 /** A world server's options for a built world (S2.03): its bounds, solids, flying, capacity and
  *  spawn points, and the content players download. */
-export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'portals' | 'content' | 'capacity' | 'recommended'> {
+export function builtOptions(loaded: LoadedWorld, content: ContentServer): Pick<WorldServerOptions, 'world' | 'spawnPoints' | 'portals' | 'seats' | 'heights' | 'content' | 'capacity' | 'recommended'> {
   const w = loaded.world;
   const size = Math.max(16, Math.ceil(Math.max(w.bounds.max[0], w.bounds.max[2])));
   return {
     world: { size, solids: boundsOf(loaded.colliders), flying: w.manifest.flying },
     spawnPoints: w.scenes.flatMap((scene, i) => scene.spawns.map((s) => ({ x: s.position[0], y: s.position[1], z: s.position[2], yaw: s.yaw, group: s.group, main: i === 0 }))),
     portals: w.scenes.flatMap((scene) => scene.portals),
+    seats: w.scenes.flatMap((scene) => scene.seats),
+    heights: { min: w.manifest.avatars.minHeight, max: w.manifest.avatars.maxHeight },
     content,
     capacity: w.manifest.capacity.maximum,
     recommended: w.manifest.capacity.recommended,
@@ -314,7 +340,20 @@ export class WorldServer {
   // ------------------------------------------------------------------ links
 
   private accept(link: Link, transport: TransportName): void {
-    const conn: Conn = { link, state: 'hello', voiceWindowStart: -Infinity, voiceInWindow: 0, chatTokens: CHAT_BURST, chatAt: performance.now(), spokeAt: -Infinity, badMessages: 0, portal: -1 };
+    const conn: Conn = {
+      link,
+      state: 'hello',
+      voiceWindowStart: -Infinity,
+      voiceInWindow: 0,
+      chatTokens: CHAT_BURST,
+      chatAt: performance.now(),
+      spokeAt: -Infinity,
+      badMessages: 0,
+      portal: -1,
+      height: DEFAULT_HEIGHT_CM,
+      teleportAt: -Infinity,
+      appearanceAt: -Infinity,
+    };
     conn.sink = { send: (type, m) => this.send(conn, type, encodeMessage({ type, ...m } as Message)) };
     this.conns.add(conn);
     this.events.add(`link:${transport}`, 0);
@@ -378,6 +417,12 @@ export class WorldServer {
       case 'unfetch':
         if (conn.sink) this.options.content?.unfetch(conn.sink, message.hash);
         break;
+      case 'appearance':
+        this.appearance(conn, message.height, now);
+        break;
+      case 'teleport':
+        this.events.add(`teleport:${this.teleport(conn, message, now)}`, 0);
+        break;
       case 'leave':
         conn.link.close(`leave: ${message.reason}`);
         break;
@@ -440,8 +485,9 @@ export class WorldServer {
     this.world.add(entity, at, yaw, performance.now());
     // Arriving inside a portal does not send the player straight back: only entering one counts.
     conn.portal = this.options.portals?.findIndex((b) => insideBox(b, at)) ?? -1;
+    conn.height = this.fitHeight(hello.height);
     this.byEntity.set(entity, conn);
-    const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust };
+    const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust, height: conn.height };
     this.roster.set(entity, player);
     this.joinedThisTick.push(player);
     this.peakPlayers = Math.max(this.peakPlayers, this.byEntity.size);
@@ -453,6 +499,71 @@ export class WorldServer {
     if (conn.sink) this.options.content?.announce(conn.sink);
     this.joinMs.add(performance.now() - started);
     this.events.add('join', 0);
+  }
+
+  /** A chosen height in centimetres (0: the platform's default) fitted into the world's range. */
+  fitHeight(cm: number): number {
+    const range = this.options.heights ?? DEFAULT_HEIGHTS;
+    const wanted = cm > 0 ? cm : DEFAULT_HEIGHT_CM;
+    return Math.round(Math.min(range.max * 100, Math.max(range.min * 100, wanted)));
+  }
+
+  /** A new height: fitted, then announced as a roster change (at most once a second). */
+  private appearance(conn: Conn, cm: number, now: number): void {
+    if (conn.entity === undefined || now - conn.appearanceAt < APPEARANCE_EVERY_MS) return;
+    conn.appearanceAt = now;
+    const height = this.fitHeight(cm);
+    const player = this.roster.get(conn.entity);
+    if (!player || height === conn.height) return;
+    conn.height = height;
+    player.height = height;
+    this.joinedThisTick.push(player);
+    this.events.add('appearance', 0);
+  }
+
+  /** Puts the player on a seat or a clicked spot when the world's rules allow it, and answers
+   *  `placed` either way. */
+  private teleport(conn: Conn, m: MessageOf<'teleport'>, now: number): 'placed' | 'refused' {
+    const p = conn.entity === undefined ? undefined : this.world.players.get(conn.entity);
+    if (!p) return 'refused';
+    const answer = (accepted: boolean): 'placed' | 'refused' => {
+      this.send(conn, 'placed', encodeMessage({ type: 'placed', position: { x: p.x, y: p.y, z: p.z }, yaw: p.yaw, stance: p.stance, accepted }));
+      return accepted ? 'placed' : 'refused';
+    };
+    if (now - conn.teleportAt < TELEPORT.everyMs) return answer(false);
+    let to: { x: number; y: number; z: number } | undefined;
+    let yaw = m.yaw;
+    let stance: 'standing' | 'sitting' = 'standing';
+    if (m.seat !== undefined) {
+      const seat = this.options.seats?.[m.seat];
+      if (!seat || Math.hypot(seat.position[0] - p.x, seat.position[2] - p.z) > TELEPORT.seatReach) return answer(false);
+      to = { x: seat.position[0], y: seat.position[1], z: seat.position[2] };
+      yaw = seat.yaw;
+      stance = 'sitting';
+    } else {
+      if (!Number.isFinite(m.position.x) || Math.hypot(m.position.x - p.x, m.position.z - p.z) > TELEPORT.range) return answer(false);
+      to = this.landing(m.position);
+    }
+    if (!to) return answer(false);
+    conn.teleportAt = now;
+    this.world.place(conn.entity!, to, yaw, stance, now);
+    if (this.options.portals?.length) conn.portal = this.options.portals.findIndex((b) => insideBox(b, to));
+    return answer(true);
+  }
+
+  /** Where a clicked spot lands: in the world, and walkable unless the world allows flying. */
+  private landing(at: { x: number; y: number; z: number }): { x: number; y: number; z: number } | undefined {
+    const size = this.world.config.size;
+    if (at.x < 0 || at.z < 0 || at.x > size || at.z > size || at.y < -100 || at.y > 500) return undefined;
+    if (this.world.config.flying) return { ...at };
+    if (this.options.walkable) return this.options.walkable.nearest(at);
+    // A code-made map: its boxes are its real solids. Not inside one, and standing on one (or on
+    // the ground at 0 in a map without a floor).
+    const solids: readonly Box[] = this.world.config.solids ?? [];
+    const inside = solids.some((b) => at.x > b.min.x && at.x < b.max.x && at.z > b.min.z && at.z < b.max.z && at.y + 0.05 > b.min.y && at.y + 0.05 < b.max.y);
+    const ground = Math.max(0, groundBelow(at.x, at.y + 0.3, at.z, solids));
+    if (inside || at.y - ground > 0.6 || at.y < ground - 0.3) return undefined;
+    return { x: at.x, y: ground, z: at.z };
   }
 
   /** The spawn points a join may use: the named group's when it has any, else the main ones. */

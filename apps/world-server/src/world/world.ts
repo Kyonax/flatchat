@@ -181,6 +181,26 @@ export class World {
     return 'applied';
   }
 
+  /** Puts a player somewhere the server allowed (a seat, a teleport, S2.06). Poses sent from the old
+   *  place before the client heard of it are corrected back to here. */
+  place(entity: number, at: Vec3, yaw: number, stance: Player['stance'], now: number): boolean {
+    const player = this.players.get(entity);
+    if (!player) return false;
+    player.x = this.clampGround(at.x);
+    player.z = this.clampGround(at.z);
+    player.y = Math.min(Y_MAX, Math.max(Y_MIN, at.y));
+    player.yaw = yaw;
+    player.stance = stance;
+    player.lastPoseAt = now;
+    const cell = cellKey(cellOf(player.x), cellOf(player.z));
+    if (cell !== player.cell) {
+      this.leave(player.cell, entity);
+      this.enter(cell, entity);
+      player.cell = cell;
+    }
+    return true;
+  }
+
   /** Players within `radius` metres of a point, nearest first, with their squared distances. */
   near(x: number, z: number, radius: number, except?: number): Array<{ player: Player; d2: number }> {
     const found: Array<{ player: Player; d2: number }> = [];

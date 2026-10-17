@@ -19,6 +19,7 @@ import type { Link } from '../src/net/types.ts';
 import { connectUdp, UdpServer } from '../src/net/udp.ts';
 import { PLAZA } from '@flatchat/sim';
 import { cleanChat, DEFAULT_SERVER, type EntryRule, mapOptions, WorldServer } from '../src/server.ts';
+import { testSurface } from './navmesh.ts';
 
 const KEY = newWorldKey();
 const WORLD = randomUUID();
@@ -88,7 +89,7 @@ async function token(options: { world?: string; expiresAt?: number; nonce?: Uint
 async function connect(udp: UdpServer, hello: Partial<MessageOf<'hello'>> = {}): Promise<Client> {
   const client = new Client(await connectUdp({ host: '127.0.0.1', port: udp.port }));
   clients.push(client);
-  client.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token: hello.token ?? (await token()), spawn: '', ...hello });
+  client.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token: hello.token ?? (await token()), spawn: '', height: 0, ...hello });
   return client;
 }
 
@@ -326,5 +327,119 @@ describe('portals and spawn groups (S2.11)', () => {
       await new Promise((r) => setTimeout(r, 55));
     }
     expect(c.got.some((m) => m.type === 'portal')).toBe(false);
+  });
+});
+
+describe('heights (S2.07)', () => {
+  it('fits a chosen height into the world’s range, and a narrower or wider world fits it differently', async () => {
+    const heightOf = async (udp: UdpServer, height: number): Promise<number> => {
+      const c = await connect(udp, { height });
+      const w = await c.next('welcome');
+      return (await c.next('roster')).players.find((p) => p.entity === w.entity)!.height;
+    };
+    // The platform's range by default: 0.5 to 3 m; 0 means the default height.
+    let udp = await start();
+    expect([await heightOf(udp, 0), await heightOf(udp, 160), await heightOf(udp, 20), await heightOf(udp, 900)]).toEqual([175, 160, 50, 300]);
+    await running!.server.stop('next world');
+    running = undefined;
+    // A world that narrows it to 1.2–1.5 m.
+    udp = await start({ heights: { min: 1.2, max: 1.5 } });
+    expect([await heightOf(udp, 0), await heightOf(udp, 130), await heightOf(udp, 300)]).toEqual([150, 130, 150]);
+    await running!.server.stop('next world');
+    running = undefined;
+    // One that widens it to 0.2–8 m.
+    udp = await start({ heights: { min: 0.2, max: 8 } });
+    expect([await heightOf(udp, 25), await heightOf(udp, 700)]).toEqual([25, 700]);
+  });
+
+  it('announces a new height as a roster change, at most once a second', async () => {
+    const udp = await start({ heights: { min: 1, max: 2 } });
+    const a = await connect(udp);
+    const me = (await a.next('welcome')).entity;
+    const b = await connect(udp);
+    await b.next('welcome');
+    a.send({ type: 'appearance', height: 260 });
+    const change = await b.next('roster', (r) => !r.full && r.players.some((p) => p.entity === me && p.height === 200));
+    expect(change.players.find((p) => p.entity === me)!.height).toBe(200);
+    a.send({ type: 'appearance', height: 120 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(b.got.some((m) => m.type === 'roster' && m.players.some((p) => p.entity === me && p.height === 120))).toBe(false);
+  });
+});
+
+describe('seats and teleports (S2.06)', () => {
+  const seats = [{ position: [22, 0.45, 20] as [number, number, number], yaw: 1 }];
+  const solids = [
+    { min: { x: 0, y: -1, z: 0 }, max: { x: 64, y: 0, z: 64 } },
+    { min: { x: 30, y: 0, z: 30 }, max: { x: 34, y: 2, z: 34 } },
+  ];
+  const spawnPoints = [{ x: 20, y: 0, z: 20, yaw: 0, group: 'start', main: true }];
+
+  /** Sends a teleport and returns the answer to it (the newest `placed`). */
+  async function placedAfter(c: Client, m: MessageOf<'teleport'>): Promise<MessageOf<'placed'>> {
+    const all = (): Array<MessageOf<'placed'>> => c.got.filter((x): x is MessageOf<'placed'> => x.type === 'placed');
+    const before = all().length;
+    c.send(m);
+    await c.next('placed', () => all().length > before);
+    return all().at(-1)!;
+  }
+
+  it('sits a player on a seat within reach, and refuses one too far away or unknown', async () => {
+    const udp = await start({ world: { size: 64, solids }, spawnPoints, seats });
+    const c = await connect(udp);
+    await c.next('snapshot', (s) => s.correction?.seq === 0);
+    const sat = await placedAfter(c, { type: 'teleport', position: { x: 0, y: 0, z: 0 }, yaw: 0, seat: 0 });
+    expect(sat).toMatchObject({ accepted: true, stance: 'sitting', position: { x: 22, z: 20 } });
+    expect(sat.position.y).toBeCloseTo(0.45, 1);
+    await new Promise((r) => setTimeout(r, 1050));
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 0, y: 0, z: 0 }, yaw: 0, seat: 7 })).accepted).toBe(false);
+  });
+
+  it('lands a clicked spot on the ground within range, once a second, and never inside a solid or in the air', async () => {
+    const udp = await start({ world: { size: 64, solids }, spawnPoints });
+    const c = await connect(udp);
+    await c.next('snapshot', (s) => s.correction?.seq === 0);
+    const ok = await placedAfter(c, { type: 'teleport', position: { x: 26, y: 0.2, z: 26 }, yaw: 0.5 });
+    expect(ok).toMatchObject({ accepted: true, stance: 'standing', position: { x: 26, y: 0, z: 26 } });
+    // Too soon after the last one.
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 27, y: 0, z: 27 }, yaw: 0 })).accepted).toBe(false);
+    const wait = (): Promise<void> => new Promise((r) => setTimeout(r, 1050));
+    await wait();
+    // Inside the block, floating, out of range, outside the world.
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 32, y: 1, z: 32 }, yaw: 0 })).accepted).toBe(false);
+    await wait();
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 24, y: 5, z: 24 }, yaw: 0 })).accepted).toBe(false);
+    await wait();
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 63, y: 0, z: 63 }, yaw: 0 })).accepted).toBe(false);
+    await wait();
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 20, y: 0, z: -3 }, yaw: 0 })).accepted).toBe(false);
+    await wait();
+    // On top of the block is fine.
+    const top = await placedAfter(c, { type: 'teleport', position: { x: 31, y: 2.1, z: 31 }, yaw: 0 });
+    expect(top).toMatchObject({ accepted: true, position: { y: 2 } });
+  }, 15_000);
+
+  it('lands a built world’s teleport on its navigation mesh, and nowhere else', async () => {
+    const walkable = await testSurface();
+    try {
+      const udp = await start({ world: { size: 40 }, spawnPoints: [{ x: 10, y: 0, z: 10, yaw: 0, group: 'start', main: true }], walkable });
+      const c = await connect(udp);
+      await c.next('snapshot', (s) => s.correction?.seq === 0);
+      const on = await placedAfter(c, { type: 'teleport', position: { x: 14, y: 0.3, z: 12 }, yaw: 0 });
+      expect(on.accepted).toBe(true);
+      // On the mesh, which lies within a cell height (0.1 m) of the floor.
+      expect(Math.abs(on.position.y)).toBeLessThanOrEqual(0.11);
+      await new Promise((r) => setTimeout(r, 1050));
+      expect((await placedAfter(c, { type: 'teleport', position: { x: 14, y: 4, z: 12 }, yaw: 0 })).accepted).toBe(false);
+    } finally {
+      walkable.dispose();
+    }
+  });
+
+  it('lets a flying world take a spot in the air', async () => {
+    const udp = await start({ world: { size: 64, solids, flying: true }, spawnPoints });
+    const c = await connect(udp);
+    await c.next('snapshot', (s) => s.correction?.seq === 0);
+    expect((await placedAfter(c, { type: 'teleport', position: { x: 24, y: 6, z: 24 }, yaw: 0 })).accepted).toBe(true);
   });
 });

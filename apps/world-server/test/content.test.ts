@@ -77,7 +77,7 @@ describe('downloads over the world connection', () => {
       link.onMessage((_ch, bytes) => got.push(decodeMessage(bytes, 'server')));
       const send = (m: Message, ch: 'reliable' | 'unreliable' = 'reliable'): void => link.send(ch, encodeMessage(m));
       const token = await sealToken({ account: randomUUID(), name: 'dl', trust: 1, tester: false, emailVerified: true, under18: false, ageDays: 1 }, { key, world, expiresAt: Math.floor(Date.now() / 1000) + 60 });
-      send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn: '' });
+      send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'test', token, spawn: '', height: 0 });
       const until = async (pred: () => boolean): Promise<void> => {
         for (let i = 0; i < 300 && !pred(); i++) await new Promise((r) => setTimeout(r, 10));
       };
