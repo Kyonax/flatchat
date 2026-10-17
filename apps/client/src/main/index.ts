@@ -17,6 +17,7 @@ import { app, BrowserWindow, ipcMain, Menu, type ProcessMetric, safeStorage, ses
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
 import { runCensus } from './census/probe';
+import { ContentCache } from './content-cache';
 import { CoreApi, coreBase, CoreError } from './core-api';
 import { DEFAULT_CORE } from './core-url';
 import { crowdPass } from './crowd-pass';
@@ -82,6 +83,7 @@ function createWindow(): BrowserWindow {
 
 let settings: SettingsFile | undefined;
 let auth: Auth | undefined;
+let cache: ContentCache | undefined;
 /** The address the core gave with the latest connect token: signaling may go there too. */
 let joinedAddress: string | undefined;
 
@@ -109,6 +111,7 @@ function tokenStore(): TokenStore {
 
 function startAccount(): void {
   settings = new SettingsFile(join(app.getPath('userData'), 'settings.json'));
+  cache = new ContentCache(join(app.getPath('userData'), 'content'));
   const base = coreBase(flags.core ?? (settings.get().core || DEFAULT_CORE)) ?? coreBase(DEFAULT_CORE)!;
   const openSignin = (url: URL): Promise<void> =>
     // trap-lint: allow T16 because the URL is the core's own sign-in page, checked in CoreApi.loginRequest
@@ -123,6 +126,10 @@ function startAccount(): void {
 const failure = (err: unknown): { ok: false; error: string } => ({ ok: false, error: err instanceof CoreError ? err.code : 'failed' });
 
 ipcMain.handle('flatchat:locale', () => app.getLocale());
+// World content (S2.04): the page downloads, the main process keeps what matches its hash.
+ipcMain.handle('flatchat:content-has', (_event, hashes: unknown) => (Array.isArray(hashes) ? (cache?.has(hashes.slice(0, 4096)) ?? []) : []));
+ipcMain.handle('flatchat:content-get', (_event, hash: unknown) => cache?.get(hash));
+ipcMain.handle('flatchat:content-put', (_event, hash: unknown, bytes: unknown) => cache?.put(hash, bytes) ?? false);
 ipcMain.handle('flatchat:settings', () => settings?.get());
 ipcMain.handle('flatchat:settings-set', (_event, patch: unknown) => settings?.update(patch));
 ipcMain.handle('flatchat:auth-state', () => auth?.state);

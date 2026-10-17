@@ -28,5 +28,8 @@ contextBridge.exposeInMainWorld('flatchat', {
     return () => ipcRenderer.removeListener('flatchat:auth', handler);
   },
   worlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:worlds'),
+  contentHas: (hashes: string[]): Promise<string[]> => ipcRenderer.invoke('flatchat:content-has', hashes),
+  contentGet: (hash: string): Promise<Uint8Array | undefined> => ipcRenderer.invoke('flatchat:content-get', hash),
+  contentPut: (hash: string, bytes: Uint8Array): Promise<boolean> => ipcRenderer.invoke('flatchat:content-put', hash, bytes),
   joinWorld: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:join', worldId),
 });

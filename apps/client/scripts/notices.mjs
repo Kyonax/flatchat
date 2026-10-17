@@ -22,6 +22,10 @@ const BUNDLED = [
   { package: '@intlify/message-compiler', note: 'inside vue-i18n: compiles messages without eval' },
   { package: '@intlify/shared', note: 'inside vue-i18n' },
   { name: 'libopus', version: '1.6.1', licence: 'BSD-3-Clause', text: 'third_party/opus/COPYING', note: 'compiled to WebAssembly inside libopus-wasm' },
+  { package: '@dimforge/rapier3d-compat', note: 'the physics the player moves with (S2.06)' },
+  { package: '@flatchat/content', note: 'FlatChat’s own content formats, Apache-2.0' },
+  { package: 'smol-toml', note: 'world.toml, inside @flatchat/content' },
+  { name: 'Basis Universal transcoder', version: 'three.js r186', licence: 'Apache-2.0', text: 'third_party/basis/LICENSE', note: 'KTX2 textures of downloaded worlds (shipped with three.js, by Binomial LLC)' },
 ];
 
 function packageDir(name) {

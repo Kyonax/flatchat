@@ -104,6 +104,8 @@ export default {
     choose: 'Continue',
   },
   world: {
+    downloading: 'Downloading the world: {percent}%',
+    downloadFailed: 'The world could not be downloaded: {reason}',
     connecting: 'Connecting to {world}…',
     rtt: '{n} ms',
     frames: '{backend} {n} fps',

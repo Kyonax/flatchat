@@ -28,6 +28,7 @@ const refusedText = computed(() => {
   const s = state.value;
   if (!s) return '';
   if (s.status === 'refused') return t(`world.refused.${s.reason}`);
+  if (s.status === 'lost' && s.reason === 'download') return t('world.downloadFailed', { reason: s.detail });
   if (s.status === 'lost') return t('world.lost', { reason: s.detail || s.reason });
   return '';
 });
@@ -138,8 +139,9 @@ onBeforeUnmount(() => {
     <div
       v-if="state?.status === 'connecting'"
       class="center whud"
+      data-test="connecting"
     >
-      {{ t('world.connecting', { world: world.name }) }}
+      {{ state.download ? t('world.downloading', { percent: Math.floor((100 * state.download.done) / Math.max(1, state.download.total)) }) : t('world.connecting', { world: world.name }) }}
     </div>
     <div
       v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !menu && !asking && !paused"

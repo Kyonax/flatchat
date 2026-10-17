@@ -108,6 +108,8 @@ const es: Shape<typeof en> = {
     choose: 'Continuar',
   },
   world: {
+    downloading: 'Descargando el mundo: {percent}%',
+    downloadFailed: 'No se pudo descargar el mundo: {reason}',
     connecting: 'Conectando con {world}…',
     rtt: '{n} ms',
     frames: '{backend} {n} fps',

@@ -19,6 +19,8 @@
     "dist:win": "npm run build && electron-builder --win --x64"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "@flatchat/content": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "^0.0.0",
     "@pixiv/three-vrm": "3.5.5",

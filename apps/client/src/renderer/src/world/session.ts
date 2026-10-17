@@ -3,8 +3,9 @@
 // times a second and corrected by the server), everyone else drawn smoothly in the past, the
 // camera, text chat and proximity voice. The page shows `state` and calls the methods; the
 // browser's input events come in through `attach`.
-import { decodeCellBlock, type Message, type MessageOf } from '@flatchat/protocol';
-import { advance, BODY, type MoveInput, type MoveState, standing, type WorldMap } from '@flatchat/sim';
+import { type Collider, decodeColliders } from '@flatchat/content';
+import { decodeCellBlock, type Message, type MessageOf, toHex } from '@flatchat/protocol';
+import { BODY, type MoveInput, type WorldMap } from '@flatchat/sim';
 import * as THREE from 'three/webgpu';
 import type { Settings } from '../../../shared/settings';
 import { JoinRefused, WorldConnection } from '../net/connection';
@@ -12,8 +13,11 @@ import { VoiceChain } from '../voice/chain';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
+import { Downloader, type Progress } from './download';
+import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
+import { loadScene } from './scene-loader';
 
 const CELL = 32;
 const POSE_MS = 50;
@@ -49,6 +53,20 @@ export interface WorldState {
   talking: boolean;
   muted: boolean;
   person: 'first' | 'third';
+  /** While the world's content downloads (S2.04). */
+  download: Progress | undefined;
+  /** The built world's name, once it has loaded. */
+  world: string;
+}
+
+/** A map made in code as colliders (boxes), for the physics. */
+export function mapColliders(map: WorldMap): Collider[] {
+  return map.solids.map((s) => ({
+    type: 'box',
+    position: [(s.min.x + s.max.x) / 2, (s.min.y + s.max.y) / 2, (s.min.z + s.max.z) / 2],
+    rotation: [0, 0, 0, 1],
+    half: [(s.max.x - s.min.x) / 2, (s.max.y - s.min.y) / 2, (s.max.z - s.min.z) / 2],
+  }));
 }
 
 export interface Ticket {
@@ -71,7 +89,12 @@ export class WorldSession {
   private chain: VoiceChain | undefined;
   private volume: GainNode | undefined;
   private mic: MediaStream | undefined;
-  private me: MoveState = standing(0, 0, 0);
+  private physics: Physics | undefined;
+  private me: Body = { x: 0, y: 0, z: 0, vy: 0, grounded: true };
+  private downloader: Downloader | undefined;
+  private announced: { hash: string; size: number } | undefined;
+  private mapMeshes: THREE.Object3D[] = [];
+  private scene: THREE.Scene | undefined;
   private entity = -1;
   private seq = 0;
   private pingId = 0;
@@ -107,6 +130,8 @@ export class WorldSession {
       talking: false,
       muted: settings.voice.muted,
       person: settings.view.person,
+      download: undefined,
+      world: '',
     });
   }
 
@@ -130,7 +155,10 @@ export class WorldSession {
     this.detachers.push(() => window.removeEventListener('resize', resize));
     this.crowd = new CrowdView(canvasTag);
     view.scene.add(this.crowd.group);
-    this.me = standing(this.map.spawn.x, this.map.spawn.y, this.map.spawn.z);
+    this.scene = view.scene;
+    this.mapMeshes = view.scene.children.filter((o) => o.name.startsWith('surface:'));
+    await loadPhysics();
+    this.me = { x: this.map.spawn.x, y: this.map.spawn.y, z: this.map.spawn.z, vy: 0, grounded: true };
     this.controls.yaw = this.map.spawn.yaw;
     this.lastFrame = performance.now();
     this.fpsAt = this.lastFrame;
@@ -146,8 +174,25 @@ export class WorldSession {
     }
     this.entity = this.conn.entity;
     const spawn = this.conn.spawn!;
-    this.me = standing(spawn.position.x, spawn.position.y, spawn.position.z);
+    this.me = { x: spawn.position.x, y: spawn.position.y, z: spawn.position.z, vy: 0, grounded: true };
     this.controls.yaw = spawn.yaw;
+    if (this.announced) {
+      // A built world (S2.04): its content first; the code-made plaza is not this world.
+      for (const m of this.mapMeshes) m.visible = false;
+      try {
+        await this.loadWorld(this.announced.hash, this.announced.size);
+      } catch (err) {
+        this.state.status = 'lost';
+        this.state.reason = 'download';
+        this.state.detail = err instanceof Error ? err.message.slice(0, 160) : '';
+        this.conn.close('download failed');
+        return;
+      }
+    } else {
+      this.physics = new Physics(mapColliders(this.map), this.me);
+      this.cameraSolids = this.map.solids;
+    }
+    this.physics!.teleport(this.me.x, this.me.y, this.me.z);
     this.state.status = 'joined';
     this.conn.onClose((reason) => {
       if (this.closed || this.state.status !== 'joined') return;
@@ -276,10 +321,10 @@ export class WorldSession {
       if (this.controls.took('view')) this.state.person = this.state.person === 'first' ? 'third' : 'first';
       if (this.controls.took('mute')) this.toggleMute();
     }
-    if (this.state.status === 'joined') {
+    if (this.state.status === 'joined' && this.physics) {
       const axes = this.typing ? { forward: 0, right: 0 } : this.controls.axes();
       const input: MoveInput = { ...axes, run: !this.typing && this.controls.held('run'), jump: !this.typing && this.controls.held('jump'), yaw: this.controls.yaw };
-      this.me = advance(this.me, input, dt, this.map.solids);
+      this.me = this.physics.step(input, dt);
     }
     if (this.chain) {
       const push = this.settings.voice.mode === 'push';
@@ -287,7 +332,7 @@ export class WorldSession {
       this.state.talking = this.chain.sending;
       this.placeVoices();
     }
-    const pose = cameraPose(this.state.person, this.me, this.controls.yaw, this.controls.pitch, this.map.solids);
+    const pose = cameraPose(this.state.person, this.me, this.controls.yaw, this.controls.pitch, this.cameraSolids);
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     this.crowd?.update(this.avatars(now), camera.position);
@@ -333,7 +378,11 @@ export class WorldSession {
   }
 
   private message(m: Message): void {
+    if (this.downloader?.message(m)) return;
     switch (m.type) {
+      case 'content':
+        this.announced = { hash: toHex(m.world), size: m.size };
+        break;
       case 'welcome':
         // Before the join's first snapshot, so the player is never drawn as someone else.
         this.entity = m.entity;
@@ -366,7 +415,8 @@ export class WorldSession {
   private snapshot(s: MessageOf<'snapshot'>): void {
     // A refused move: back to where the server has the player.
     if (s.correction && s.correction.seq !== 0) {
-      this.me = standing(s.correction.position.x, s.correction.position.y, s.correction.position.z);
+      this.me = { x: s.correction.position.x, y: s.correction.position.y, z: s.correction.position.z, vy: 0, grounded: true };
+      this.physics?.teleport(this.me.x, this.me.y, this.me.z);
     }
     const now = performance.now();
     for (const bytes of s.blocks) {
@@ -401,6 +451,34 @@ export class WorldSession {
     if (this.state.chat.length > CHAT_KEEP) this.state.chat.splice(0, this.state.chat.length - CHAT_KEEP);
   }
 
+  /** Solids the third-person camera stays out of: the code-made map's boxes (a built world's
+   *  camera uses its colliders' bounds, which the physics already has). */
+  private cameraSolids: ReadonlyArray<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }> = [];
+
+  /** Downloads a built world, then builds its scenes and its solids (S2.04). */
+  private async loadWorld(hash: string, size: number): Promise<void> {
+    const bridge = window.flatchat;
+    if (!bridge || !this.conn) throw new Error('no bridge');
+    const conn = this.conn;
+    this.downloader = new Downloader((m) => conn.send(m), { has: (h) => bridge.contentHas(h), get: (h) => bridge.contentGet(h), put: (h, b) => bridge.contentPut(h, b) }, (p) => {
+      this.state.download = { ...p };
+    });
+    this.state.download = { done: 0, total: size };
+    const { world, files } = await this.downloader.world(hash, size);
+    const colliders = decodeColliders(files.get(world.collision)!);
+    this.physics = new Physics(colliders, this.me);
+    for (const scene of world.scenes) {
+      const group = await loadScene(this.renderer!, files.get(scene.glb)!);
+      this.scene?.add(group);
+    }
+    this.cameraSolids = colliders.filter((c) => c.type === 'box').map((c) => ({
+      min: { x: c.position[0] - c.half[0], y: c.position[1] - c.half[1], z: c.position[2] - c.half[2] },
+      max: { x: c.position[0] + c.half[0], y: c.position[1] + c.half[1], z: c.position[2] + c.half[2] },
+    }));
+    this.state.world = world.manifest.name;
+    this.state.download = undefined;
+  }
+
   /** Leaves the world and lets go of the renderer, the microphone and the loops. */
   leave(): void {
     if (this.closed) return;
@@ -410,7 +488,9 @@ export class WorldSession {
     for (const d of this.detachers) d();
     this.detachers = [];
     this.unlock();
+    this.downloader?.cancel();
     this.conn?.close('left the world');
+    this.physics?.dispose();
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();
     void this.renderer?.setAnimationLoop(null);
