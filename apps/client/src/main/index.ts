@@ -179,6 +179,45 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   }
 });
 
+// Friends and blocks (S3.10, S3.11), and whether this account is a minor (its own defaults).
+ipcMain.handle('flatchat:social', async () => {
+  try {
+    if (!auth) return { ok: false, error: 'signed-out' };
+    const [standing, friends, blocks] = await Promise.all([auth.standing(), auth.friends(), auth.blocks()]);
+    return { ok: true, ...standing, ...friends, blocks };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:resend-verification', async () => {
+  try {
+    return { ok: true, sent: (await auth?.resendVerification()) ?? false };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:befriend', async (_event, account: unknown, on: unknown) => {
+  if (typeof account !== 'string' || typeof on !== 'boolean' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    if (!on) {
+      await auth.unfriend(account);
+      return { ok: true, status: 'removed' };
+    }
+    return { ok: true, status: await auth.befriend(account) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:set-block', async (_event, account: unknown, on: unknown) => {
+  if (typeof account !== 'string' || typeof on !== 'boolean' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.setBlock(account, on);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
 // Personal mutes (S3.08): kept by the core, so they follow the account into every world.
 ipcMain.handle('flatchat:mutes', async () => {
   try {

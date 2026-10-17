@@ -6,7 +6,7 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type ReportBody, type WorldSummary } from './core-api';
+import { type Account, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type Person, type ReportBody, type WorldSummary } from './core-api';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -166,6 +166,34 @@ export class Auth {
 
   async join(worldId: string): Promise<JoinTicket> {
     return this.api.join(await this.access(), worldId);
+  }
+
+  async standing(): Promise<{ under18: boolean; verified: boolean }> {
+    return this.api.standing(await this.access());
+  }
+
+  async resendVerification(): Promise<boolean> {
+    return this.api.resendVerification(await this.access());
+  }
+
+  async friends(): Promise<{ friends: Person[]; incoming: Person[]; outgoing: Person[] }> {
+    return this.api.friends(await this.access());
+  }
+
+  async befriend(account: string): Promise<string> {
+    return this.api.befriend(await this.access(), account);
+  }
+
+  async unfriend(account: string): Promise<void> {
+    return this.api.unfriend(await this.access(), account);
+  }
+
+  async blocks(): Promise<string[]> {
+    return this.api.blocks(await this.access());
+  }
+
+  async setBlock(account: string, on: boolean): Promise<void> {
+    return this.api.setBlock(await this.access(), account, on);
   }
 
   async mutes(): Promise<string[]> {

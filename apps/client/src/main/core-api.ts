@@ -70,6 +70,12 @@ export function cleanIceServers(raw: unknown): IceServerSpec[] {
   });
 }
 
+/** Someone in the friends list (S3.10). */
+export interface Person {
+  account: string;
+  name: string;
+}
+
 /** A report as the page builds it (S3.02). */
 export interface ReportBody {
   category: string;
@@ -235,6 +241,58 @@ export class CoreApi {
     const answer = await this.call<{ receipt?: unknown }>('POST', '/api/v1/reports', body, access);
     if (typeof answer.receipt !== 'string') throw new CoreError(502, 'bad-answer', 'the core sent no receipt');
     return answer.receipt.slice(0, 32);
+  }
+
+  /** Whether this account is under 18 (S3.10; its client keeps a minor's defaults too) and
+   *  whether its address is verified (S3.03). */
+  async standing(access: string): Promise<{ under18: boolean; verified: boolean }> {
+    const r = await this.call<{ under18?: unknown; emailVerified?: unknown }>('GET', '/api/v1/me', undefined, access);
+    return { under18: r.under18 === true, verified: r.emailVerified === true };
+  }
+
+  /** Asks the core to mail a new verification link (S3.03); false when one went out lately. */
+  async resendVerification(access: string): Promise<boolean> {
+    try {
+      await this.call('POST', '/api/v1/me/verify', {}, access);
+      return true;
+    } catch (err) {
+      if (err instanceof CoreError && err.status === 429) return false;
+      throw err;
+    }
+  }
+
+  /** Friends, and requests both ways (S3.10). */
+  async friends(access: string): Promise<{ friends: Person[]; incoming: Person[]; outgoing: Person[] }> {
+    const r = await this.call<Record<string, unknown>>('GET', '/api/v1/me/friends', undefined, access);
+    const people = (v: unknown): Person[] =>
+      (Array.isArray(v) ? v : []).slice(0, 500).flatMap((p: unknown) => {
+        const o = (typeof p === 'object' && p !== null ? p : {}) as Record<string, unknown>;
+        return typeof o['account'] === 'string' && /^[0-9a-f-]{36}$/i.test(o['account']) ? [{ account: o['account'], name: String(o['name'] ?? '').slice(0, 64) }] : [];
+      });
+    return { friends: people(r['friends']), incoming: people(r['incoming']), outgoing: people(r['outgoing']) };
+  }
+
+  /** Asks to be friends, or accepts; answers `requested`, `accepted` or `already`. */
+  async befriend(access: string, account: string): Promise<string> {
+    if (!/^[0-9a-f-]{36}$/i.test(account)) throw new CoreError(400, 'bad-account', 'not an account id');
+    const r = await this.call<{ status?: unknown }>('POST', `/api/v1/me/friends/${account}`, {}, access);
+    return typeof r.status === 'string' ? r.status.slice(0, 16) : 'requested';
+  }
+
+  async unfriend(access: string, account: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(account)) throw new CoreError(400, 'bad-account', 'not an account id');
+    await this.call('DELETE', `/api/v1/me/friends/${account}`, undefined, access);
+  }
+
+  /** The accounts this player blocked (S3.11). */
+  async blocks(access: string): Promise<string[]> {
+    const r = await this.call<{ accounts?: unknown }>('GET', '/api/v1/me/blocks', undefined, access);
+    return (Array.isArray(r.accounts) ? r.accounts : []).filter((a): a is string => typeof a === 'string' && /^[0-9a-f-]{36}$/i.test(a)).slice(0, 1000);
+  }
+
+  async setBlock(access: string, account: string, on: boolean): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(account)) throw new CoreError(400, 'bad-account', 'not an account id');
+    await this.call(on ? 'PUT' : 'DELETE', `/api/v1/me/blocks/${account}`, undefined, access);
   }
 
   /** The accounts this player muted, in every world (S3.08). */

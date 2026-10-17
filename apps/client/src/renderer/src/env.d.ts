@@ -29,6 +29,11 @@ interface FlatchatWorld {
 
 type FlatchatResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+interface FlatchatPerson {
+  account: string;
+  name: string;
+}
+
 interface FlatchatBridge {
   versions: { electron: string; chrome: string; node: string };
   signal(url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }>;
@@ -53,6 +58,11 @@ interface FlatchatBridge {
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
   joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
+  // Friends and blocks (S3.10, S3.11), and whether this account is a minor.
+  social(): Promise<FlatchatResult<{ under18: boolean; verified: boolean; friends: FlatchatPerson[]; incoming: FlatchatPerson[]; outgoing: FlatchatPerson[]; blocks: string[] }>>;
+  resendVerification(): Promise<FlatchatResult<{ sent: boolean }>>;
+  befriend(account: string, on: boolean): Promise<FlatchatResult<{ status: string }>>;
+  setBlock(account: string, on: boolean): Promise<FlatchatResult<object>>;
   // Personal mutes (S3.08): the accounts this player does not hear, in every world.
   mutes(): Promise<FlatchatResult<{ accounts: string[] }>>;
   setMute(account: string, on: boolean): Promise<FlatchatResult<object>>;

@@ -90,6 +90,16 @@ export interface WorldState {
   silenced: string[];
   /** Earmuffs on: far voices drop to a murmur (S3.08). */
   earmuffs: boolean;
+  /** Entities the world keeps apart from this player by a block either way (S3.11): not drawn,
+   *  not heard, not read. */
+  hidden: number[];
+  /** Friends and requests both ways, and the accounts this player blocked (S3.10, S3.11). */
+  friends: string[];
+  incoming: string[];
+  outgoing: string[];
+  blocked: string[];
+  /** This account is under 18 (S3.10): its client keeps a minor's defaults too. */
+  minor: boolean;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -211,6 +221,12 @@ export class WorldSession {
       heldMute: undefined,
       silenced: [],
       earmuffs: false,
+      hidden: [],
+      friends: [],
+      incoming: [],
+      outgoing: [],
+      blocked: [],
+      minor: false,
     });
   }
 
@@ -498,7 +514,8 @@ export class WorldSession {
     });
     for (const entity of this.remotes.entities()) {
       const p = this.remotes.at(entity, now);
-      if (!p) continue;
+      // Someone kept apart by a block is not drawn (S3.11).
+      if (!p || this.state.hidden.includes(entity)) continue;
       list.push({ entity, ...p, name: this.names.get(entity) ?? '', speaking: (this.chain?.mouthOf(entity)?.level ?? 0) / 15, scale: this.scaleOf(entity), sitting: this.stances.get(entity) === 'sitting' });
     }
     return list;
@@ -542,6 +559,9 @@ export class WorldSession {
         this.roster(m);
         break;
       case 'chat':
+        // Never from someone kept apart, nor, for a minor, from a stranger (S3.10, S3.11): the
+        // world filters these first; the client keeps the rule even with a world that does not.
+        if (m.from !== undefined && !this.mayRead(m.from)) break;
         this.chatLine({ from: m.from === undefined ? '' : (this.names.get(m.from) ?? '?'), text: m.text });
         if (m.from !== this.entity) uiSound('blip');
         break;
@@ -565,6 +585,10 @@ export class WorldSession {
       case 'muted':
         // The world drops this player's voice; the microphone stops sending too (S3.07).
         this.state.heldMute = m.on ? m.reason : undefined;
+        break;
+      case 'hidden':
+        this.state.hidden = m.entities;
+        this.applySilenced();
         break;
       default:
         break;
@@ -626,12 +650,59 @@ export class WorldSession {
   }
 
   /** Loads the accounts this player muted (S3.08); the world's own guests (offline) have none. */
-  async loadMutes(): Promise<void> {
-    const r = await window.flatchat?.mutes();
-    if (r?.ok) {
-      this.state.silenced = r.accounts;
-      this.applySilenced();
+  /** Loads what follows the account (S3.08, S3.10, S3.11): its mutes, friends and blocks, and
+   *  whether it is a minor (then its microphone starts muted). An offline guest has none. */
+  async loadSocial(): Promise<void> {
+    const [mutes, social] = await Promise.all([window.flatchat?.mutes(), window.flatchat?.social()]);
+    if (mutes?.ok) this.state.silenced = mutes.accounts;
+    if (social?.ok) {
+      this.state.friends = social.friends.map((p) => p.account);
+      this.state.incoming = social.incoming.map((p) => p.account);
+      this.state.outgoing = social.outgoing.map((p) => p.account);
+      this.state.blocked = social.blocks;
+      this.state.minor = social.under18;
+      if (social.under18) this.state.muted = true;
     }
+    this.applySilenced();
+  }
+
+  /** Asks someone to be friends, accepts their request, or ends it (S3.10). */
+  async befriend(account: string, on: boolean): Promise<string | undefined> {
+    const r = await window.flatchat?.befriend(account, on);
+    if (!r?.ok) return r?.error ?? 'failed';
+    const without = (list: string[]): string[] => list.filter((a) => a !== account);
+    this.state.incoming = without(this.state.incoming);
+    if (!on) {
+      this.state.friends = without(this.state.friends);
+      this.state.outgoing = without(this.state.outgoing);
+    } else if (r.status === 'accepted' || r.status === 'already') this.state.friends = [...new Set([...this.state.friends, account])];
+    else this.state.outgoing = [...new Set([...this.state.outgoing, account])];
+    this.applySilenced();
+    return undefined;
+  }
+
+  /** Blocks or unblocks someone in every world (the core keeps it) and in this one at once. */
+  async block(account: string, on: boolean): Promise<boolean> {
+    const r = await window.flatchat?.setBlock(account, on);
+    if (!r?.ok) return false;
+    this.conn?.send({ type: 'block', account, on });
+    const without = (list: string[]): string[] => list.filter((a) => a !== account);
+    this.state.blocked = on ? [...new Set([...this.state.blocked, account])] : without(this.state.blocked);
+    if (on) {
+      this.state.friends = without(this.state.friends);
+      this.state.incoming = without(this.state.incoming);
+      this.state.outgoing = without(this.state.outgoing);
+    }
+    return true;
+  }
+
+  /** Whether this player may read or hear an entity: not across a block, and for a minor, its
+   *  friends only (S3.10, S3.11). */
+  private mayRead(entity: number): boolean {
+    if (this.state.hidden.includes(entity)) return false;
+    if (!this.state.minor) return true;
+    const account = this.people.get(entity)?.account;
+    return account !== undefined && this.state.friends.includes(account);
   }
 
   /** Mutes or unmutes one person for this account, in every world (S3.08). */
@@ -643,11 +714,12 @@ export class WorldSession {
     return true;
   }
 
-  /** The voices to drop: the muted accounts' entities here. */
+  /** The voices to drop: the muted accounts' entities here, those kept apart, and for a minor
+   *  everyone but its friends. */
   private applySilenced(): void {
     if (!this.chain) return;
     const muted = new Set(this.state.silenced);
-    this.chain.silenced = new Set([...this.people.values()].filter((p) => muted.has(p.account)).map((p) => p.entity));
+    this.chain.silenced = new Set([...this.people.values()].filter((p) => !p.me && (muted.has(p.account) || !this.mayRead(p.entity))).map((p) => p.entity));
   }
 
   toggleEarmuffs(): void {

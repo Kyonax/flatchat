@@ -47,6 +47,15 @@ const asking = computed(() => state.value?.status === 'joined' && !props.setting
 const talkKey = computed(() => props.settings.keys.talk[0] ?? 'KeyT');
 const peopleKey = computed(() => props.settings.keys.people[0] ?? 'Tab');
 const giving = computed(() => rolesToGive(state.value?.role ?? 'visitor'));
+/** The People panel's list: someone kept apart by a block is left out, unless this player blocked
+ *  them (then they show, to be unblocked) (S3.11). */
+const listed = computed(() => (state.value?.people ?? []).filter((p) => !state.value?.hidden.includes(p.entity) || state.value.blocked.includes(p.account)));
+const friendError = ref('');
+
+async function friend(p: Person, on: boolean): Promise<void> {
+  const error = await session?.befriend(p.account, on);
+  friendError.value = error ? t('people.friendFailed', { reason: t(`people.friendErrors.${error}`) }) : '';
+}
 /** A world that took a new build restarts (S3.06): the app brings the player back in. */
 const updating = computed(() => state.value?.status === 'lost' && state.value.reason === 'closing' && state.value.detail === 'updating' && !props.ticket.local);
 const recent = computed(() => (state.value?.chat ?? []).slice(chatOpen.value ? -14 : -6));
@@ -211,8 +220,8 @@ onMounted(async () => {
   document.addEventListener('pointerlockchange', onLockChange);
   await session.start(props.ticket);
   if (state.value?.status === 'joined' && props.settings.voice.asked) await session.startVoice();
-  // The people this account muted, in every world (S3.08); an offline guest has none.
-  if (state.value?.status === 'joined' && !props.ticket.local) await session.loadMutes();
+  // What follows the account (S3.08, S3.10, S3.11): mutes, friends, blocks; an offline guest has none.
+  if (state.value?.status === 'joined' && !props.ticket.local) await session.loadSocial();
 });
 
 watch(
@@ -358,7 +367,7 @@ onBeforeUnmount(() => {
       <h2>{{ t('people.title', { n: state.people.length }) }}</h2>
       <ul class="plain">
         <li
-          v-for="p in state.people"
+          v-for="p in listed"
           :key="p.entity"
           data-test="person"
           :data-role="p.role"
@@ -372,6 +381,11 @@ onBeforeUnmount(() => {
             v-if="p.role !== 'visitor'"
             class="badge"
           >{{ t(`roles.${p.role}`) }}</span>
+          <span
+            v-if="state.friends.includes(p.account)"
+            class="badge friend"
+            data-test="friend-badge"
+          >{{ t('people.friend') }}</span>
           <select
             v-if="canGiveTo(state.role, p)"
             :value="p.role"
@@ -418,6 +432,49 @@ onBeforeUnmount(() => {
               @change="setVolume(p, Number(($event.target as HTMLInputElement).value))"
             >
           </template>
+          <template v-if="!p.me && !ticket.local">
+            <button
+              v-if="state.blocked.includes(p.account)"
+              type="button"
+              class="small"
+              data-test="unblock"
+              @click="session?.block(p.account, false)"
+            >
+              {{ t('people.unblock') }}
+            </button>
+            <template v-else>
+              <button
+                v-if="state.incoming.includes(p.account)"
+                type="button"
+                class="small primary"
+                data-test="accept-friend"
+                @click="friend(p, true)"
+              >
+                {{ t('people.accept') }}
+              </button>
+              <button
+                v-else-if="!state.friends.includes(p.account) && !state.outgoing.includes(p.account)"
+                type="button"
+                class="small"
+                data-test="add-friend"
+                @click="friend(p, true)"
+              >
+                {{ t('people.addFriend') }}
+              </button>
+              <span
+                v-else-if="state.outgoing.includes(p.account)"
+                class="muted small"
+              >{{ t('people.asked') }}</span>
+              <button
+                type="button"
+                class="small"
+                data-test="block"
+                @click="session?.block(p.account, true)"
+              >
+                {{ t('people.block') }}
+              </button>
+            </template>
+          </template>
           <button
             v-if="!p.me && !ticket.local"
             type="button"
@@ -463,6 +520,12 @@ onBeforeUnmount(() => {
           </form>
         </li>
       </ul>
+      <p
+        v-if="friendError"
+        class="error small"
+      >
+        {{ friendError }}
+      </p>
       <p class="muted small">
         {{ t('people.close', { key: keyLabel(peopleKey, t) }) }}
       </p>
@@ -723,6 +786,10 @@ onBeforeUnmount(() => {
   top: 48px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.badge.friend {
+  background: var(--ok, #2e7d32);
 }
 
 .badge {

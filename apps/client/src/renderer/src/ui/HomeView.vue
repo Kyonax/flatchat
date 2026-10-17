@@ -19,6 +19,25 @@ const byId = ref('');
 const byIdError = ref('');
 const looking = ref(false);
 const starred = computed(() => new Set(favourites.value.map((w) => w.id)));
+/** Friends and the requests waiting for this account's answer (S3.10). */
+const friends = ref<FlatchatPerson[]>([]);
+const incoming = ref<FlatchatPerson[]>([]);
+/** The address waits for its confirmation link (S3.03). */
+const unverified = ref(false);
+const resent = ref('');
+
+async function resend(): Promise<void> {
+  const r = await window.flatchat?.resendVerification();
+  resent.value = r?.ok ? (r.sent ? t('home.verifySent') : t('home.verifyWait')) : t('signin.errors.failed');
+}
+
+async function answer(person: FlatchatPerson, accept: boolean): Promise<void> {
+  const r = await window.flatchat?.befriend(person.account, accept);
+  if (!r?.ok) return;
+  incoming.value = incoming.value.filter((p) => p.account !== person.account);
+  if (accept) friends.value = [...friends.value, person].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** The reports this account filed, with their decisions (S3.02). */
 const reports = ref<Array<{ receipt: string; category: string; status: string; decision: string; createdAt: string }>>([]);
 
@@ -29,9 +48,14 @@ function failed(error: string): string {
 async function load(): Promise<void> {
   worlds.value = undefined;
   listError.value = '';
-  const [list, favs, mine] = await Promise.all([window.flatchat?.worlds(), window.flatchat?.favourites(), window.flatchat?.reports()]);
+  const [list, favs, mine, social] = await Promise.all([window.flatchat?.worlds(), window.flatchat?.favourites(), window.flatchat?.reports(), window.flatchat?.social()]);
   if (favs?.ok) favourites.value = favs.worlds;
   if (mine?.ok) reports.value = mine.reports;
+  if (social?.ok) {
+    friends.value = social.friends;
+    incoming.value = social.incoming;
+    unverified.value = !social.verified;
+  }
   if (!list || !list.ok) {
     listError.value = failed(list?.error ?? '');
     worlds.value = [];
@@ -193,6 +217,62 @@ onMounted(load);
       >
         {{ joinError }}
       </p>
+      <p
+        v-if="unverified"
+        class="notice"
+        data-test="unverified"
+      >
+        {{ t('home.unverified') }}
+        <button
+          type="button"
+          data-test="resend-verification"
+          @click="resend"
+        >
+          {{ t('home.verifyAgain') }}
+        </button>
+        <span
+          v-if="resent"
+          class="muted small"
+        >{{ resent }}</span>
+      </p>
+      <template v-if="incoming.length > 0">
+        <h2>{{ t('people.requests') }}</h2>
+        <ul
+          class="plain"
+          data-test="friend-requests"
+        >
+          <li
+            v-for="p in incoming"
+            :key="p.account"
+          >
+            {{ p.name }}
+            <button
+              type="button"
+              class="primary"
+              data-test="accept-request"
+              @click="answer(p, true)"
+            >
+              {{ t('people.accept') }}
+            </button>
+            <button
+              type="button"
+              data-test="decline-request"
+              @click="answer(p, false)"
+            >
+              {{ t('people.decline') }}
+            </button>
+          </li>
+        </ul>
+      </template>
+      <template v-if="friends.length > 0">
+        <h2>{{ t('people.friends') }}</h2>
+        <p
+          class="muted"
+          data-test="friends"
+        >
+          {{ friends.map((p) => p.name).join(', ') }}
+        </p>
+      </template>
       <template v-if="reports.length > 0">
         <h2>{{ t('home.reports') }}</h2>
         <ul
