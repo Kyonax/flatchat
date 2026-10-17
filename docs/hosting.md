@@ -55,7 +55,7 @@ Run `cloudflared tunnel run flatchat-core`. `FLATCHAT_CORE_TUNNEL=1` makes the c
 
 ## 3. A world on the same PC
 
-The host tool ([tools/host-tool](../tools/host-tool/README.md); `npm run host --` from the repository, or `bin/flatchat-host` from its download) does every step below for any host: `host signin --core URL`, `host request --name "My Plaza"`, then, once the owner has approved it on the core's admin page (`https://core.example.org/admin`), `host key WORLD_ID` and `host run my-world --world-id WORLD_ID --map-port`. The same by hand, on the PC that also runs the core:
+The host tool ([tools/host-tool](../tools/host-tool/README.md); `npm run host --` from the repository, or `bin/flatchat-host` from its download) does every step below for any host: `host signin --core URL`, `host request --name "My Plaza" --accept-agreement` (it shows the host agreement first: no voice recordings, reports forwarded, takedowns followed, the protections for minors kept; the core shows it whole at `/host-agreement`, and revokes the world of a host who breaks it, with the reason), then, once the owner has approved it on the core's admin page (`https://core.example.org/admin`), `host key WORLD_ID` and `host run my-world --world-id WORLD_ID --map-port`. The same by hand, on the PC that also runs the core:
 
 Register it as a relayed world, approve it, and keep its key:
 
@@ -101,6 +101,21 @@ npm run host -- push my-world --world-id WORLD_ID      # builds my-world, then s
 ```
 
 The world checks the whole build as it checks one at start, puts it in place of its built folder (`my-world/.built` on your PC) and restarts on it: `host run` starts it again by itself (a world server started by hand exits with code 75 for you to start it again), and players are brought back in. A build you make yourself later with `host build` or `host run` replaces a pushed one, so keep the world's source folders in step with your builders.
+
+### Moderation and appeals
+
+Moderators, admins and the owner moderate from the People panel: remove a player from the world, mute them, or ban them for an hour, a day, a week or until lifted, always with a reason, which the player is told (the statement of reasons). Nobody moderates the owner or someone of their own role or above. Bans and mutes stay in the world's database, so leaving and coming back does not shake them off, and every action goes into the world's record.
+
+A banned player may appeal to you from the client. You see the appeals and decide them with the host tool:
+
+```sh
+npm run host -- appeals WORLD_ID                                   # who, the ban's reason, why they appeal
+npm run host -- appeal WORLD_ID APPEAL_ID reverse --note "Sorry"   # or uphold; they read your note
+npm run host -- bans WORLD_ID                                      # the bans in force and the record
+npm run host -- unban WORLD_ID ACCOUNT                             # lift one yourself
+```
+
+A reversed ban reaches the world over its channel to the core at once, or when it next connects. The platform's own decisions (an account suspended or banned everywhere) are the core owner's, with their appeals on the core's admin page.
 
 ## 4. When the UDP port cannot be reached: TURN
 
