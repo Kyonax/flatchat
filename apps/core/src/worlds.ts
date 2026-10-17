@@ -9,6 +9,7 @@ import { type Account, accountById } from './accounts.ts';
 import { isMinor } from './age.ts';
 import type { Db, Sql } from './db.ts';
 import { openWorldKey, sealWorldKey } from './secrets.ts';
+import { DEFAULT_TRUST, type TrustRule, trustOf } from './trust.ts';
 
 export const TOKEN_SECONDS = 60;
 /** The most players a world may hold in the MVP (Q-L19): its host sets less. */
@@ -159,13 +160,14 @@ export async function worldEvents(db: Sql, id: string): Promise<Array<{ kind: st
   return db.query('select kind, actor, note, at from world_events where world_id = $1 order by id', [id]);
 }
 
-/** What a world learns about a player: never the birth date or the email (S3.10, dp-006). */
-export function claimsFor(account: Account, now: Date): TokenClaims {
+/** What a world learns about a player: never the birth date or the email (S3.10, dp-006); the
+ *  trust level it earned or was given (S3.09). */
+export function claimsFor(account: Account, now: Date, rules: readonly TrustRule[] = DEFAULT_TRUST): TokenClaims {
   const ageDays = Math.max(0, Math.floor((now.getTime() - account.createdAt.getTime()) / 86_400_000));
   return {
     account: account.id,
     name: account.displayName,
-    trust: account.trust,
+    trust: trustOf(account, now, rules),
     tester: account.tester,
     emailVerified: account.emailVerified,
     under18: isMinor(account.birthYear, account.birthMonth, now),
@@ -181,6 +183,7 @@ export async function connectToken(
   accountId: string,
   worldId: string,
   now: Date,
+  rules: readonly TrustRule[] = DEFAULT_TRUST,
 ): Promise<{ ok: true; token: Uint8Array; address: string; expiresAt: number } | { ok: false; problem: JoinProblem }> {
   const [row] = /^[0-9a-f-]{36}$/i.test(worldId) ? await db.query<WorldRow>(`select ${COLUMNS} from worlds where id = $1`, [worldId]) : [];
   if (!row) return { ok: false, problem: 'no-world' };
@@ -189,6 +192,12 @@ export async function connectToken(
   if (!account || account.status !== 'active') return { ok: false, problem: 'inactive' };
   const expiresAt = Math.floor(now.getTime() / 1000) + TOKEN_SECONDS;
   const key = openWorldKey(sealing, row.id, row.key_sealed);
-  const token = await sealToken(claimsFor(account, now), { key, world: row.id, expiresAt });
+  // A join is activity: once a day it counts toward trust (S3.09), and this token already carries it.
+  const today = now.toISOString().slice(0, 10);
+  const [counted] = await db.query<{ active_days: number }>(
+    'update accounts set active_days = active_days + 1, last_active_day = $2::date where id = $1 and (last_active_day is null or last_active_day < $2::date) returning active_days',
+    [account.id, today],
+  );
+  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules), { key, world: row.id, expiresAt });
   return { ok: true, token, address: row.address, expiresAt };
 }

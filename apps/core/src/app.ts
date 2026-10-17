@@ -27,6 +27,7 @@ import {
   validPort,
 } from './sessions.ts';
 import { type Lang, pickLang, STRINGS } from './strings.ts';
+import { DEFAULT_TRUST, type TrustRule, trustOf } from './trust.ts';
 import {
   approveWorld,
   cleanAddress,
@@ -63,6 +64,8 @@ export interface CoreOptions {
   log?: (event: string, fields: Record<string, unknown>) => void;
   /** STUN and TURN for players and worlds (S1.13); STUN only by default. */
   ice?: IceConfig;
+  /** Trust levels' thresholds (S3.09). */
+  trust?: TrustRule[];
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -399,7 +402,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       displayName: a.displayName,
       email: a.email,
       emailVerified: a.emailVerified,
-      trust: a.trust,
+      trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST),
       tester: a.tester,
       createdAt: a.createdAt.toISOString(),
     };
@@ -512,7 +515,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const known = hosts.status(worldId)?.status;
     const w = known ? await worldById(o.db, worldId) : undefined;
     if (w && known && known.players >= live(w).capacity) return sendProblem(reply, problem(403, 'full', 'this world is full'));
-    const result = await connectToken(o.db, sealing, who.accountId, worldId, now());
+    const result = await connectToken(o.db, sealing, who.accountId, worldId, now(), o.trust ?? DEFAULT_TRUST);
     if (!result.ok) return sendProblem(reply, problem(result.problem === 'no-world' ? 404 : 403, result.problem, 'this world cannot be joined now'));
     const sealed = Buffer.from(result.token).toString('base64url');
     // A world hosted from home takes its offers through the core (S1.13).

@@ -25,6 +25,7 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_OPERATOR` | Who runs it, shown in the privacy notice |
 | `FLATCHAT_CORE_CONTACT` | How to reach them about privacy |
 | `FLATCHAT_CORE_TUNNEL` | `1` when it sits behind a Cloudflare Tunnel |
+| `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
 
 Then:
 
@@ -54,6 +55,8 @@ Run with the same environment: `node --env-file=FILE apps/core/src/admin.ts COMM
 1. The owner sends an invitation link. The player opens it, sets an email, a password, a display name, the birth month and year and the country, and accepts the privacy notice. Accounts are for adults until the minors' protections of Stage 3 ship.
 2. The client signs in through the system browser: it opens a port on 127.0.0.1, the core's sign-in page sends the browser back to that port with a one-time code, and the client trades the code (with the PKCE verifier only it knows) for a session.
 3. To join a world, the client asks the core for a connect token: the account's facts sealed for that one world for 60 seconds, which the world server opens without calling the core. A world never learns a player's email or birth date.
+
+The token carries the account's trust level (S3.09), which worlds' entry rules use. An account earns levels 1 to 3 with its age, a verified email and its active days (the days on which it joined a world, counted once a day), at the thresholds of `FLATCHAT_CORE_TRUST`; without a verified email it stays at 0. The owner may set a level by hand (`account EMAIL --trust N`): it is a floor, and levels 4 to 7 come only that way. The tester flag is apart from the levels: the closed test's door.
 
 ## The API
 

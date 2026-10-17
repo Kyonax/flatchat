@@ -15,10 +15,13 @@ export interface Account {
   birthMonth: number;
   country: string;
   emailVerified: boolean;
+  /** The level the owner set by hand: a floor under what the account earns (S3.09). */
   trust: number;
   tester: boolean;
   status: 'active' | 'suspended' | 'banned';
   createdAt: Date;
+  /** Days on which it joined a world (S3.09). */
+  activeDays: number;
 }
 
 interface AccountRow {
@@ -33,10 +36,11 @@ interface AccountRow {
   tester: boolean;
   status: Account['status'];
   created_at: Date;
+  active_days: number;
   password_hash: string;
 }
 
-const ACCOUNT_COLUMNS = 'id, email, display_name, birth_year, birth_month, country, email_verified, trust, tester, status, created_at, password_hash';
+const ACCOUNT_COLUMNS = 'id, email, display_name, birth_year, birth_month, country, email_verified, trust, tester, status, created_at, active_days, password_hash';
 
 function toAccount(r: AccountRow): Account {
   return {
@@ -51,6 +55,7 @@ function toAccount(r: AccountRow): Account {
     tester: r.tester,
     status: r.status,
     createdAt: r.created_at,
+    activeDays: r.active_days,
   };
 }
 

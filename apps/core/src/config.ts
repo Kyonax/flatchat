@@ -12,8 +12,10 @@
 //   FLATCHAT_CORE_STUN      STUN URLs, comma-separated (default stun:stun.cloudflare.com:3478; "none" for none)
 //   FLATCHAT_CORE_TURN_URLS and FLATCHAT_CORE_TURN_SECRET   coturn with use-auth-secret ("the relay we run")
 //   FLATCHAT_CORE_CF_TURN_KEY and FLATCHAT_CORE_CF_TURN_TOKEN   Cloudflare Realtime TURN
+//   FLATCHAT_CORE_TRUST     trust levels 1-3 as days:active,days:active,days:active (default 3:1,14:5,60:20)
 
 import { DEFAULT_STUN, type IceConfig } from './ice.ts';
+import { parseTrust, TrustError, type TrustRule } from './trust.ts';
 
 export interface CoreEnv {
   db: string;
@@ -23,6 +25,7 @@ export interface CoreEnv {
   contact: string;
   behindTunnel: boolean;
   ice: IceConfig;
+  trust: TrustRule[];
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -57,5 +60,14 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
       ...(env['FLATCHAT_CORE_TURN_SECRET'] ? { turnSecret: env['FLATCHAT_CORE_TURN_SECRET'] } : {}),
       ...(env['FLATCHAT_CORE_CF_TURN_KEY'] && env['FLATCHAT_CORE_CF_TURN_TOKEN'] ? { cloudflare: { keyId: env['FLATCHAT_CORE_CF_TURN_KEY'], token: env['FLATCHAT_CORE_CF_TURN_TOKEN'] } } : {}),
     },
+    trust: trusted(env['FLATCHAT_CORE_TRUST']),
   };
+}
+
+function trusted(text: string | undefined): TrustRule[] {
+  try {
+    return parseTrust(text);
+  } catch (err) {
+    throw new ConfigError(err instanceof TrustError ? err.message : String(err));
+  }
 }

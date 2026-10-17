@@ -48,6 +48,7 @@ const app = await buildCore({
   contact: env.contact,
   behindTunnel: env.behindTunnel,
   ice: env.ice,
+  trust: env.trust,
   log,
 });
 const address = await app.listen({ port, host: values.bind });
