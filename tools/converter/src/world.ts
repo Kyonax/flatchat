@@ -10,11 +10,14 @@
 //     (ETC1S for colour, UASTC for normal maps; Basis Universal compiled to WebAssembly);
 //   - collects every solid in world space (the OMI physics markers; or, in a world that marks
 //     none, every mesh as a static triangle mesh) into collision.bin;
-//   - builds a navigation mesh for click-to-move (Recast) from the same solids.
+//   - builds a navigation mesh for click-to-move (Recast) from the same solids;
+//   - lists the base library's parts a scene places (S2.05): the client draws them from its own
+//     library, so they add no geometry to download; their solids and seats join the scene's.
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import {
+  BASE_PARTS,
   BUILT_FORMAT,
   type BuiltEmitter,
   type BuiltScene,
@@ -251,7 +254,7 @@ function sceneColliders(doc: Document, json: Gltf, info: SceneInfo, warn: (w: st
       if (tri) out.push({ type: 'trimesh', ...tri });
     }
   }
-  if (info.bodies.length === 0) {
+  if (info.bodies.length === 0 && (json.meshes?.length ?? 0) > 0) {
     // Nothing marked solid: every mesh is, as a static triangle mesh (a Blender scene exported as is).
     warn(`${info.file} marks no solids (OMI_physics_body): every mesh becomes one`);
     const nodes = json.nodes ?? [];
@@ -274,6 +277,20 @@ function sceneColliders(doc: Document, json: Gltf, info: SceneInfo, warn: (w: st
   return out;
 }
 
+
+/** The base library parts' solids (S2.05): each solid box of each part, placed by its node. */
+export function partColliders(info: SceneInfo): Collider[] {
+  const out: Collider[] = [];
+  for (const placed of info.parts) {
+    const { rotation, scale } = decompose(placed.matrix);
+    for (const b of BASE_PARTS[placed.id]!.boxes) {
+      if (b.solid === false) continue;
+      const centre = transformPoint(placed.matrix, [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2]);
+      out.push({ type: 'box', position: centre, rotation, half: [((b.max[0] - b.min[0]) * scale[0]) / 2, ((b.max[1] - b.min[1]) * scale[1]) / 2, ((b.max[2] - b.min[2]) * scale[2]) / 2] });
+    }
+  }
+  return out;
+}
 
 /** Every collider as triangles, for the navigation mesh (primitives as their boxes). */
 function trianglesOf(colliders: readonly Collider[]): { positions: number[]; indices: number[] } {
@@ -426,7 +443,7 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
       for (const [k, v] of files) if (k.startsWith(base)) resources[k.slice(base.length)] ??= v;
       doc = await io.readJSON({ json: json as never, resources: resources as Record<string, Uint8Array<ArrayBuffer>> });
     }
-    colliders.push(...sceneColliders(doc, json, info, warn));
+    colliders.push(...sceneColliders(doc, json, info, warn), ...partColliders(info));
     docs.push(doc);
     parsed.push({ info, json, base });
   }
@@ -471,7 +488,14 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
       id: report.manifest.scenes[i]!.id,
       glb: put(glb, 'scene'),
       spawns: info.spawns.map((s) => ({ position: s.position, yaw: s.yaw, title: s.title, group: s.group })),
-      seats: info.seats.map((s) => ({ position: transformPoint(s.matrix, [0, 0, 0]), yaw: Math.atan2(-s.matrix[8]!, -s.matrix[10]!) })),
+      seats: [
+        ...info.seats.map((s) => ({ position: transformPoint(s.matrix, [0, 0, 0]), yaw: Math.atan2(-s.matrix[8]!, -s.matrix[10]!) })),
+        ...info.parts.flatMap((p) => (BASE_PARTS[p.id]!.seats ?? []).map((seat) => ({ position: transformPoint(p.matrix, seat.position), yaw: Math.atan2(-p.matrix[8]!, -p.matrix[10]!) + seat.yaw }))),
+      ],
+      parts: info.parts.map((p) => {
+        const d = decompose(p.matrix);
+        return { id: p.id, position: d.position, rotation: d.rotation, scale: d.scale };
+      }),
       portals: info.portals.map((p) => ({ ...boxOf(p.matrix, p.size), world: p.world, spawn: p.spawn })),
       zones: info.zones.map((z) => ({ ...boxOf(z.matrix, z.size), kind: z.kind, ...(z.range !== undefined ? { range: z.range } : {}), ...(z.gain !== undefined ? { gain: z.gain } : {}) })),
       emitters,

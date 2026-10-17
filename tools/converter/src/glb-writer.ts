@@ -64,16 +64,23 @@ export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[]
     scene: 0,
     scenes: [{ nodes: nodes.map((_, k) => k) }],
     nodes,
-    meshes: gltfMeshes,
-    materials: meshes.map((m) => ({ name: m.name, pbrMetallicRoughness: { baseColorFactor: m.colour, metallicFactor: 0, roughnessFactor: 0.9 } })),
-    accessors,
-    bufferViews,
-    buffers: [{ byteLength: bin.length }],
+    // A scene of markers only (a world built from base parts) has no meshes and no buffer: glTF
+    // allows neither an empty array nor an empty buffer.
+    ...(meshes.length
+      ? {
+          meshes: gltfMeshes,
+          materials: meshes.map((m) => ({ name: m.name, pbrMetallicRoughness: { baseColorFactor: m.colour, metallicFactor: 0, roughnessFactor: 0.9 } })),
+          accessors,
+          bufferViews,
+          buffers: [{ byteLength: bin.length }],
+        }
+      : {}),
     ...(Object.keys(extensions).length ? { extensions } : {}),
   };
   const text = new TextEncoder().encode(JSON.stringify(json));
   const jsonLen = Math.ceil(text.length / 4) * 4;
-  const total = 12 + 8 + jsonLen + 8 + bin.length;
+  const binChunk = bin.length > 0 ? 8 + bin.length : 0;
+  const total = 12 + 8 + jsonLen + binChunk;
   const out = new Uint8Array(total);
   const v = new DataView(out.buffer);
   v.setUint32(0, 0x46546c67, true);
@@ -83,9 +90,11 @@ export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[]
   v.setUint32(16, 0x4e4f534a, true);
   out.set(text, 20);
   out.fill(0x20, 20 + text.length, 20 + jsonLen);
-  v.setUint32(20 + jsonLen, bin.length, true);
-  v.setUint32(24 + jsonLen, 0x004e4942, true);
-  out.set(bin, 28 + jsonLen);
+  if (binChunk) {
+    v.setUint32(20 + jsonLen, bin.length, true);
+    v.setUint32(24 + jsonLen, 0x004e4942, true);
+    out.set(bin, 28 + jsonLen);
+  }
   return out;
 }
 

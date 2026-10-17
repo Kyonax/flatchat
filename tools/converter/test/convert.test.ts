@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodeColliders, parseBuiltWorld } from '@flatchat/content';
+import { BASE_PARTS, decodeColliders, parseBuiltWorld } from '@flatchat/content';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
@@ -98,6 +98,43 @@ describe('the navigation mesh', () => {
       query.destroy();
       navMesh.destroy();
     }
+  });
+});
+
+describe('the base library (S2.05)', () => {
+  it('builds the park from parts alone: no geometry, the parts’ solids and the benches’ seats', async () => {
+    const PARK = join(HERE, '..', '..', '..', 'kits', 'worlds', 'park');
+    const { world: w, out, warnings } = await convertWorld(readFolder(PARK), { ktx2: false });
+    expect(warnings).toEqual([]);
+    const scene = w.scenes[0]!;
+    expect(scene.parts).toHaveLength(69);
+    expect(scene.parts.filter((p) => p.id === 'flatchat:bench')).toHaveLength(4);
+    expect(scene.seats).toHaveLength(8);
+    // Nothing to draw in the scene's own file: the client has every part.
+    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+    await MeshoptDecoder.ready;
+    const doc = await io.readBinary(out.get(`content/${scene.glb}`)!);
+    expect(doc.getRoot().listMeshes()).toEqual([]);
+    expect(w.files.find((f) => f.kind === 'scene')!.size).toBeLessThan(1024);
+    // Every solid box of every part, nothing from the leaves.
+    const colliders = decodeColliders(out.get(`content/${w.collision}`)!);
+    const solid = scene.parts.reduce((n, p) => n + BASE_PARTS[p.id]!.boxes.filter((b) => b.solid !== false).length, 0);
+    expect(colliders).toHaveLength(solid);
+    expect(w.files.reduce((n, f) => n + f.size, 0)).toBeLessThan(64 * 1024);
+  });
+
+  it('turns a part’s boxes with its node', async () => {
+    const files = world([], [
+      { name: 'wall', translation: [10, 0, 10], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], extensions: { FLATCHAT_world: { part: { id: 'flatchat:wall-4' } } } },
+      { name: 'spawn', translation: [0, 0, 0], extensions: { OMI_spawn_point: {} } },
+    ]);
+    const { world: w, out } = await convertWorld(files, { ktx2: false });
+    const [wall] = decodeColliders(out.get(`content/${w.collision}`)!);
+    expect(wall?.type).toBe('box');
+    if (wall?.type !== 'box') return;
+    expect(wall.position.map((v) => Math.round(v * 1000) / 1000)).toEqual([10, 1.5, 10]);
+    expect(wall.half.map((v) => Math.round(v * 1000) / 1000)).toEqual([2, 1.5, 0.1]);
+    expect(Math.abs(wall.rotation[1])).toBeCloseTo(Math.SQRT1_2, 5);
   });
 });
 
