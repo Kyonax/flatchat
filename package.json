@@ -30,6 +30,7 @@
     "core": "npm run start -w @flatchat/core --",
     "core:admin": "npm run admin -w @flatchat/core --",
     "core:db": "npm run db -w @flatchat/core --",
+    "host": "node tools/host-tool/src/cli.ts",
     "bots": "node tools/bots/src/run.ts",
     "standin": "node tools/harness/src/standin.ts"
   },

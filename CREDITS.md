@@ -29,8 +29,8 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 | vue-i18n, with its `@intlify/*` packages | the client | kazuya kawaguchi and the intlify contributors | [intlify/vue-i18n](https://github.com/intlify/vue-i18n) | MIT | 11.4.14 |
 | Rapier (`@dimforge/rapier3d-compat`) | the client | Sébastien Crozet and Dimforge | [dimforge/rapier.js](https://github.com/dimforge/rapier.js) | Apache-2.0 | 0.21.0 |
 | Basis Universal's transcoder, shipped with three.js | the client | Binomial LLC | [BinomialLLC/basis_universal](https://github.com/BinomialLLC/basis_universal) | Apache-2.0 | three.js r186's copy |
-| node-datachannel | the world server | Murat Doğan and Paul-Louis Ageneau | [murat-dogan/node-datachannel](https://github.com/murat-dogan/node-datachannel) | MPL-2.0 | 0.33.4 |
-| libdatachannel, inside node-datachannel | the world server | Paul-Louis Ageneau | [paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | MPL-2.0 | 0.24.5 |
+| node-datachannel | the world server, the host tool | Murat Doğan and Paul-Louis Ageneau | [murat-dogan/node-datachannel](https://github.com/murat-dogan/node-datachannel) | MPL-2.0 | 0.33.4 |
+| libdatachannel, inside node-datachannel | the world server, the host tool | Paul-Louis Ageneau | [paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | MPL-2.0 | 0.24.5 |
 | Fastify, with the packages it loads (find-my-way, pino, avvio and others) | the core | Matteo Collina, Tomas Della Vedova and the Fastify contributors | [fastify/fastify](https://github.com/fastify/fastify) | MIT | 5.12.7 |
 | node-postgres (`pg`, with `pg-pool` and `pg-protocol`) | the core | Brian Carlson and the node-postgres contributors | [brianc/node-postgres](https://github.com/brianc/node-postgres) | MIT | 8.23.1 |
 | @fastify/websocket, with ws | the core | the Fastify contributors; Einar Otto Stangvik and the ws contributors | [fastify/fastify-websocket](https://github.com/fastify/fastify-websocket), [websockets/ws](https://github.com/websockets/ws) | MIT | 11.3.4, 8.22.0 |
@@ -41,3 +41,5 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 | pngjs | the host tool (the converter) | Luke Page and the pngjs contributors | [pngjs/pngjs](https://github.com/pngjs/pngjs) | MIT | 7.0.0 |
 | jpeg-js | the host tool (the converter) | Eugene Ware and the jpeg-js contributors | [jpeg-js/jpeg-js](https://github.com/jpeg-js/jpeg-js) | BSD-3-Clause | 0.4.4 |
 | smol-toml | the world server, the host tool | squirrelchat | [squirrelchat/smol-toml](https://github.com/squirrelchat/smol-toml) | BSD-3-Clause | 1.9.1 |
+| Node.js | the host tool's download (its `node/` folder) | the Node.js contributors (OpenJS Foundation) | [nodejs/node](https://github.com/nodejs/node) | MIT; the libraries it bundles keep their own licences, listed in its `node/LICENSE` | 24.22.0 |
+| The `node:24.22.0-bookworm-slim` image: Debian 12 with Node.js | the host tool's container image | the Node.js Docker team; the Debian project | [nodejs/docker-node](https://github.com/nodejs/docker-node), [debian.org](https://www.debian.org/) | MIT for the image's build files; each Debian package keeps its own licence (`/usr/share/doc/*/copyright` in the image) | 24.22.0-bookworm-slim |

@@ -1,0 +1,22 @@
+{
+  "name": "@flatchat/host-tool",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's host tool: make, check and build worlds, ask the core to approve them, and run them from a home PC.",
+  "license": "MPL-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@flatchat/content": "*",
+    "@flatchat/converter": "*",
+    "@flatchat/world-server": "*"
+  },
+  "scripts": {
+    "host": "node src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

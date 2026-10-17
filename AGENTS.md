@@ -54,7 +54,9 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |
 | `tools/bots` | Headless bots on the real protocol and the load-test runner (`npm run bots`) |
-| `tools/*` | Converter, host tool, Blender bridge (not started) |
+| `tools/converter` | World folders into built worlds (avatars in Stage 4) |
+| `tools/host-tool` | The host's command: make, check, build, request, key, run, advise; its package and container image |
+| `tools/blender` | The Blender bridge (not started) |
 | `kits`, `docs` | Body kits and the base library; specs and Stage 0's spike reports |
 | `.github/workflows/ci.yml` | CI: the harness, then the client packaged and smoke-tested on Linux and Windows |
 | `.claude/skills/flatchat` | The agent skill |
