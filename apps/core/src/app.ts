@@ -22,7 +22,7 @@ import {
   validPort,
 } from './sessions.ts';
 import { type Lang, pickLang, STRINGS } from './strings.ts';
-import { cleanAddress, cleanWorldName, connectToken, registerWorld, worldById } from './worlds.ts';
+import { cleanAddress, cleanWorldName, connectToken, listWorlds, registerWorld, worldById } from './worlds.ts';
 
 export const CORE_VERSION = '0.1.0';
 
@@ -322,6 +322,13 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     }
     const w = await registerWorld(o.db, { name, ownerId: who.accountId, address, capacity }, now());
     return reply.code(201).send({ id: w.id, name: w.name, status: w.status, capacity: w.capacity });
+  });
+
+  // The approved worlds (S1.05; the public list with favourites and capacity comes in S2.09).
+  app.get('/api/v1/worlds', async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const worlds = await listWorlds(o.db, 'approved');
+    return { worlds: worlds.map((w) => ({ id: w.id, name: w.name, capacity: w.capacity })) };
   });
 
   app.get('/api/v1/worlds/:id', async (req, reply) => {

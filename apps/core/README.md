@@ -66,6 +66,7 @@ Run with the same environment: `node --env-file=FILE apps/core/src/admin.ts COMM
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
 | `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created |
 | `POST /api/v1/worlds` | Bearer | `{ name, address, capacity? }` → a pending world |
+| `GET /api/v1/worlds` | — | `{ worlds: [{ id, name, capacity }] }`, the approved ones |
 | `GET /api/v1/worlds/:id` | — | Its name, status and capacity, and its address once approved |
 | `POST /api/v1/worlds/:id/join` | Bearer | `{ token, address, expiresAt }` |
 

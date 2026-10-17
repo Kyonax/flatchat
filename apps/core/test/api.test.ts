@@ -304,7 +304,9 @@ describe('worlds and connect tokens (S1.05, S1.06)', () => {
     expect((await app.inject({ method: 'GET', url: `/api/v1/worlds/${world.id}` })).json()).not.toHaveProperty('address');
     expect((await app.inject({ method: 'POST', url: `/api/v1/worlds/${world.id}/join`, headers: auth })).json()).toMatchObject({ error: 'not-approved' });
 
+    expect(((await app.inject({ method: 'GET', url: '/api/v1/worlds' })).json() as { worlds: Array<{ id: string }> }).worlds.map((w) => w.id)).not.toContain(world.id);
     const key = await approveWorld(db, sealingKey(secret), world.id, 'admin:test', 'first world', clock);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/worlds' })).json()).toMatchObject({ worlds: expect.arrayContaining([{ id: world.id, name: 'Kyonax Plaza', capacity: 60 }]) });
     expect((await app.inject({ method: 'GET', url: `/api/v1/worlds/${world.id}` })).json()).toMatchObject({ status: 'approved', address: 'http://127.0.0.1:7779/rtc', capacity: 60 });
     const join = await app.inject({ method: 'POST', url: `/api/v1/worlds/${world.id}/join`, headers: auth });
     expect(join.statusCode).toBe(200);
