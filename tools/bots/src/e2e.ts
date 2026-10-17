@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 // Stage 1's path end to end, with every real program: a private PostgreSQL, the core, an invited
-// account, a world registered and approved through the admin command line, a world server on the
-// plaza hosted the way a home PC hosts it (its WebRTC offers relayed by the core over the world's
+// account, two worlds registered and approved through the admin command line, each world server on
+// a plaza hosted the way a home PC hosts it (its WebRTC offers relayed by the core over the world's
 // own WebSocket, S1.13; the plaza converted from kits/worlds/plaza and downloaded by the client
-// over its connection, S2.03 and S2.04), and the packaged client driven by Playwright. The test plays the system browser over HTTP
+// over its connection, S2.03 and S2.04; each plaza with a portal to the other, S2.11), and the
+// packaged client driven by Playwright. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
-// client's loopback port); everything else is the client's own: the world list, joining, the
-// microphone question, walking, chat. It needs a display (Xvfb in CI) and PostgreSQL's programs.
+// client's loopback port); everything else is the client's own: the world browser, joining, the
+// microphone question, walking, chat, and walking through the portal into the second world. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--keep]
 //
@@ -22,8 +23,7 @@ import { children, freePort, run, start, stop, waitFor } from './procs.ts';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
-const CONVERT = join(ROOT, 'tools', 'converter', 'src', 'cli.ts');
-const PLAZA_WORLD = join(ROOT, 'kits', 'worlds', 'plaza');
+const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts');
 const EMAIL = 'e2e@example.org';
 const PASSWORD = 'an end-to-end password';
 
@@ -59,21 +59,33 @@ try {
   steps['signup'] = signup.status;
   if (signup.status !== 201) throw new Error(`sign-up answered ${signup.status}`);
 
-  // 2. A world on the plaza, registered and approved, taking its offers through the core.
-  const [icePort, signalPort] = [await freePort(), await freePort()];
-  const built = join(dir, 'built');
-  await run([process.execPath, CONVERT, PLAZA_WORLD, built]);
-  const worldId = (await admin('world', 'register', '--name', 'E2E Plaza', '--owner', EMAIL, '--address', 'relay')).match(/registered (\S+)/)?.[1];
-  const approved = await admin('world', 'approve', worldId ?? '');
-  const key = approved.match(/FLATCHAT_WORLD_KEY=(\S+)/)?.[1];
-  if (!worldId || !key) throw new Error('no approved world');
-  const world = await start(
-    [process.execPath, SERVER_MAIN, '--transport', 'rtc', '--world', built, '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--metrics-every', '0', '--world-id', worldId, '--core', coreUrl, '--relay', '--stop-on-stdin'],
-    { FLATCHAT_WORLD_KEY: key },
-    'ready',
-  );
-  // The world is online once the core has accepted its proof.
-  await waitFor('the world to reach the core', 15_000, async () => (world.lines.some((l) => l['event'] === 'relay-connected') ? true : undefined));
+  // 2. Two plazas whose portals lead to each other, registered and approved, taking their offers
+  //    through the core.
+  const register = async (name: string): Promise<{ id: string; key: string }> => {
+    const id = (await admin('world', 'register', '--name', name, '--owner', EMAIL, '--address', 'relay')).match(/registered (\S+)/)?.[1];
+    const key = (await admin('world', 'approve', id ?? '')).match(/FLATCHAT_WORLD_KEY=(\S+)/)?.[1];
+    if (!id || !key) throw new Error(`no approved world ${name}`);
+    return { id, key };
+  };
+  const plaza = await register('E2E Plaza');
+  const garden = await register('E2E Garden');
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden']);
+  const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
+    const [icePort, signalPort] = [await freePort(), await freePort()];
+    const s = await start(
+      [
+        process.execPath, SERVER_MAIN, '--transport', 'rtc', '--world', built, '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1',
+        '--metrics-every', '0', '--world-id', w.id, '--data', join(dir, `${w.id}.db`), '--core', coreUrl, '--relay', '--stop-on-stdin',
+      ],
+      { FLATCHAT_WORLD_KEY: w.key },
+      'ready',
+    );
+    // The world is online once the core has accepted its proof.
+    await waitFor('the world to reach the core', 15_000, async () => (s.lines.some((l) => l['event'] === 'relay-connected') ? true : undefined));
+    return s;
+  };
+  const world = await host(plaza, join(dir, 'travel', 'a.built'));
+  const second = await host(garden, join(dir, 'travel', 'b.built'));
   steps['world'] = 'relayed';
 
   // 3. The client, with its own empty profile; the system browser is replaced by this test.
@@ -112,9 +124,10 @@ try {
       if (values.shots) await page.screenshot({ path: join(values.shots, `${name}.png`) });
     };
     // The client: signed in, the world browser (S2.09), join.
-    await page.locator('[data-test=public] [data-test=join]').first().waitFor({ timeout: 20_000 });
+    const joinPlaza = page.locator(`[data-test=public] [data-world="${plaza.id}"] [data-test=join]`);
+    await joinPlaza.waitFor({ timeout: 20_000 });
     await snap('0-home');
-    await page.locator('[data-test=public] [data-test=join]').first().click({ timeout: 20_000 });
+    await joinPlaza.click({ timeout: 20_000 });
     steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
     await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
@@ -132,18 +145,46 @@ try {
     await page.locator('[data-test=chat-line]', { hasText: 'Tester One: hola desde la prueba' }).waitFor({ timeout: 10_000 });
     steps['chat'] = true;
     if (values.shot) await page.screenshot({ path: values.shot });
+    // Back through the portal south of the spawn (S2.11): the world says so, the client asks the
+    // core for the garden and joins it at its arrival spawn.
+    await page.keyboard.down('KeyS');
+    await page.locator('[data-test=travel]').waitFor({ timeout: 15_000 }).catch(() => undefined);
+    await page.keyboard.up('KeyS');
+    await page.locator('.whud.top strong', { hasText: 'E2E Garden' }).waitFor({ timeout: 20_000 });
+    await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
+    steps['travelled'] = true;
+    await page.waitForTimeout(500);
+    await snap('3-travelled');
   } finally {
     await app.close();
   }
 
-  // 4. What the world saw.
+  // 4. What the worlds saw.
   await stop(world.proc);
+  await stop(second.proc);
   serverSummary = world.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined;
   const events = (serverSummary?.['events'] ?? {}) as Record<string, { messages: number }>;
   const received = (serverSummary?.['received'] ?? {}) as Record<string, { messages: number }>;
-  steps['server'] = { joins: events['join']?.messages ?? 0, poses: events['pose:applied']?.messages ?? 0, corrected: events['pose:corrected']?.messages ?? 0, chat: events['chat']?.messages ?? 0, fetches: received['fetch']?.messages ?? 0 };
-  // The world's content came down: world.json, the scene, the collision file and the navigation mesh.
-  ok = (events['join']?.messages ?? 0) === 1 && (events['pose:applied']?.messages ?? 0) > 10 && (events['chat']?.messages ?? 0) === 1 && (received['fetch']?.messages ?? 0) >= 3;
+  const garden2 = ((second.lines.find((l) => l['event'] === 'stopped')?.['summary'] as Record<string, unknown> | undefined)?.['events'] ?? {}) as Record<string, { messages: number }>;
+  steps['server'] = {
+    joins: events['join']?.messages ?? 0,
+    poses: events['pose:applied']?.messages ?? 0,
+    corrected: events['pose:corrected']?.messages ?? 0,
+    chat: events['chat']?.messages ?? 0,
+    fetches: received['fetch']?.messages ?? 0,
+    portals: events['portal']?.messages ?? 0,
+    travelled: events['leave:travel']?.messages ?? 0,
+    gardenJoins: garden2['join']?.messages ?? 0,
+  };
+  // The world's content came down: world.json, the scenes, the collision file and the navigation mesh.
+  ok =
+    (events['join']?.messages ?? 0) === 1 &&
+    (events['pose:applied']?.messages ?? 0) > 10 &&
+    (events['chat']?.messages ?? 0) === 1 &&
+    (received['fetch']?.messages ?? 0) >= 3 &&
+    (events['portal']?.messages ?? 0) >= 1 &&
+    (events['leave:travel']?.messages ?? 0) === 1 &&
+    (garden2['join']?.messages ?? 0) === 1;
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);

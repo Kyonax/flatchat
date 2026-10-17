@@ -40,6 +40,12 @@ export interface BotOptions {
   chat: boolean;
   /** The first voice burst starts within this many seconds (default 16). */
   firstTalkWithin?: number;
+  /** The spawn group to ask for in hello (S2.11: where a portal leads). */
+  spawn?: string;
+  /** Walk straight here once placed (a portal), instead of mingling. */
+  goal?: { x: number; z: number };
+  /** Called when the world says the bot walked into a portal. */
+  onPortal?: (to: { world: string; spawn: string }) => void;
 }
 
 export type BotState = 'new' | 'connecting' | 'joined' | 'refused' | 'failed' | 'closed';
@@ -95,6 +101,8 @@ export class Bot {
   lostReason = '';
   refuseReason = '';
   joinMs = 0;
+  /** Where the server placed the bot at its join. */
+  spawnAt: { x: number; z: number } | undefined;
   private joinedAt = 0;
   private stoppedAt = 0;
   private link: Link | undefined;
@@ -147,7 +155,7 @@ export class Bot {
     const answered = new Promise<void>((resolve) => {
       this.settle = resolve;
     });
-    this.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'flatchat-bots 0.0.0', token });
+    this.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'flatchat-bots 0.0.0', token, spawn: this.options.spawn ?? '' });
     const timer = setTimeout(() => this.settle?.(), JOIN_TIMEOUT_MS);
     await answered;
     clearTimeout(timer);
@@ -189,11 +197,11 @@ export class Bot {
     }
   }
 
-  /** Leaves the world (the run is over). */
-  stop(): void {
+  /** Leaves the world: the run is over, or (`travel`) the bot went through a portal. */
+  stop(reason: 'quit' | 'travel' = 'quit'): void {
     this.stopping = true;
     this.stoppedAt ||= performance.now();
-    if (this.state === 'joined') this.send({ type: 'leave', reason: 'quit', detail: 'bot run over' });
+    if (this.state === 'joined') this.send({ type: 'leave', reason, detail: reason === 'travel' ? 'through a portal' : 'bot run over' });
     const link = this.link;
     if (link) setTimeout(() => link.close('bot stopped'), 200);
   }
@@ -272,6 +280,9 @@ export class Bot {
           if (m.correction.seq !== 0) {
             this.window.corrections += 1;
             this.total.corrections += 1;
+          } else {
+            this.spawnAt = { x: m.correction.position.x, z: m.correction.position.z };
+            if (this.options.goal) this.brain.goTo(this.options.goal.x, this.options.goal.z);
           }
           this.placed = true;
         }
@@ -305,6 +316,9 @@ export class Bot {
       }
       case 'leave':
         if (!this.stopping) this.lostReason = `server: ${m.reason}`;
+        break;
+      case 'portal':
+        this.options.onPortal?.({ world: m.world, spawn: m.spawn });
         break;
       default:
         break;

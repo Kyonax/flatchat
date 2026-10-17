@@ -93,6 +93,11 @@ export class Brain {
     this.mode = this.travelTo(this.hub, this.random() < 0.3);
   }
 
+  /** Walks (or runs) straight to a point, then idles there: a portal, for the travel checks. */
+  goTo(x: number, z: number, running = true): void {
+    this.mode = { kind: 'travel', tx: x, tz: z, speed: running ? this.config.run : this.config.walk };
+  }
+
   /** The server put the player somewhere (its spawn, or a correction): continue from there. */
   teleport(x: number, z: number, yaw: number): void {
     this.x = x;
