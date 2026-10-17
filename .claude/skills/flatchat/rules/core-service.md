@@ -51,6 +51,16 @@ node --env-file=FILE apps/core/src/admin.ts world approve WORLD_ID   # prints FL
 | Worlds | `POST /api/v1/worlds` registers one (pending). `admin world approve` makes its 32-byte key, seals it under a key derived from `FLATCHAT_CORE_SECRET` (HKDF, AES-256-GCM bound to the world's id) and prints it once. Every change goes into `world_events`, the approval record |
 | Connect tokens | `POST /api/v1/worlds/:id/join` seals the account's facts for that world for 60 s (`packages/protocol`, sf-001). A world learns the account id, display name, trust, tester flag, verified email, account age in days and an under-18 flag; never the email or the birth date |
 
+## Hosting From Home (S1.13)
+
+| Part | Rule |
+|---|---|
+| Relayed worlds | A world registered with the address `relay` takes players' WebRTC offers through the core: the join answers with `PUBLIC_URL/api/v1/worlds/ID/signal` as its address |
+| The host channel | `GET /api/v1/worlds/:id/host` (WebSocket, subprotocol `flatchat-host-1`): the core sends `challenge` with a nonce; the world answers `auth` with `HMAC-SHA256(world key, "flatchat host v1 " + nonce)` within 5 s (else 4001; a wrong proof 4003); then `welcome` and `ice` (its STUN and TURN servers for a day). One connection per world: a newer one closes the older with 4009 (`src/hosts.ts`) |
+| Signalling | `POST /api/v1/worlds/:id/signal` (Bearer) with `{ type: 'offer', sdp }` (64 KB at most): relayed as `offer` with an id, answered within 10 s, or `world-offline` (503) or `world-timeout` (504) |
+| ICE servers | Every join answer carries `iceServers` (`src/ice.ts`): STUN (Cloudflare's by default; `FLATCHAT_CORE_STUN=none` turns it off), coturn credentials from `FLATCHAT_CORE_TURN_URLS` and `FLATCHAT_CORE_TURN_SECRET` (username `expiry:account-id`, credential `base64(HMAC-SHA1(secret, username))`, an hour), Cloudflare Realtime TURN from `FLATCHAT_CORE_CF_TURN_KEY` and `FLATCHAT_CORE_CF_TURN_TOKEN` (cached for 12 h). Usernames carry account ids, never emails |
+| The operator's guide | `docs/hosting.md`: the tunnel, the relay, port mapping, TURN |
+
 ## Security Rules
 
 | Rule | Why |

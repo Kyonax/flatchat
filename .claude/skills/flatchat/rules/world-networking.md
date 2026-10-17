@@ -63,6 +63,16 @@ Spike scope: the server's key is not authenticated. Production would carry sessi
 
 The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connection.ts`): `join()` resolves once welcomed and placed (`conn.spawn`), so no caller waits for the one-time spawn after the fact; pass `onMessage` to `join()` to see every message from the welcome on (the join's roster and first snapshot arrive while it runs); `next()` sees only messages that arrive after it is called.
 
+## Hosting From Home (`src/net/relay.ts`, `src/net/portmap.ts`)
+
+| Flag | Rule |
+|---|---|
+| `--core URL --relay` | `CoreRelay` keeps a WebSocket to the core's host channel (Node.js's own `WebSocket`, subprotocol `flatchat-host-1`), proves the world key (`hostProof`), answers relayed offers through `RtcServer.answer()` (the same path as the HTTP signalling port), applies the `ice` servers the core sends, and reconnects with backoff from 1 s to 30 s. Log lines `relay-connected`, `relay-lost` |
+| `--ice-server URL` (repeatable) | STUN or TURN servers in the browser's form; `toDatachannelIce` turns them into node-datachannel's objects (a TURN username with colons survives as a field) |
+| `--map-port` | `PortMapper` asks the default gateway to forward the WebRTC UDP port: PCP (MAP, keeping its nonce for renewal and removal), then NAT-PMP, then UPnP IGD (SSDP, then `AddPortMapping`; only a router on a private address); renews at half the lease (1 h), removes the mapping at stop. It changes the host's router, so it is opt-in. Log line `port-map` |
+
+`RtcServer.answer(sdp, label)` resolves with the answer once ICE has gathered and opens the link in the background; the HTTP handler and the relay both call it.
+
 ## Interest Management and Snapshots (`src/world/`)
 
 | Point | Rule |

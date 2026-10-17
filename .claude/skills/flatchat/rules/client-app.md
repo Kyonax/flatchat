@@ -31,7 +31,8 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 | The refresh token is encrypted with `safeStorage`; on Linux with the `basic_text` backend (no secret service) it is kept in memory only, and the home screen says the player will sign in again | `basic_text` is a fixed key: not protection |
 | `Auth.access()` shares one refresh between concurrent callers | A refresh token works once; two refreshes at once read as a stolen token and the core ends the session |
 | An unreachable core at start keeps the stored token; any other refusal deletes it | A flaky network must not sign people out |
-| Signalling may go to the private addresses of Stage 0, or to the exact address the core gave with the latest connect token (`signal(url, offer, joinedAddress)`) | The page cannot steer signalling to an arbitrary host |
+| Signalling may go to the private addresses of Stage 0, or to the exact address the core gave with the latest connect token (`signal(url, offer, joinedAddress)`). When that address is the core's own relay (`CoreApi.isRelay`), the main process posts the offer there with the account's token | The page cannot steer signalling to an arbitrary host, and never sees the token |
+| The join ticket carries the core's `iceServers` (cleaned: `stun:`/`turn:` URLs only), passed to the page's `RTCPeerConnection` | TURN reaches worlds behind carrier-grade NAT |
 | The page's permissions: the microphone (audio only) and pointer lock, in the app and the lounge; nothing else | Electron grants everything unless told |
 
 ## Settings, Keys and Languages
