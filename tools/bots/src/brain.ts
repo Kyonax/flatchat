@@ -4,10 +4,14 @@
 // passes the elapsed time, so tests step it without a clock.
 //
 // Scenarios: `hubs` spreads the players over six gathering places (a lively world); `crowd` puts
-// everyone around one 15 m stage (the worst case for interest management: everyone is near).
+// everyone around one 15 m stage (the worst case for interest management: everyone is near);
+// `plaza` gathers them at Stage 1's greybox plaza (packages/sim): the fountain, the stage, the
+// platforms, walking at the paving's height (they pass through benches: load, not looks).
+// Yaw follows packages/sim: 0 faces -z.
+import { PLAZA } from '@flatchat/sim';
 import { seededRandom } from '@flatchat/world-server/metrics';
 
-export type Scenario = 'hubs' | 'crowd';
+export type Scenario = 'hubs' | 'crowd' | 'plaza';
 export type Stance = 'standing' | 'sitting';
 
 export interface Hub {
@@ -25,8 +29,24 @@ export interface BrainConfig {
 
 export const DEFAULT_BRAIN: BrainConfig = { size: 256, scenario: 'hubs', walk: 1.4, run: 4 };
 
+const C = PLAZA.size / 2;
+const PLAZA_HUBS: Hub[] = [
+  { x: C, z: C + 9, r: 4 },
+  { x: C, z: C - 9, r: 5 },
+  { x: C - 10, z: C, r: 3 },
+  { x: C + 10, z: C, r: 3 },
+  { x: C, z: C + 18, r: 6 },
+  { x: C - 18, z: C + 8, r: 3 },
+];
+
+/** The height a plaza bot walks at: the paving inside the square, the ground outside. */
+export function plazaHeight(x: number, z: number): number {
+  return Math.abs(x - C) <= 24 && Math.abs(z - C) <= 24 ? 0.15 : 0;
+}
+
 export function hubsFor(size: number, scenario: Scenario): Hub[] {
   if (scenario === 'crowd') return [{ x: size / 2, z: size / 2, r: 15 }];
+  if (scenario === 'plaza') return PLAZA_HUBS;
   const r = Math.max(6, size * 0.05);
   return [
     [0.2, 0.25],
@@ -95,7 +115,7 @@ export class Brain {
       } else {
         this.x += (dx / dist) * move;
         this.z += (dz / dist) * move;
-        this.yaw = Math.atan2(dx, dz);
+        this.yaw = Math.atan2(-dx, -dz);
       }
     } else {
       this.mode.left -= dt;
@@ -106,12 +126,13 @@ export class Brain {
         this.mode.turnIn = 1 + this.random() * 4;
       }
       if (this.mode.left <= 0) {
-        const leave = this.config.scenario === 'hubs' && this.random() < (this.wanderer ? 0.6 : 0.25);
+        const leave = this.config.scenario !== 'crowd' && this.random() < (this.wanderer ? 0.6 : 0.25);
         if (leave) this.hub = (this.hub + 1 + Math.floor(this.random() * (this.hubs.length - 1))) % this.hubs.length;
         this.mode = this.travelTo(this.hub, leave && this.random() < 0.3);
       }
     }
-    return { x: this.x, y: 0, z: this.z, yaw: this.yaw, look: this.look, stance: this.stance };
+    const y = this.config.scenario === 'plaza' ? plazaHeight(this.x, this.z) : 0;
+    return { x: this.x, y, z: this.z, yaw: this.yaw, look: this.look, stance: this.stance };
   }
 
   private travelTo(hub: number, running: boolean): Mode {

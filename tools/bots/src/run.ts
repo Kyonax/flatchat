@@ -9,6 +9,10 @@
 //   node tools/bots/src/run.ts smoke [--bots 12] [--seconds 4]
 //   node tools/bots/src/run.ts report DIR
 //   node tools/bots/src/run.ts render DIR [--from SECONDS] [--seconds N]
+//   FLATCHAT_WORLD_KEY=HEX node tools/bots/src/run.ts visit --signal URL --world-id UUID [--bots 50]
+//        [--minutes 30] [--map plaza|flat] [--size 256] [--voice 1] [--chat 1]
+//        (S1.12: bots join a world server that is already running, such as the owner's plaza, and
+//        stay; one line at the end says how many joined and how many were lost)
 //   node tools/bots/src/run.ts client-check -- CLIENT [ARGS…]
 //        (a WebRTC world server on loopback, then the client's smoke test told to join it)
 //   node tools/bots/src/run.ts voice-check [--seconds 20] [--netem "delay 10ms 10ms loss 2.5%"] -- CLIENT [ARGS…]
@@ -34,6 +38,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { newWorldKey, sealToken, toHex } from '@flatchat/protocol';
+import { PLAZA } from '@flatchat/sim';
 import type { BotSummary } from './bot.ts';
 import { DEFAULT_BRAIN, type Scenario } from './brain.ts';
 import { addPrivateAddress, asOuterUser, canIsolate, isIsolated, readCounters, reexecIsolated, setupNetwork } from './netns.ts';
@@ -336,6 +341,69 @@ async function smokeOne(transport: 'udp' | 'rtc', bots: number, seconds: number)
   };
 }
 
+// --------------------------------------------------------------------- visit
+
+interface VisitOptions {
+  signalUrl: string;
+  worldId: string;
+  key: string;
+  bots: number;
+  minutes: number;
+  map: 'plaza' | 'flat';
+  size: number;
+  voice: boolean;
+  chat: boolean;
+}
+
+/** S1.12: bots join a running world (WebRTC, as players do) and stay for the run. */
+async function visit(o: VisitOptions): Promise<number> {
+  if (!Number.isInteger(o.bots) || o.bots < 1 || o.bots > 500) fail('--bots must be 1 to 500');
+  if (!(o.minutes > 0 && o.minutes <= 600)) fail('--minutes must be more than 0, at most 600');
+  const perSwarm = 50;
+  const swarms: Child[] = [];
+  const started = Date.now();
+  for (let from = 0; from < o.bots; from += perSwarm) {
+    const sc: SwarmConfig = {
+      from,
+      count: Math.min(perSwarm, o.bots - from),
+      seed: 11,
+      transport: 'rtc',
+      host: '127.0.0.1',
+      udpPort: 0,
+      signalUrl: o.signalUrl,
+      worldId: o.worldId,
+      brain: { ...DEFAULT_BRAIN, size: o.map === 'plaza' ? PLAZA.size : o.size, scenario: o.map === 'plaza' ? 'plaza' : 'hubs' },
+      voice: o.voice,
+      chat: o.chat,
+      joinPerSecond: 10,
+      windowSec: 10,
+      durationSec: Math.round(o.minutes * 60),
+    };
+    swarms.push(new Child([process.execPath, SWARM], { FLATCHAT_SWARM: JSON.stringify(sc), FLATCHAT_WORLD_KEY: o.key }, undefined));
+  }
+  await Promise.all(swarms.map((s) => s.exited));
+  const summary = swarms.flatMap((s) => (s.lines.find((l) => l.event === 'summary')?.['bots'] ?? []) as BotSummary[]);
+  const joined = summary.filter((b) => b.entity !== undefined);
+  const lost = joined.filter((b) => b.lostReason !== '');
+  const minutes = (Date.now() - started) / 60_000;
+  const downKbps = joined.map((b) => (Object.values(b.down).reduce((n, v) => n + v, 0) * 8) / 1000 / Math.max(1, b.joinedMs / 1000)).sort((a, b) => a - b);
+  const result = {
+    ok: joined.length === o.bots && lost.length === 0,
+    bots: o.bots,
+    joined: joined.length,
+    lost: lost.length,
+    lostReasons: [...new Set(lost.map((b) => b.lostReason))].slice(0, 5),
+    refused: [...new Set(summary.filter((b) => b.refuseReason).map((b) => b.refuseReason))],
+    corrections: joined.reduce((n, b) => n + b.corrections, 0),
+    voiceFrames: joined.reduce((n, b) => n + b.voiceFrames, 0),
+    chats: joined.reduce((n, b) => n + b.chats, 0),
+    downKbpsP95: Math.round(downKbps[Math.floor(downKbps.length * 0.95)] ?? 0),
+    minutes: Math.round(minutes * 10) / 10,
+  };
+  say('visit', result);
+  return result.ok ? 0 : 1;
+}
+
 // --------------------------------------------------------------- client-check
 
 /** Runs the real client's smoke test against a world server, over Chromium's own WebRTC. */
@@ -512,6 +580,26 @@ if (command === 'run') {
     process.exit(await reexecIsolated(SCRIPT, process.argv.slice(2)));
   }
   process.exit(await voiceCheck(Number(values.seconds), client, values.netem));
+} else if (command === 'visit') {
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      signal: { type: 'string' },
+      'world-id': { type: 'string' },
+      bots: { type: 'string', default: '50' },
+      minutes: { type: 'string', default: '30' },
+      map: { type: 'string', default: 'plaza' },
+      size: { type: 'string', default: '256' },
+      voice: { type: 'string', default: '1' },
+      chat: { type: 'string', default: '1' },
+    },
+    strict: true,
+  });
+  const key = process.env['FLATCHAT_WORLD_KEY'] ?? fail('visit needs the world key in FLATCHAT_WORLD_KEY');
+  const signalUrl = values.signal ?? fail('visit needs --signal http(s)://HOST:PORT/rtc');
+  const worldId = values['world-id'] ?? process.env['FLATCHAT_WORLD_ID'] ?? fail('visit needs --world-id');
+  if (values.map !== 'plaza' && values.map !== 'flat') fail('--map plaza|flat');
+  process.exit(await visit({ signalUrl, worldId, key, bots: Number(values.bots), minutes: Number(values.minutes), map: values.map, size: Number(values.size), voice: values.voice === '1', chat: values.chat === '1' }));
 } else if (command === 'lounge') {
   const { values } = parseArgs({ args: rest, options: { players: { type: 'string', default: '4' }, hours: { type: 'string', default: '2' } }, strict: true });
   process.exit(await lounge(Number(values.players), Number(values.hours)));

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Stage 1's path end to end, with every real program: a private PostgreSQL, the core, an invited
 // account, a world registered and approved through the admin command line, a world server on the
-// plaza, and the packaged client driven by Playwright. The test plays the system browser over HTTP
+// plaza hosted the way a home PC hosts it (its WebRTC offers relayed by the core over the world's
+// own WebSocket, S1.13), and the packaged client driven by Playwright. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
 // client's loopback port); everything else is the client's own: the world list, joining, the
 // microphone question, walking, chat. It needs a display (Xvfb in CI) and PostgreSQL's programs.
@@ -117,7 +118,8 @@ try {
   if (!db) throw new Error('no database');
   const corePort = await freePort();
   const coreUrl = `http://127.0.0.1:${corePort}`;
-  const coreEnv = { FLATCHAT_CORE_DB: db, FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'), FLATCHAT_CORE_URL: coreUrl };
+  // No STUN: the test stays on this machine.
+  const coreEnv = { FLATCHAT_CORE_DB: db, FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'), FLATCHAT_CORE_URL: coreUrl, FLATCHAT_CORE_STUN: 'none' };
   const core = await start([process.execPath, join(CORE, 'src', 'main.ts'), '--port', String(corePort), '--stop-on-stdin'], coreEnv, 'ready');
   const admin = (...args: string[]): Promise<string> => run([process.execPath, join(CORE, 'src', 'admin.ts'), ...args], coreEnv);
   const invite = (await admin('invite', '--email', EMAIL, '--note', 'e2e')).match(/invite=(\S+)/)?.[1];
@@ -129,19 +131,20 @@ try {
   steps['signup'] = signup.status;
   if (signup.status !== 201) throw new Error(`sign-up answered ${signup.status}`);
 
-  // 2. A world on the plaza, registered and approved.
+  // 2. A world on the plaza, registered and approved, taking its offers through the core.
   const [icePort, signalPort] = [await freePort(), await freePort()];
-  const address = `http://127.0.0.1:${signalPort}/rtc`;
-  const worldId = (await admin('world', 'register', '--name', 'E2E Plaza', '--owner', EMAIL, '--address', address)).match(/registered (\S+)/)?.[1];
+  const worldId = (await admin('world', 'register', '--name', 'E2E Plaza', '--owner', EMAIL, '--address', 'relay')).match(/registered (\S+)/)?.[1];
   const approved = await admin('world', 'approve', worldId ?? '');
   const key = approved.match(/FLATCHAT_WORLD_KEY=(\S+)/)?.[1];
   if (!worldId || !key) throw new Error('no approved world');
   const world = await start(
-    [process.execPath, SERVER_MAIN, '--transport', 'rtc', '--map', 'plaza', '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--metrics-every', '0', '--world-id', worldId, '--stop-on-stdin'],
+    [process.execPath, SERVER_MAIN, '--transport', 'rtc', '--map', 'plaza', '--rtc-port', String(icePort), '--signal-port', String(signalPort), '--bind', '127.0.0.1', '--rtc-bind', '127.0.0.1', '--metrics-every', '0', '--world-id', worldId, '--core', coreUrl, '--relay', '--stop-on-stdin'],
     { FLATCHAT_WORLD_KEY: key },
     'ready',
   );
-  steps['world'] = 'ready';
+  // The world is online once the core has accepted its proof.
+  await waitFor('the world to reach the core', 15_000, async () => (world.lines.some((l) => l['event'] === 'relay-connected') ? true : undefined));
+  steps['world'] = 'relayed';
 
   // 3. The client, with its own empty profile; the system browser is replaced by this test.
   const app = await electron.launch({
