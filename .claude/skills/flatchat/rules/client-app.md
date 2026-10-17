@@ -61,6 +61,8 @@ The roster's `role` feeds `WorldSession.state.people` (`world/people.ts`: `sortP
 
 Voice controls (S3.08): `chain.silenced` drops the voices of the accounts this player muted (`session.loadMutes`, `setPersonalMute`, the core's `/api/v1/me/mutes`, so mutes follow the account); `speakerLevel(d, range, worldGain, volume, earmuffs)` sets each speaker's level from its frames' `range` and `gain`, this player's volume for that person (`settings.voice.volumes`, by account) and earmuffs (action `earmuffs`, N: beyond 2.5 m a voice drops to 15 %).
 
+Friends, blocks and minors (S3.10, S3.11): `session.loadSocial()` (online worlds) fetches the mutes and `bridge.social()` (friends, requests both ways, the blocked accounts, `under18` from `/api/v1/me`); a minor's microphone starts muted. `hidden` (the world's list) leaves those entities undrawn (`avatars`), unheard (`chain.silenced`) and unread (`mayRead` in the chat handler); for a minor, `mayRead` also drops everyone but its friends, so the client keeps the rule even with a world that does not. The People panel lists someone hidden only if this player blocked them (Unblock); Add friend / Accept / Asked and Block per person; `session.block` tells the core and sends `block` to the world at once. The home screen lists friends and the requests to answer. Rule `reports-and-safety`.
+
 ## Downloaded Worlds and Physics (S2.04, S2.06)
 
 | Part | Rule |

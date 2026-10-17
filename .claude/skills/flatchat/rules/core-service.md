@@ -14,6 +14,7 @@ tags: core, apps/core, trust levels, FLATCHAT_CORE_TRUST, active_days, trustOf, 
 | `src/main.ts` | The program: migrates, listens (127.0.0.1:8787 by default), JSON log lines `ready`, `request`, `stopped`; SIGINT, SIGTERM and `--stop-on-stdin` |
 | `src/config.ts` | Settings from the environment only (`FLATCHAT_CORE_DB`, `FLATCHAT_CORE_SECRET`, `FLATCHAT_CORE_URL`, `FLATCHAT_CORE_OPERATOR`, `FLATCHAT_CORE_CONTACT`, `FLATCHAT_CORE_TUNNEL`, `FLATCHAT_CORE_TRUST`, the TURN settings) |
 | `src/trust.ts` | Trust levels (S3.09): `DEFAULT_TRUST`, `parseTrust`, `earnedTrust`, `trustOf` (pure) |
+| `src/mail.ts`, `src/verify.ts` | Mail (S3.03, DR-21): `Mailer` (`resendMailer` over Resend's HTTP API, `folderMailer` writing `.eml` files, `noMailer`), chosen by `FLATCHAT_CORE_MAIL`; verification links (a day, one every ten minutes, digests in `email_verifications`), `GET /verify`, `POST /api/v1/me/verify`. Never log an address or a link. `FLATCHAT_CORE_SIGNUP=open` lets `/signup` take anyone without an invitation; the tests run Resend's API as a mail catcher on loopback (`test/mail.test.ts`) |
 | `src/moderation.ts` | Moderation (S3.07): platform decisions with reasons, appeals (platform and world bans), `world_unbans`, the host agreement's version; rule `roles-and-moderation` |
 | `src/app.ts` | `buildCore(options)`: every route, the security headers, the rate limits, the JSON-only API; tests drive it with `app.inject` |
 | `src/db.ts` | `Db` (a pool, `query`, `tx`), migrations from `src/migrations/NNNN-name.sql` under an advisory lock |
