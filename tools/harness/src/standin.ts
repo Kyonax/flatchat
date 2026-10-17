@@ -6,6 +6,7 @@
 // command and changes nothing: read it first.
 //
 //   npm run standin -- plan   --target iris-xe [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query]
+//                             [--crowd DIR [--full N] [--lod N] [--present N]]   (spike S0.09: the crowd bench on DIR's avatars)
 //   npm run standin -- run    --target iris-xe [the same options]
 //   npm run standin -- status        the card's clocks now (read-only)
 //   npm run standin -- reset         the two reset lines alone, through sudo
@@ -204,6 +205,7 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
     verdict,
     floor: floor ?? null,
     bench: frames ? { backend: frames['backend'], adapter: frames['adapter'], width: frames['width'], height: frames['height'], summary: frames['summary'] } : null,
+    ...(plan.kind === 'crowd' && frames ? { crowd: { pass: frames['pass'], tiers: frames['tiers'], memory: frames['memory'], loads: frames['loads'], duringLoads: frames['duringLoads'] } } : {}),
   };
   writeFileSync(plan.reportFile, `${JSON.stringify(report, null, 2)}\n`);
 
@@ -217,7 +219,11 @@ async function run(plan: Plan, profileFile: string, profile: StandinProfile): Pr
     console.log('  So this run imitates the target\'s compute only: memory bandwidth stayed the card\'s own (optimistic), and memory-clock changes can stall frames.');
     console.log('  If this card never enforces it, set "lockMemory": false in the profile and give the target a headroom.');
   }
-  if (floor) {
+  const pass = frames?.['pass'] as Array<{ what: string; limit: string; value: string; ok: boolean }> | undefined;
+  if (plan.kind === 'crowd' && pass) {
+    for (const line of pass) console.log(`  ${line.ok ? 'PASS' : 'FAIL'}  ${line.what}: ${line.value} (${line.limit})`);
+  }
+  if (floor && plan.kind === 'bench') {
     console.log(`  floor check: ${floor.avgFps} fps average (needs ${floor.needAvgFps}: ${floor.floorFps} × ${floor.headroom}) and a 1% low of ${floor.lowFps} fps (needs ${floor.needLowFps}): ${floor.pass ? 'PASS' : 'FAIL'}`);
   }
   const kind = !verdict.graphicsLockHeld
@@ -249,6 +255,10 @@ async function main(): Promise<number> {
         out: { type: 'string' },
         'no-query': { type: 'boolean' },
         'gpu-index': { type: 'string', default: '0' },
+        crowd: { type: 'string' },
+        full: { type: 'string' },
+        lod: { type: 'string' },
+        present: { type: 'string' },
       },
     });
   } catch (err) {
@@ -271,7 +281,7 @@ async function main(): Promise<number> {
     return code;
   }
   if (command !== 'plan' && command !== 'run') {
-    console.error('usage: standin plan|run --target NAME [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query]\n       standin status | reset');
+    console.error('usage: standin plan|run --target NAME [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query] [--crowd DIR [--full N] [--lod N] [--present N]]\n       standin status | reset');
     return 2;
   }
   const seconds = Number(values.seconds);
@@ -294,7 +304,9 @@ async function main(): Promise<number> {
   }
   const clientPath = resolve(values.client ?? DEFAULT_CLIENT);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const plan = planRun({ profile, target, clientPath, seconds, outDir: resolve(values.out ?? DEFAULT_OUT), stamp, gpuIndex });
+  const count = (v: string | undefined): number | undefined => (v === undefined ? undefined : Number(v));
+  const crowd = values.crowd ? { avatars: resolve(values.crowd), full: count(values.full), lod: count(values.lod), present: count(values.present) } : undefined;
+  const plan = planRun({ profile, target, clientPath, seconds, outDir: resolve(values.out ?? DEFAULT_OUT), stamp, gpuIndex, ...(crowd ? { crowd } : {}) });
   const checks = preflight(profile, plan, clientPath, !values['no-query'], gpuIndex);
   printPlan(plan, file, profile, checks);
   if (command === 'plan') return 0;

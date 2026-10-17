@@ -84,6 +84,17 @@ describe('the plan', () => {
   });
 });
 
+describe('the crowd plan (spike S0.09)', () => {
+  it('runs the crowd bench instead of the blank scene, with the target\'s headroom', () => {
+    const p = planRun({ profile: PROFILE, target: 'iris-xe', clientPath: '/opt/flatchat', seconds: 300, outDir: '/tmp/out', stamp: 'S', crowd: { avatars: '/avatars', full: 8 } });
+    expect(p.kind).toBe('crowd');
+    const at = p.client.indexOf('/opt/flatchat');
+    expect(p.client.slice(at)).toEqual(['/opt/flatchat', '--crowd=300', '--avatars=/avatars', '--crowd-out=/tmp/out/S-iris-xe/frames.json', `--bench-size=${PROFILE.targets['iris-xe']!.size}`, `--crowd-headroom=${PROFILE.targets['iris-xe']!.headroom ?? 1}`, '--crowd-full=8']);
+    // The check after the reset stays the short blank-scene bench.
+    expect(p.check).toContain('--bench=4');
+  });
+});
+
 describe('execute', () => {
   it('locks, samples, runs the client, resets, then checks the clocks are free', async () => {
     const r = recorder();

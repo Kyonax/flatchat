@@ -86,6 +86,23 @@ describe('the renderer', () => {
   });
 });
 
+describe('the shared packages', () => {
+  it('reject Node.js imports and globals (T17) but not type-only imports', () => {
+    const src = {
+      rel: 'packages/protocol/src/a.ts',
+      text: `import { readFileSync } from 'node:fs';\nimport type { Stats } from 'node:fs';\nconst b = Buffer.from('x');\nconst e = process.env['X'];\nf(__dirname);`,
+    };
+    expect(traps(src)).toEqual(['T17', 'T17', 'T17', 'T17']);
+  });
+
+  it('allow Node.js in their scripts and tests, and property names that match', () => {
+    const script = { rel: 'packages/protocol/scripts/golden.ts', text: `import { readFileSync } from 'node:fs';\nconsole.log(process.argv);` };
+    const test = { rel: 'packages/protocol/test/a.test.ts', text: `import { spawnSync } from 'node:child_process';` };
+    const names = { rel: 'packages/protocol/src/b.ts', text: `const o = { process: 1, Buffer: 2 };\nconst v = o.process + o.Buffer;` };
+    expect(traps(script, test, names)).toEqual([]);
+  });
+});
+
 describe('CI workflows', () => {
   const wf = (text: string): Source => ({ rel: '.github/workflows/ci.yml', text });
   const good = `jobs:

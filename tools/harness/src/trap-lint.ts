@@ -55,6 +55,7 @@ export const TRAPS = {
   T14: { severity: 'error', rule: 'ci-github-actions', title: 'CI job without a time limit', fix: 'give every job timeout-minutes, so a hung step fails in minutes, not after six hours' },
   T15: { severity: 'error', rule: 'ci-github-actions', title: 'Linux client smoke test that cannot draw', fix: 'on Ubuntu runners, lift the AppArmor user-namespace limit in an earlier step and pass --enable-unsafe-swiftshader' },
   T16: { severity: 'warning', rule: 'client-electron', title: 'external link opened unchecked', fix: 'pass shell.openExternal only URLs built in code or checked against an allow-list of https hosts' },
+  T17: { severity: 'error', rule: 'protocol-and-codecs', title: 'Node.js API in a shared package', fix: 'packages/ also run in the client\'s sandboxed renderer: use what Node.js and browsers both have (Uint8Array, DataView, TextEncoder, crypto.subtle), never Node built-ins, Buffer, process or __dirname' },
 } as const satisfies Record<string, Trap>;
 
 export type TrapId = keyof typeof TRAPS;
@@ -63,6 +64,7 @@ const CODE_EXT = new Set(['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', 
 const SKIP_DIRS = new Set(['node_modules', 'out', 'dist', 'build', 'release', 'coverage', '.cache', 'third_party', '.git']);
 const SCAN_ROOTS = ['apps', 'packages', 'tools'];
 const NODE_BUILTINS = new Set(builtinModules.flatMap((m) => [m, `node:${m}`]));
+const NODE_GLOBALS = new Set(['Buffer', 'process', 'global', '__dirname', '__filename']);
 const WEB_PREF_KEYS = new Set(['preload', 'contextIsolation', 'nodeIntegration', 'sandbox', 'webSecurity']);
 const IPC_METHODS = new Set(['send', 'sendSync', 'invoke', 'on', 'once', 'postMessage', 'sendToHost']);
 const ALLOW_RE = /trap-lint:\s*allow\s+((?:T\d\d[\s,]*)+)/;
@@ -70,6 +72,19 @@ const ALLOW_RE = /trap-lint:\s*allow\s+((?:T\d\d[\s,]*)+)/;
 const isRenderer = (rel: string): boolean => rel.startsWith('apps/client/src/renderer/');
 const isPreload = (rel: string): boolean => rel.startsWith('apps/client/src/preload/');
 const isClient = (rel: string): boolean => rel.startsWith('apps/client/');
+/** The shared libraries' code, which runs in Node.js and in the client's renderer alike. */
+const isShared = (rel: string): boolean => /^packages\/[^/]+\/src\//.test(rel);
+
+/** Is this identifier a use of the global (Buffer.from, process.env, f(__dirname)), not a property name? */
+function usesGlobal(id: ts.Identifier): boolean {
+  const p = id.parent;
+  if ((ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) && p.expression === id) return true;
+  if (ts.isCallExpression(p) || ts.isNewExpression(p)) {
+    const args: readonly ts.Node[] = p.arguments ?? [];
+    return p.expression === id || args.includes(id);
+  }
+  return false;
+}
 
 function scriptKind(rel: string): ts.ScriptKind {
   const ext = extname(rel);
@@ -119,6 +134,9 @@ function scanCode(rel: string, text: string, kind = scriptKind(rel), lineOffset 
   const checkSpecifier = (spec: string, node: ts.Node, named: readonly string[] = [], typeOnly = false): void => {
     if (isRenderer(rel) && !typeOnly && (spec === 'electron' || NODE_BUILTINS.has(spec))) {
       add('T08', node, `the renderer imports '${spec}'`);
+    }
+    if (isShared(rel) && !typeOnly && (spec === 'electron' || NODE_BUILTINS.has(spec))) {
+      add('T17', node, `a shared package imports '${spec}'`);
     }
     if (isClient(rel) && /^three\/(addons|examples\/jsm)\/loaders\//.test(spec)) {
       add('T11', node, `the client imports the raw loader '${spec}'`);
@@ -200,6 +218,8 @@ function scanCode(rel: string, text: string, kind = scriptKind(rel), lineOffset 
       }
     } else if (ts.isShorthandPropertyAssignment(node) && isPreload(rel) && node.name.text === 'ipcRenderer') {
       add('T09', node, 'ipcRenderer itself is handed to the page');
+    } else if (ts.isIdentifier(node) && isShared(rel) && NODE_GLOBALS.has(node.text) && usesGlobal(node)) {
+      add('T17', node, `a shared package uses Node.js's ${node.text}`);
     }
     ts.forEachChild(node, visit);
   };

@@ -109,6 +109,8 @@ export function checkClocks(target: TargetProfile, supported: Map<number, number
 
 export interface Plan {
   target: string;
+  /** What the client measures: the blank scene's frames, or spike S0.09's crowd. */
+  kind: 'bench' | 'crowd';
   profile: TargetProfile;
   outDir: string;
   framesFile: string;
@@ -133,6 +135,8 @@ export interface PlanOptions {
   outDir: string;
   stamp: string;
   gpuIndex?: number;
+  /** Spike S0.09: run the crowd bench on this folder of VRM avatars instead of the blank scene. */
+  crowd?: { avatars: string; full?: number; lod?: number; present?: number };
 }
 
 export const CHECK_SECONDS = 4;
@@ -143,8 +147,25 @@ export function planRun(o: PlanOptions): Plan {
   const id = `--id=${o.gpuIndex ?? 0}`;
   const dir = `${o.outDir}/${o.stamp}-${o.target}`;
   const bench = (seconds: number, file: string): string[] => [o.clientPath, `--bench=${seconds}`, `--bench-out=${file}`, `--bench-size=${t.size}`];
+  // The crowd judges its own pass lines, tightened by the target's headroom (OQ-24).
+  const c = o.crowd;
+  const measure = (seconds: number, file: string): string[] =>
+    c
+      ? [
+          o.clientPath,
+          `--crowd=${seconds}`,
+          `--avatars=${c.avatars}`,
+          `--crowd-out=${file}`,
+          `--bench-size=${t.size}`,
+          `--crowd-headroom=${t.headroom ?? 1}`,
+          ...(c.full !== undefined ? [`--crowd-full=${c.full}`] : []),
+          ...(c.lod !== undefined ? [`--crowd-lod=${c.lod}`] : []),
+          ...(c.present !== undefined ? [`--crowd-present=${c.present}`] : []),
+        ]
+      : bench(seconds, file);
   const plan: Plan = {
     target: o.target,
+    kind: c ? 'crowd' : 'bench',
     profile: t,
     outDir: dir,
     framesFile: `${dir}/frames.json`,
@@ -161,7 +182,7 @@ export function planRun(o: PlanOptions): Plan {
     client: [
       'systemd-run', '--user', '--scope', '--quiet', `--unit=flatchat-standin-${o.stamp}`,
       '-p', `CPUQuota=${t.cpuQuota}`, '-p', `MemoryMax=${t.memoryMax}`,
-      '--', 'taskset', '--cpu-list', t.cpus, ...bench(o.seconds, `${dir}/frames.json`),
+      '--', 'taskset', '--cpu-list', t.cpus, ...measure(o.seconds, `${dir}/frames.json`),
     ],
     reset: [
       ['sudo', 'nvidia-smi', id, '--reset-gpu-clocks'],

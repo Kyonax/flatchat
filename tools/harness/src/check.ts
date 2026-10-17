@@ -9,6 +9,7 @@
 // traps   the trap linter                                   lint    ESLint
 // types   TypeScript in every workspace                     tests   unit and process tests
 // server  a real world server, headless: ready, 50 ticks, a clean stop
+// bots    a world server and 12 bots on each transport (raw UDP, WebRTC) for 4 s: all join, none lost
 // client  (only with --with-client) the client's smoke test, which needs a display
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -77,13 +78,36 @@ async function serverCheck(): Promise<Result> {
   const problems: string[] = [];
   if (!r.ok) problems.push('the server did not exit with code 0');
   if (!ready || !(Number(ready['port']) > 0)) problems.push('no "ready" line with a UDP port');
+  if (ready && (typeof ready['protocol'] !== 'number' || typeof ready['schema'] !== 'string')) {
+    problems.push('the "ready" line does not name the protocol version and schema');
+  }
   if (!stopped || stopped['reason'] !== 'tick-limit' || stopped['ticks'] !== ticks) problems.push(`no clean stop after ${ticks} ticks`);
   if (problems.length > 0) return { ok: false, output: `${r.output}\n${problems.join('\n')}` };
   return {
     ok: true,
     output: r.output,
-    detail: `UDP port ${String(ready?.['port'])}, ${ticks} ticks at ${hz} Hz in ${String(stopped?.['uptimeMs'])} ms, slowest tick ${Number(stopped?.['slowestTickMs']).toFixed(2)} ms`,
+    detail: `protocol ${String(ready?.['protocol'])} (schema ${String(ready?.['schema'])}), UDP port ${String(ready?.['port'])}, ${ticks} ticks at ${hz} Hz in ${String(stopped?.['uptimeMs'])} ms, slowest tick ${Number(stopped?.['slowestTickMs']).toFixed(2)} ms`,
   };
+}
+
+async function botsCheck(): Promise<Result> {
+  const r = await command(process.execPath, ['tools/bots/src/run.ts', 'smoke'], 120_000);
+  const line = r.output
+    .split('\n')
+    .filter((l) => l.startsWith('{'))
+    .map((l) => {
+      try {
+        return JSON.parse(l) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })
+    .find((e) => e['event'] === 'bots-smoke');
+  const results = (line?.['results'] ?? []) as Array<Record<string, unknown>>;
+  const ok = r.ok && line?.['ok'] === true && results.length === 2;
+  const detail = results.map((x) => `${String(x['transport'])} ${String(x['joined'])} joined in ≤ ${String(x['joinMs'])} ms, ${String(x['voiceFrames'])} voice frames, tick p99 ${String(x['tickP99Ms'])} ms`).join('; ');
+  if (!ok) return { ok: false, output: `${r.output}\n${results.flatMap((x) => (x['problems'] as string[] | undefined) ?? []).join('\n') || 'no bots-smoke line'}` };
+  return { ok: true, output: r.output, detail };
 }
 
 const CHECKS: Check[] = [
@@ -95,6 +119,7 @@ const CHECKS: Check[] = [
   { name: 'types', title: 'TypeScript in every workspace', run: () => npm('typecheck') },
   { name: 'tests', title: 'Unit and process tests', run: () => npm('test') },
   { name: 'server', title: 'World server, headless', run: serverCheck },
+  { name: 'bots', title: 'Bots on both transports, headless', run: botsCheck },
   { name: 'client', title: 'Client smoke test (needs a display)', run: () => npm('client:smoke'), optional: true },
 ];
 
