@@ -12,6 +12,7 @@ import { parseArgs } from 'node:util';
 import { buildCore, CORE_VERSION } from './app.ts';
 import { ConfigError, readEnv } from './config.ts';
 import { Db, migrate } from './db.ts';
+import { localStore } from './store.ts';
 
 function log(event: string, fields: Record<string, unknown> = {}): void {
   process.stdout.write(`${JSON.stringify({ event, time: new Date().toISOString(), ...fields })}\n`);
@@ -52,6 +53,8 @@ const app = await buildCore({
   signup: env.signup,
   mailer: env.mail,
   policy: { minors: env.minors },
+  store: localStore(env.store, env.secret, env.publicUrl),
+  avatars: { ktx2: env.ktx2 },
   log,
 });
 const address = await app.listen({ port, host: values.bind });

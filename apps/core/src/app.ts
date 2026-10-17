@@ -3,10 +3,14 @@
 // Built as a function so tests run every route in-process (Fastify's inject) against a real
 // PostgreSQL database, and main.ts only adds the socket, the migrations and the signals.
 import { timingSafeEqual } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import websocket from '@fastify/websocket';
+import { AVATAR_SOURCE_LIMIT } from '@flatchat/content';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
+import { AvatarProblem, Avatars } from './avatars.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import {
   APPEAL_MAX,
@@ -67,6 +71,7 @@ import {
 } from './sessions.ts';
 import { type Lang, pickLang, STRINGS } from './strings.ts';
 import { DEFAULT_TRUST, type TrustRule, trustOf } from './trust.ts';
+import { type FileStore, localStore } from './store.ts';
 import {
   approveWorld,
   cleanAddress,
@@ -109,6 +114,11 @@ export interface CoreOptions {
   signup?: 'invite' | 'open';
   /** How the core sends mail (S3.03): verification links, a guardian's invitation. */
   mailer?: Mailer;
+  /** The file store (S4.04): avatars' levels and sources; a folder under the system's temporary
+   *  directory when left out (tests). */
+  store?: FileStore;
+  /** Avatar conversion (S4.01): KTX2 textures on (the default) or off (tests). */
+  avatars?: { ktx2?: boolean };
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -152,8 +162,11 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     hostByAddress: new RateLimiter(LIMITS.hostByAddress),
     reportByAccount: new RateLimiter(LIMITS.reportByAccount),
     reportByAddress: new RateLimiter(LIMITS.reportByAddress),
+    uploadByAccount: new RateLimiter(LIMITS.uploadByAccount),
   };
   const hosts = new HostRegistry();
+  const store = o.store ?? localStore(join(tmpdir(), `flatchat-core-store-${process.pid}`), o.secret, publicUrl);
+  const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
@@ -174,6 +187,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
 
   await app.register(websocket, { options: { maxPayload: 256 * 1024 } });
   app.addHook('onClose', async () => hosts.closeAll());
+  // A conversion under way finishes before the database closes.
+  app.addHook('onClose', async () => avatars.idle());
   // Reports' evidence is kept for its time, then purged (S3.02), and so are the abuse path's sealed
   // packages after their year (S3.12): at start and every six hours.
   const purge = (): void => {
@@ -189,6 +204,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   purgeTimer.unref();
   app.addHook('onClose', async () => clearInterval(purgeTimer));
 
+  // Avatar files arrive as they are (S4.01): only the source route lifts the body limit for them.
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
     done(null, Object.fromEntries(new URLSearchParams(body as string)));
   });
@@ -741,6 +758,89 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
 
   // Reports from the client (S3.02): the target, the text, the evidence and the reporter's voice
   // clip (a WAV the client cut from what it heard); the receipt now, the decision later.
+  // ---------------------------------------------------------------- avatars (S4.01, S4.04)
+  const avatarProblem = (reply: FastifyReply, err: unknown): FastifyReply => {
+    if (!(err instanceof AvatarProblem)) throw err;
+    const status = { 'upload-trust': 403, 'upload-limit': 409, 'too-large': 413, 'bad-request': 400, 'not-found': 404, 'not-ready': 409, mismatch: 400, 'slot-expired': 410 }[err.code];
+    return sendProblem(reply, problem(status, err.code, err.message));
+  };
+
+  // An upload slot: the file's size and SHA-256 first, the file to the signed link after.
+  app.post('/api/v1/avatars', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (limited(limits.uploadByAccount, a.id, reply)) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const slot = await avatars.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
+      return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
+    } catch (err) {
+      return avatarProblem(reply, err);
+    }
+  });
+
+  app.put('/api/v1/avatars/:id/source', { bodyLimit: AVATAR_SOURCE_LIMIT + 1024 }, async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const q = req.query as Record<string, unknown>;
+    if (!Buffer.isBuffer(req.body)) return sendProblem(reply, problem(415, 'bad-request', 'send the file as application/octet-stream'));
+    try {
+      await avatars.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now());
+      return reply.code(202).send({ status: 'converting' });
+    } catch (err) {
+      return avatarProblem(reply, err);
+    }
+  });
+
+  app.get('/api/v1/avatars', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const list = await avatars.list(o.db, who.accountId);
+    return { avatars: list.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })) };
+  });
+
+  app.delete('/api/v1/avatars/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await avatars.remove(o.db, who.accountId, (req.params as { id: string }).id, now()))) return sendProblem(reply, problem(404, 'not-found', 'no such avatar'));
+    return reply.code(204).send();
+  });
+
+  app.put('/api/v1/me/avatar', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const v = ((req.body ?? {}) as Record<string, unknown>)['avatar'];
+    try {
+      await avatars.wear(o.db, who.accountId, typeof v === 'string' ? v : null);
+      return reply.code(204).send();
+    } catch (err) {
+      return avatarProblem(reply, err);
+    }
+  });
+
+  // A worn avatar's manifest and signed links, for anyone signed in (they see it in a world).
+  app.get('/api/v1/avatar-files/:manifest', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const d = await avatars.delivery(o.db, (req.params as { manifest: string }).manifest, now());
+    if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such avatar'));
+    return reply.header('cache-control', 'private, max-age=600').send(d);
+  });
+
+  // The local store's files by signed link (S4.04): immutable, so a cache keeps them for good.
+  app.get('/api/v1/files/:hash', async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const hash = (req.params as { hash: string }).hash;
+    const q = req.query as Record<string, unknown>;
+    const check = store.verify(hash, str(q['e'], 16), str(q['s'], 64), now());
+    if (check !== 'ok') return sendProblem(reply, problem(check === 'expired' ? 410 : 403, `link-${check}`, check === 'expired' ? 'the link expired: ask for a new one' : 'not a link to this file'));
+    if (req.headers['if-none-match'] === `"${hash}"`) return reply.code(304).send();
+    const bytes = store.read(hash);
+    if (!bytes) return sendProblem(reply, problem(404, 'not-found', 'no such file'));
+    return reply.header('content-type', 'application/octet-stream').header('cache-control', 'public, max-age=31536000, immutable').header('etag', `"${hash}"`).send(Buffer.from(bytes));
+  });
+
   app.post('/api/v1/reports', { bodyLimit: Math.ceil((CLIP_MAX * 4) / 3) + 128 * 1024 }, async (req, reply) => {
     const who = await bearer(req, reply);
     if (!who) return reply;

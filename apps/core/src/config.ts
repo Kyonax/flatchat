@@ -13,7 +13,11 @@
 //   FLATCHAT_CORE_TURN_URLS and FLATCHAT_CORE_TURN_SECRET   coturn with use-auth-secret ("the relay we run")
 //   FLATCHAT_CORE_CF_TURN_KEY and FLATCHAT_CORE_CF_TURN_TOKEN   Cloudflare Realtime TURN
 //   FLATCHAT_CORE_TRUST     trust levels 1-3 as days:active,days:active,days:active (default 3:1,14:5,60:20)
+//   FLATCHAT_CORE_STORE     the file store's folder (S4.04; default ~/.local/share/flatchat/core-store)
+//   FLATCHAT_CORE_KTX2      off to keep avatars' textures as PNG (quicker conversions; default on)
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { DEFAULT_STUN, type IceConfig } from './ice.ts';
 import { parseTrust, TrustError, type TrustRule } from './trust.ts';
 import { folderMailer, type Mailer, noMailer, resendMailer } from './mail.ts';
@@ -32,6 +36,10 @@ export interface CoreEnv {
   mail: Mailer;
   /** Players aged 13 to 17, with a guardian (S3.04): off until the owner opens Stage 3's gate (OQ-16). */
   minors: boolean;
+  /** The file store's folder (S4.04). */
+  store: string;
+  /** Avatars' textures as KTX2 (S4.03); off keeps PNG. */
+  ktx2: boolean;
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -70,6 +78,8 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     signup: signupMode(env['FLATCHAT_CORE_SIGNUP']),
     mail: mailer(env),
     minors: env['FLATCHAT_CORE_MINORS'] === 'on',
+    store: env['FLATCHAT_CORE_STORE'] || join(env['XDG_DATA_HOME'] || join(homedir(), '.local', 'share'), 'flatchat', 'core-store'),
+    ktx2: env['FLATCHAT_CORE_KTX2'] !== 'off',
   };
 }
 

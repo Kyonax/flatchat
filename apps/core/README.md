@@ -29,6 +29,8 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_MAIL` | `none` (the default), `resend` (Resend's API: `FLATCHAT_CORE_RESEND_KEY`, and `FLATCHAT_CORE_RESEND_URL` only for tests) or `folder` (each mail a `.eml` file in `FLATCHAT_CORE_MAIL_FOLDER`, for development); `FLATCHAT_CORE_MAIL_FROM` is the sender, like `FlatChat <noreply@example.org>` |
 | `FLATCHAT_CORE_MINORS` | `on` lets players aged 13 to 17 sign up, each playing only once a parent or guardian authorized it (S3.04); off by default: the owner opens it at Stage 3's gate (OQ-16) |
 | `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
+| `FLATCHAT_CORE_STORE` | The file store's folder (S4.04): avatars' levels, manifests, thumbnails and the uploads they came from, each named by its SHA-256 (default `~/.local/share/flatchat/core-store`) |
+| `FLATCHAT_CORE_KTX2` | `off` keeps avatars' textures as PNG: conversions take seconds instead of minutes (default on) |
 
 Then:
 
@@ -81,6 +83,10 @@ Players report players and worlds from the client, with the chat excerpt, the wo
 
 A report of child sexual abuse material or of intimate images shared without consent opens a case from the admin page's queue (Abuse path). The target comes down at once: a reported world loses its approval and, if it is connected, ends every session and stops; a reported player's account is banned. The target is told a neutral reason. The core seals what it holds (the report, its chat lines and voice clip, the target's records, and from Stage 4 the uploaded files) under a key derived from `FLATCHAT_CORE_SECRET`, keeps it for a year, and opens it only through `admin abuse export`. For abuse material it drafts the reports for Te Protejo and the police's CAI Virtual (Colombia), NCMEC's CyberTipline (filed by a registered provider: the owner registers first) and, for UK-linked cases, the National Crime Agency's CEOP. Nothing is sent from the core: the owner files each draft on its official site and records the reference. Intimate images carry the 48-hour clock of the US TAKE IT DOWN Act, logged with the case. Run `admin abuse drill` after every change to this path, and once before opening sign-up. Until Microsoft's PhotoDNA accepts the platform, uploaded textures (Stage 4) are reviewed by hand.
 
+## Avatars (S4.01, S4.04)
+
+A player at trust level 1 (or a tester) uploads a VRM or a GLB from the client: it asks for a slot with the file's size and SHA-256, then sends the file to the slot's signed link. The core keeps the source in its file store and converts it in a separate process, one at a time: the avatar converter (`tools/converter/src/avatar-cli.ts`) under Node.js's permission model, reading only the converter's code and the upload, writing only its own folder, with no native addons, workers or child processes, 3 GB of memory and ten minutes, and in a network namespace of its own where the system allows one (the log says which at start). The converted avatar's files go to the store under their SHA-256; its manifest's names it. Anyone signed in fetches a worn avatar's files through signed links that last an hour; the client keeps them in its cache by hash. The local store serves files itself, fine on this PC, a LAN and the closed test; behind the Cloudflare Tunnel large files must not cross it (DR-16), so the R2 store (Cloudflare's free object storage, presigned links) takes over there once its bucket exists.
+
 ## The API
 
 | Method and path | Auth | What |
@@ -103,6 +109,12 @@ A report of child sexual abuse material or of intimate images shared without con
 | `GET /api/v1/worlds` | — | `{ worlds: [{ id, name, capacity }] }`, the approved ones |
 | `GET /api/v1/worlds/:id` | — | Its name, status and capacity, and its address once approved |
 | `POST /api/v1/worlds/:id/join` | Bearer | `{ token, address, expiresAt }` |
+| `POST /api/v1/avatars` | Bearer | An upload slot (S4.01): `{ name, bytes, sha256 }` → `{ id, upload: { url, method: PUT, expiresAt } }`; trust level 1 or a tester (`upload-trust`), 50 avatars, 64 MB, ten a day |
+| `PUT /api/v1/avatars/:id/source?e=…&s=…` | The slot's signature | The file itself (`application/octet-stream`), exactly the size and SHA-256 the slot was asked for; then it converts |
+| `GET /api/v1/avatars`, `DELETE /api/v1/avatars/:id` | Bearer | The account's avatars (status `uploading`, `converting`, `ready`, `refused` with the reasons, `failed`; rank; manifest; wearing), and deleting one |
+| `PUT /api/v1/me/avatar` | Bearer | `{ avatar: id \| null }`: wear a ready avatar of the account's, or none |
+| `GET /api/v1/avatar-files/:manifest` | Bearer | A worn avatar's manifest and signed links (an hour) to its manifest, levels and thumbnail (S4.04); never its source |
+| `GET /api/v1/files/:hash?e=…&s=…` | The link's signature | A file of the local store; immutable (a year's cache, an `ETag`, 304 on a repeat) |
 
 The pages: `/signup?invite=CODE`, `/signin?request=ID`, `/privacy`, each in English or Spanish (`?lang=es`, or the browser's language).
 
