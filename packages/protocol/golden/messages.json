@@ -8,9 +8,10 @@
         "fingerprint": 305419896,
         "build": "0.0.0",
         "token": "000102030405060708090a0b0c0d0e0f",
-        "spawn": ""
+        "spawn": "",
+        "height": 0
       },
-      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f00"
+      "hex": "0100007856341205302e302e3010000102030405060708090a0b0c0d0e0f000000"
     },
     {
       "name": "hello-spawn",
@@ -20,9 +21,10 @@
         "fingerprint": 305419896,
         "build": "0.0.0",
         "token": "000102030405060708090a0b0c0d0e0f",
-        "spawn": "arrival"
+        "spawn": "arrival",
+        "height": 175
       },
-      "hex": "0103007856341205302e302e3010000102030405060708090a0b0c0d0e0f076172726976616c"
+      "hex": "0103007856341205302e302e3010000102030405060708090a0b0c0d0e0f076172726976616caf00"
     },
     {
       "name": "welcome",
@@ -159,19 +161,21 @@
             "entity": 1,
             "account": "6b0e2c1a-7f3d-4e8a-9c21-5d4f3a2b1c0e",
             "name": "Kyonax",
-            "trust": 4
+            "trust": 4,
+            "height": 175
           },
           {
             "entity": 2,
             "account": "c3a1f2e4-5b6d-4c7e-8f90-a1b2c3d4e5f6",
             "name": "Ñandú 🎮",
             "trust": 0,
-            "avatar": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "avatar": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "height": 162
           }
         ],
         "left": []
       },
-      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178240000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85500"
+      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f48a0000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a20000"
     },
     {
       "name": "roster-change",
@@ -185,6 +189,71 @@
         ]
       },
       "hex": "1200040600080000"
+    },
+    {
+      "name": "appearance",
+      "value": {
+        "type": "appearance",
+        "height": 210
+      },
+      "hex": "13d200"
+    },
+    {
+      "name": "teleport-spot",
+      "value": {
+        "type": "teleport",
+        "position": {
+          "x": 64.5,
+          "y": 0.1484375,
+          "z": 72.25
+        },
+        "yaw": 0
+      },
+      "hex": "144020003001000809000000"
+    },
+    {
+      "name": "teleport-seat",
+      "value": {
+        "type": "teleport",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "yaw": 0,
+        "seat": 3
+      },
+      "hex": "1400000000000000000000700000"
+    },
+    {
+      "name": "placed",
+      "value": {
+        "type": "placed",
+        "position": {
+          "x": 63,
+          "y": 0.4453125,
+          "z": 70.5
+        },
+        "yaw": 0,
+        "stance": "sitting",
+        "accepted": true
+      },
+      "hex": "15801f00900300d0080000a0"
+    },
+    {
+      "name": "placed-refused",
+      "value": {
+        "type": "placed",
+        "position": {
+          "x": 10,
+          "y": 0,
+          "z": 12
+        },
+        "yaw": 0,
+        "stance": "standing",
+        "accepted": false
+      },
+      "hex": "150005000000008001000000"
     },
     {
       "name": "say",

@@ -1,4 +1,4 @@
-# The FlatChat protocol, version 3
+# The FlatChat protocol, version 4
 
 How FlatChat's programs talk: the client, the world server, the bots and the core. This page is the specification; the reference implementation is [`packages/protocol`](../packages/protocol) (TypeScript, Apache-2.0), the machine-readable schema is [`golden/schema.json`](../packages/protocol/golden/schema.json), and the golden packets in the same folder pin every byte. Version 0 was the first, built in Stage 0 (S0.06) and measured with 200 bots in spike S0.07. Version 1 (spike S0.08) gives every voice frame a `start` bit and makes its `seq` count 20 ms slots: see [Versions](#versions).
 
@@ -74,7 +74,7 @@ A world server may send **several snapshots for one tick**, each kept to about o
 
 | Message | Type | Sent by | Channel | Fields | What it does |
 |---|---|---|---|---|---|
-| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token, spawn | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most), the connect token (256 bytes at most) and the spawn group a portal named (32 bytes at most; empty for the world's own spawn points) |
+| `hello` | 0x01 | client | reliable | protocol, fingerprint, build, token, spawn, height | Opens a join: the client's protocol version, its schema fingerprint, its build name (32 bytes at most), the connect token (256 bytes at most), the spawn group a portal named (32 bytes at most; empty for the world's own spawn points) and the player's chosen height in centimetres (0 for the platform's default), which the world fits into its range |
 | `welcome` | 0x02 | server | reliable | protocol, build, world, entity, tickHz, tick | Accepts the join: the server's version and build, the world's ID, the player's entity number, the tick rate and the current tick |
 | `refuse` | 0x03 | server | reliable | reason, protocolMin, protocolMax, detail | Refuses the join, with a reason (below), the versions the server accepts and a detail of 160 bytes at most |
 | `leave` | 0x04 | either | reliable | reason, detail | Ends the connection: `quit`, `travel`, `kicked`, `banned`, `timeout`, `closing` or `error` |
@@ -82,7 +82,10 @@ A world server may send **several snapshots for one tick**, each kept to about o
 | `pong` | 0x06 | either | unreliable | id, time | Answers a ping with its id and time, for the round trip |
 | `pose` | 0x10 | client | unreliable | seq, position, yaw, look, stance | The player's own avatar, 20 times a second, numbered by `seq` (wrapping at 2^16) |
 | `snapshot` | 0x11 | server | unreliable | tick, ack, correction, blocks | The server's tick, the last pose it applied (`ack`), where it put the player when a pose broke the rules (`correction`: seq, position, yaw) and the cell blocks this player sees (each 4,096 bytes at most, 256 at most) |
-| `roster` | 0x12 | server | reliable | full, players, left | Who is in the world: the whole list at join (`full`), then changes; each player has an entity number, account ID, display name (64 bytes at most), trust level (0 to 7) and the avatar's content hash, which the client fetches from the core, never from the host |
+| `roster` | 0x12 | server | reliable | full, players, left | Who is in the world: the whole list at join (`full`), then changes; each player has an entity number, account ID, display name (64 bytes at most), trust level (0 to 7), the avatar's content hash, which the client fetches from the core, never from the host, and the player's height in centimetres as the world fitted it; a change lists the player again with the new values |
+| `appearance` | 0x13 | client | reliable | height | A new height in centimetres; the world fits it into its range and sends a roster change (at most one a second) |
+| `teleport` | 0x14 | client | reliable | position, yaw, seat | Asks to be placed: on a seat of the built world (`seat`, its index), or at a clicked spot. The world checks the reach, the ground under it and the pace (one a second) |
+| `placed` | 0x15 | server | reliable | position, yaw, stance, accepted | The answer to `teleport`: where the player is now, sitting or standing, and whether the world moved them |
 | `say` | 0x20 | client | reliable | text | A chat line from the player, 1,024 bytes at most; the server's own length and rate limits apply on top |
 | `chat` | 0x21 | server | reliable | from, text | A chat line to show: from an entity, or from the world when `from` is absent; always shown as text, never as HTML |
 | `voice` | 0x30 | client | unreliable | seq, start, mouth, opus | One 20 ms Opus frame (255 bytes at most) and the mouth shapes that go with it; `seq` counts 20 ms slots, the silent ones too, and `start` marks the first frame after silence |
@@ -173,3 +176,4 @@ The golden writer refuses step 3 without step 2, the tests fail while the golden
 | 1 | `voice` and each `voiceBundle` frame gain `start`, and their `seq` counts 20 ms slots including silence: a voice gate that closes and reopens within a moment left gaps the listener could not see, and frames after them played late or were concealed (S0.08, measured with real speech) |
 | 2 | `content`, `fetch`, `chunk`, `unfetch` and `notFound`: worlds download over the world connection (S2.04) |
 | 3 | `portal`, and `spawn` in `hello`: travel between worlds through portals (S2.11) |
+| 4 | `height` in `hello` and the roster, `appearance`: heights within the world's range (S2.07); `teleport` and `placed`: seats and teleports (S2.06) |

@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -66,14 +66,19 @@ export const CELL_BLOCK = struct({
  *  with every voice frame, so lips and voice stay together. */
 const mouth = struct({ aa: uint(4), ih: uint(4), ou: uint(4), ee: uint(4), oh: uint(4), level: uint(4) });
 
+/** A player's height in centimetres (version 4, S2.07): what they chose, fitted by the world into
+ *  its range; 0 in a hello means the platform's default. */
+const centimetres = uint(10);
+
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
- *  core's asset store, never from the host. */
+ *  core's asset store, never from the host; `height` is the world's fitted height. */
 const player = struct({
   entity: u16,
   account: uuid,
   name: str(64),
   trust: uint(3),
   avatar: optional(fixedBytes(32)),
+  height: centimetres,
 });
 
 export const REFUSE_REASONS = [
@@ -112,7 +117,8 @@ export const MESSAGES = {
     from: 'client',
     channel: 'reliable',
     // `spawn` (version 3): the spawn group a portal named (S2.11), empty for the world's own.
-    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(256), spawn: str(32) }),
+    // `height` (version 4): the player's chosen height, which the world fits into its range.
+    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(256), spawn: str(32), height: centimetres }),
   },
   welcome: {
     id: 0x02,
@@ -148,6 +154,13 @@ export const MESSAGES = {
     channel: 'reliable',
     body: struct({ full: bool, players: list(player, 256), left: list(u16, 256) }),
   },
+  // The player's look (version 4, S2.07): a new height; the world fits it and sends a roster change.
+  appearance: { id: 0x13, from: 'client', channel: 'reliable', body: struct({ height: centimetres }) },
+  // A move the client cannot walk (version 4, S2.06): onto a seat (`seat`, its index in the built
+  // world), or to a clicked spot. The world checks it and answers `placed`: where the player is
+  // now, and whether it moved them.
+  teleport: { id: 0x14, from: 'client', channel: 'reliable', body: struct({ position, yaw, seat: optional(u16) }) },
+  placed: { id: 0x15, from: 'server', channel: 'reliable', body: struct({ position, yaw, stance, accepted: bool }) },
   // Text chat.
   say: { id: 0x20, from: 'client', channel: 'reliable', body: struct({ text: str(1024) }) },
   chat: { id: 0x21, from: 'server', channel: 'reliable', body: struct({ from: optional(u16), text: str(1024) }) },

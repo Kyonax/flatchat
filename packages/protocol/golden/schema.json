@@ -1,6 +1,6 @@
 {
-  "protocol": 3,
-  "fingerprint": "8301ef01",
+  "protocol": 4,
+  "fingerprint": "59c0945e",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -48,6 +48,13 @@
               "type": {
                 "kind": "string",
                 "maxBytes": 32
+              }
+            },
+            {
+              "name": "height",
+              "type": {
+                "kind": "uint",
+                "bits": 10
               }
             }
           ]
@@ -483,6 +490,13 @@
                           "length": 32
                         }
                       }
+                    },
+                    {
+                      "name": "height",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 10
+                      }
                     }
                   ]
                 }
@@ -497,6 +511,161 @@
                   "kind": "uint",
                   "bits": 16
                 }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "appearance",
+        "id": 19,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "height",
+              "type": {
+                "kind": "uint",
+                "bits": 10
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "teleport",
+        "id": 20,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "position",
+              "type": {
+                "kind": "struct",
+                "fields": [
+                  {
+                    "name": "x",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "y",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 18,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "z",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "yaw",
+              "type": {
+                "kind": "angle",
+                "bits": 10
+              }
+            },
+            {
+              "name": "seat",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "uint",
+                  "bits": 16
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "placed",
+        "id": 21,
+        "from": "server",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "position",
+              "type": {
+                "kind": "struct",
+                "fields": [
+                  {
+                    "name": "x",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "y",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 18,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  },
+                  {
+                    "name": "z",
+                    "type": {
+                      "kind": "fixed",
+                      "bits": 28,
+                      "fraction": 7,
+                      "signed": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "yaw",
+              "type": {
+                "kind": "angle",
+                "bits": 10
+              }
+            },
+            {
+              "name": "stance",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "standing",
+                  "crouching",
+                  "sitting",
+                  "jumping",
+                  "falling",
+                  "flying"
+                ]
+              }
+            },
+            {
+              "name": "accepted",
+              "type": {
+                "kind": "bool"
               }
             }
           ]
