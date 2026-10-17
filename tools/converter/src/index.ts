@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
+// FlatChat's converter: world folders into built worlds (S2.03); uploads come in Stage 4.
+export { addBox, type MeshSpec, type NodeSpec, writeGlb } from './glb-writer.ts';
+export { type ConvertOptions, type ConvertResult, ConvertError, convertWorld, decompose, halve, readFolder, writeBuilt } from './world.ts';
