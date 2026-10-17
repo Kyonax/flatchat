@@ -171,6 +171,11 @@ try {
     await page.keyboard.press('Enter');
     await page.locator('[data-test=chat-line]', { hasText: 'Tester One: hola desde la prueba' }).waitFor({ timeout: 10_000 });
     steps['chat'] = true;
+    // The People panel (S3.06): this account owns the world, and the token says so.
+    await page.keyboard.press('Tab');
+    steps['people'] = await page.locator('[data-test=people] [data-test=person]').first().getAttribute('data-role', { timeout: 10_000 }).catch(() => null);
+    await snap('2b-people');
+    await page.keyboard.press('Tab');
     if (values.shot) await page.screenshot({ path: values.shot });
     // Back through the portal south of the spawn (S2.11): the world says so, the client asks the
     // core for the garden and joins it at its arrival spawn.
@@ -217,6 +222,7 @@ try {
     (events['leave:travel']?.messages ?? 0) === 1 &&
     (garden2['join']?.messages ?? 0) === 1 &&
     steps['sounds'] === '1' &&
+    steps['people'] === 'owner' &&
     Number(steps['gardenParts']) > 60 &&
     (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
   await stop(core.proc);

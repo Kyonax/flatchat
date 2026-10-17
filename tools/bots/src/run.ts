@@ -423,7 +423,7 @@ async function clientCheck(client: string[]): Promise<number> {
   const url = `http://127.0.0.1:${Number(ready['signalPort'] ?? 0)}/rtc`;
   // Two minutes: a cold CI runner builds nothing here, but the client's first start can be slow.
   const token = await sealToken(
-    { account: randomUUID(), name: 'client-check', trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1 },
+    { account: randomUUID(), name: 'client-check', trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1, owner: false, contact: 'everyone', friends: [], blocks: [] },
     { key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 120 },
   );
   const [bin, ...args] = client;
@@ -456,7 +456,7 @@ async function voiceCheck(seconds: number, client: string[], netem: string): Pro
   const ready = await server.waitFor('ready', 15_000);
   const url = `http://${host}:${Number(ready['signalPort'] ?? 0)}/rtc`;
   const seal = (name: string): Promise<Uint8Array> =>
-    sealToken({ account: randomUUID(), name, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1 }, { key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 120 });
+    sealToken({ account: randomUUID(), name, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1, owner: false, contact: 'everyone', friends: [], blocks: [] }, { key, world: worldId, expiresAt: Math.floor(Date.now() / 1000) + 120 });
   const [speaker, listener] = await Promise.all([seal('voice-speaker'), seal('voice-listener')]);
   const [bin, ...args] = asOuterUser(client);
   const proc = spawn(bin!, [...args, `--voice-test=${seconds}`, `--join=${url}`, `--join-token=${toHex(speaker)}`, `--listen-token=${toHex(listener)}`], { stdio: 'inherit' });
@@ -490,7 +490,7 @@ async function lounge(players: number, hours: number): Promise<number> {
   process.stdout.write(`On each machine, start the client with one of these lines (each token joins once, for ${hours} h):\n\n`);
   for (let i = 1; i <= players; i++) {
     const token = await sealToken(
-      { account: randomUUID(), name: `player-${i}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1 },
+      { account: randomUUID(), name: `player-${i}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 1, owner: false, contact: 'everyone', friends: [], blocks: [] },
       { key, world: worldId, expiresAt },
     );
     process.stdout.write(`  player ${i}:  <client> --lounge=${url} --join-token=${toHex(token)}\n`);

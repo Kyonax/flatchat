@@ -153,7 +153,7 @@ export class Bot {
       this.settle?.();
     });
     const token = await sealToken(
-      { account: this.options.account ?? randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30 },
+      { account: this.options.account ?? randomUUID(), name: `bot-${this.options.index}`, trust: 1, tester: true, emailVerified: true, under18: false, ageDays: 30, owner: false, contact: 'everyone', friends: [], blocks: [] },
       { key: t.worldKey, world: t.worldId, expiresAt: Math.floor(Date.now() / 1000) + 60 },
     );
     const answered = new Promise<void>((resolve) => {
