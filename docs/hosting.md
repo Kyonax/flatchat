@@ -78,6 +78,18 @@ Its log says `relay-connected` once the core has accepted its proof, and `port-m
 
 A running world reports how many players it holds to the core, which shows it in the client's world browser while it is below its recommended count (`[capacity] recommended` in `world.toml`, or `--recommended`); at that count it leaves the list, and players still reach it by its ID or from their favourites up to its maximum. The core's record caps the maximum at what the owner approved (at most 200). `host request --unlisted` keeps a world off the list from the start, and `host listing WORLD_ID on|off` changes it later.
 
+### Plugins and entry rules
+
+A world folder's `plugins/` holds the world's own code ([plugins.md](plugins.md)); `host run` loads it on the world server, and players never download it. Three entry rules come with the world server, and `host plugins my-world add NAME` installs one, printing what it asks to do before it ever runs:
+
+| Rule | Lets in |
+|---|---|
+| `entry-open` | Everyone the core lets in |
+| `entry-verified` | Accounts with a verified email, at least `min_account_days` old (7) |
+| `entry-trust` | Accounts at trust level `min_trust` (1) or above, and testers; with `testers_only = true`, only the accounts the core's owner marked as testers |
+
+Change a rule's settings in its `plugin.toml` (for the closed test: `host plugins my-world add entry-trust`, then `testers_only = true` in `my-world/plugins/entry-trust/plugin.toml`). `host plugins my-world` lists what is installed and names any plugin the world server would refuse. The world's log says `plugin-loaded` for each plugin it runs.
+
 ## 4. When the UDP port cannot be reached: TURN
 
 Carrier-grade NAT (common in Colombia: the census in [spikes/s-home.md](spikes/s-home.md) measures how common) means no port can be mapped. Then the game traffic goes through a TURN relay. The core hands out credentials that last an hour, so none is ever built into a client:
