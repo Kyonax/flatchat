@@ -42,6 +42,8 @@ export interface BotOptions {
   firstTalkWithin?: number;
   /** The spawn group to ask for in hello (S2.11: where a portal leads). */
   spawn?: string;
+  /** The height to ask for, in centimetres (S2.07); the platform's default when left out. */
+  height?: number;
   /** Walk straight here once placed (a portal), instead of mingling. */
   goal?: { x: number; z: number };
   /** Called when the world says the bot walked into a portal. */
@@ -155,7 +157,7 @@ export class Bot {
     const answered = new Promise<void>((resolve) => {
       this.settle = resolve;
     });
-    this.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'flatchat-bots 0.0.0', token, spawn: this.options.spawn ?? '' });
+    this.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: 'flatchat-bots 0.0.0', token, spawn: this.options.spawn ?? '', height: this.options.height ?? 0 });
     const timer = setTimeout(() => this.settle?.(), JOIN_TIMEOUT_MS);
     await answered;
     clearTimeout(timer);
