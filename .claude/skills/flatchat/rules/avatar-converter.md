@@ -1,0 +1,46 @@
+---
+title: Avatar Converter — Uploads into the Platform's Own Format, VRM Inside glTF-Transform, the Levels, Ranks and the Sandbox
+impact: CRITICAL
+impactDescription: An avatar the client draws as uploaded, a VRM reference left pointing at the wrong node after an edit, a VRoid avatar refused for UniVRM's harmless quirks, unmerged materials at lower detail, or a converter that can read the whole disk turn every upload into a crash, a broken avatar, a refused creator, a crowd at 25 fps or a hole in the core.
+tags: avatar converter, convertAvatar, AvatarError, avatar-cli, sandbox.ts, registerHooks, sharp, permission model, --permission, --allow-fs-read, --allow-fs-write, unshare, VRM, VRM 0.x, VRM 1.0, VRMC_vrm, VRMC_springBone, VRMC_materials_mtoon, VRMC_node_constraint, VRMExtension, VRMData, slot, RefMap, migrateVrm0, three-vrm rules, v0compat, mapByNames, humanBoneOf, Mixamo, Ready Player Me, spine links, facesPlusZ, turnAround, turnVrmAround, repairAccessors, SKIN_SKELETON_INVALID, ACCESSOR_VECTOR3_NON_UNIT, ACCESSOR_JOINTS_INDEX_DUPLICATE, ACCESSOR_WEIGHTS_NON_NORMALIZED, gltf-validator, vrm-validator, LOD1, LOD2, impostor, makeLod1, makeLod2, makeImpostor, mergeMaterials, joinWithTargets, atlas, ranks, rankOf, RANK_LIMITS, AVATAR_LIMITS, AvatarManifest, checkManifest, samples.ts, sampleAvatar, golden avatars.json, S4.02, S4.03, DR-15, R-18, G-18
+---
+
+The avatar converter (`tools/converter/src/avatar/`, MPL-2.0) turns an upload (VRM 0.x, VRM 1.0, a plain GLB) into the platform's own format: four VRM 1.0 GLB levels, a thumbnail and a manifest (`packages/content/src/avatar.ts`, Apache-2.0, shared with the core and the client), each named by its SHA-256. The client draws only these (R-18). Creators' guide: `docs/avatars.md`.
+
+## The Files
+
+| File | Job |
+|---|---|
+| `convert.ts` | `convertAvatar(bytes, {ktx2})`: size, `readGltf`, Khronos glTF-Validator plus vrm-validator for VRMs (errors refuse but for `REPAIRED`), `rules` (data inside the GLB, `extensionsRequired` within `REQUIRED_OK`, `AVATAR_LIMITS`), migrate or map, required bones, turn round, clean-up (skeleton hints, animations, cameras, lights, `dedup`, `prune` with `keepLeaves`), one clean GLB, then each level built from it with its texture limits, the stats and `rankOf`, the manifest |
+| `vrm.ts` | `VRMExtension` / `VRMData`: VRMC_vrm, VRMC_springBone, per-material MToon (and HDR emissive), per-node constraints read into one property; every index becomes a slot (`{$node}`, `{$material}`, `{$image}`, `{$texture,…}`) held in a `RefMap` keyed by slot number, so disposing a node never renumbers the others; `write` puts the written file's indices back and `dropEmpty` leaves out the empty lists VRM 1.0's schema forbids |
+| `vrm0.ts` | `migrateVrm0(json)`: VRM 0.x to 1.0 at the JSON level, by three-vrm's own import rules (preset renames, thumb renames, morph binds from meshes to nodes, weights /100, material values to colour and texture-transform binds, first-person annotations to nodes, look-at range maps and the -z offset, spring groups to chains with the 7 cm leaf tail as a new node, colliders with -z, empty collider groups left out and renumbered, MToon and unlit shaders ported from three-vrm-materials-v0compat, MIT) |
+| `humanoid.ts` | `HUMAN_BONES` with parents, `REQUIRED_BONES`, `IMPOSTOR_BONES` (20); `humanBoneOf`/`mapByNames` for plain rigs (prefix and side stripping; spine links mapped by depth below the hips, since rigs number them); `facesPlusZ`, `turnAround` (conjugate every transform, IBM, vertex and morph delta with a half turn about Y), `turnVrmAround` |
+| `lod.ts` | `makeLod1` (half, expression-moved vertices locked), `makeLod2` (a fifth, only mouth and blink targets and expressions kept and renumbered), `mergeMaterials` (one atlas per alpha mode and sidedness, UVs through KHR_texture_transform then folded into the slot, the largest material's MToon with the atlas as colour and shade), `joinWithTargets`, `makeImpostor` (world-space rest positions, weights to the nearest kept bone, 512 px atlas, about 1,500 triangles, only the kept bones' tree left) |
+| `samples.ts` | `sampleAvatar('vrm1' / 'vrm0' / 'glb')`: one 1.75 m humanoid with fingers, a spring hair chain, mouth and blink shapes and a checker, written as each tool would (VRM 0.x facing -Z with materialProperties; the GLB with Mixamo names) |
+| `../avatar-cli.ts` | The core's per-upload program: UPLOAD OUTDIR, files by hash, `manifest.json`, then `result.json` (`{ok,id,manifest}` or `{ok:false,problems}`); exit 0, 1, 2 |
+| `../sandbox.ts` | `--import` hook (`module.registerHooks`, in-thread): `sharp` (pulled in by glTF-Transform's functions through ndarray-pixels) resolves to a stub, so the sandbox keeps native addons off |
+| `../textures.ts` | `decodeImage`, `halve`, `gpuBytes`, `fitTextures(docs, {side, budget}, ktx2, warn)`: shared with the world converter |
+
+## The Rules
+
+| Rule | Why |
+|---|---|
+| The client parses only the converter's levels, checked by `packages/content` (`checkManifest`) first; the upload as it came never leaves the core | R-18, T-03: one parser path, ours |
+| Repair, do not refuse, the four validator errors in `REPAIRED`; refuse every other error | 68 real avatars (VRoid's UniVRM 0.x, Blender's exporter) showed exactly these four; refusing them refuses VRoid Studio itself |
+| Never index VRM references by list position; use `VRMData`'s slots (`data.node(slot)`, `addNode`) | A disposed node (the impostor drops 30-odd) renumbered a list and the impostor lost its humanoid |
+| A VRM 0.x goes through `migrateVrm0` then `turnAround` and `turnVrmAround`: the JSON migration writes VRM 0.x's frame (three-vrm's -z fixes), the turn then flips x and z of every local and world vector | VRM 1.0 faces +Z with the left hand at +X; bones that had no rotation keep none |
+| Morph target names live on `PrimitiveTarget` names: glTF-Transform writes `extras.targetNames` from them | Set on the mesh's extras alone, they were written as empty strings |
+| `joinPrimitives` drops morph targets: join a mesh's primitives with `joinWithTargets` | LOD1 lost its face before |
+| Lighter levels merge materials (`mergeMaterials`); LOD0 keeps the authored ones for the nearest few | S0.09: VRoid's 15 to 17 materials, 1,848 draw calls for the crowd; merged, 85. A VRoid avatar's LOD1 goes from 65 slots to 8 |
+| The core runs `avatar-cli.ts` with `--permission`, `--allow-fs-read` of the code and the upload only, `--allow-fs-write` of its folder only, `--import sandbox.ts`, a time and memory limit, and a network namespace where `unshare` allows one | Node.js 24's permission model limits files, addons, workers and child processes but not the network |
+| Changing what the converter makes: bump `AVATAR_CONVERTER_VERSION`, rewrite `test/golden/avatars.json` with `FLATCHAT_GOLDEN_WRITE=1` and read its diff | The golden file pins kinds, ranks, each level's triangles, bones and slots, expressions, heights and warnings |
+
+## Measured (2026-10-17, the desktop, KTX2 off)
+
+| Avatar | Time | Rank | LOD0 / LOD1 / LOD2 / impostor triangles | Slots |
+|---|---|---|---|---|
+| 100Avatars CoolAlien (Blender exporter, VRM 0.x) | 0.8 s | excellent | 4,358 / 2,178 / 1,792 / 1,500 | — |
+| VRoid AvatarSample_D (UniVRM 0.x) | 13 s | veryPoor (slots, collision checks) | 34,395 / 18,377 / 8,447 / 1,269 | 65 / 8 / 8 / 1 |
+| The reference avatars | about 0.1 s each | excellent | 2,880 / 1,440 / 710 / 1,500 | 2 / 1 / 1 / 1 |
+
+With KTX2 on, the VRoid avatar takes about 100 s (Basis encoding of 17 textures at three sizes): fine for a background job, which is what the core makes it.
