@@ -2,7 +2,7 @@
   "name": "@flatchat/converter",
   "version": "0.0.0",
   "private": true,
-  "description": "FlatChat's converter: world folders into what a world server serves (and, in Stage 4, uploads into the platform's formats).",
+  "description": "FlatChat's converter: world folders into what a world server serves, and avatar uploads into the platform's own format.",
   "license": "MPL-2.0",
   "author": "Kyonax",
   "type": "module",
@@ -10,7 +10,8 @@
     "node": ">=24"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./samples": "./src/avatar/samples.ts"
   },
   "scripts": {
     "convert": "node src/cli.ts",
