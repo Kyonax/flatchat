@@ -2,7 +2,7 @@
 title: The Core Service — Accounts by Invitation, the Age Rule, Browser Sign-in, Sessions, Worlds, Connect Tokens, PostgreSQL and the Admin Command Line
 impact: CRITICAL
 impactDescription: The core holds every account, password hash, birth date and world key. A SQL string built from input, a page that renders what someone typed as markup, a token or email in a log line, a sign-in code that can be polled for, or a test that needs a shared database each turn into an account takeover, a leak of minors' data or a flaky CI.
-tags: core, apps/core, Fastify, PostgreSQL, pg, node-postgres, migrations, Argon2id, crypto.argon2, PHC, invitations, sign-up, age rule, minors, OQ-16, rr-015, Decreto 1377, consent, privacy notice, sign-in, system browser, loopback redirect, RFC 8252, PKCE, RFC 7636, login request, sessions, access token, refresh token, rotation, reuse detection, rate limits, worlds, approval, world key, connect token, admin, core:db, core:admin, T18, T19, SQL injection, escaping, content security policy
+tags: core, apps/core, Fastify, PostgreSQL, pg, node-postgres, migrations, Argon2id, crypto.argon2, PHC, invitations, sign-up, age rule, minors, OQ-16, rr-015, Decreto 1377, consent, privacy notice, sign-in, system browser, loopback redirect, RFC 8252, PKCE, RFC 7636, login request, sessions, access token, refresh token, rotation, reuse detection, rate limits, worlds, approval, world key, connect token, world browser, public list, recommended capacity, favourites, listed, unlisted, MAX_CAPACITY, admin, core:db, core:admin, T18, T19, SQL injection, escaping, content security policy
 ---
 
 `apps/core` is FlatChat's central service (DR-05, AGPL-3.0-or-later): TypeScript run directly by Node.js 24, Fastify 5 for HTTP, PostgreSQL through `pg` (DR-06). Stage 1 built its spine: accounts by invitation (S1.02), the age rule and the data-processing authorization (S1.03), sign-in through the system browser with sessions (S1.04), worlds with their approval and key (S1.05) and connect tokens (S1.06).
@@ -51,12 +51,24 @@ node --env-file=FILE apps/core/src/admin.ts world approve WORLD_ID   # prints FL
 | Worlds | `POST /api/v1/worlds` registers one (pending). `admin world approve` makes its 32-byte key, seals it under a key derived from `FLATCHAT_CORE_SECRET` (HKDF, AES-256-GCM bound to the world's id) and prints it once. Every change goes into `world_events`, the approval record |
 | Connect tokens | `POST /api/v1/worlds/:id/join` seals the account's facts for that world for 60 s (`packages/protocol`, sf-001). A world learns the account id, display name, trust, tester flag, verified email, account age in days and an under-18 flag; never the email or the birth date |
 
+## The World Browser (S2.09, Q-L4, Q-L11, Q-L19)
+
+| Part | Rule |
+|---|---|
+| Live numbers | Every world with a core keeps the host channel open, relayed or not; it reports `status` (players, recommended, maximum) when they change and every 15 s, and the core keeps the last report in memory (`HostRegistry.status`). Online means the channel is open |
+| Capacity | At most 200 (`MAX_CAPACITY`, Q-L19) in the API and the admin command line. The record holds what the owner approved; the world's own numbers (its `world.toml`) count only below it, and the core sends `limits` with the approved number when the world connects and after the host changes it, so the world server takes no one past it |
+| The public list | `GET /api/v1/worlds`: approved, listed, online and below the recommended count, busiest first (200 at most). At the recommended count a world drops off; it is still reached by its id or a favourite up to its capacity. A world that reports itself full gets no more connect tokens (`full`, 403) |
+| A world by id | `GET /api/v1/worlds/:id`: name, status, listed, online, players, recommended, capacity, and the address once approved |
+| Listing | `POST /api/v1/worlds` takes `listed` (default true); the host changes it, or the capacity, with `POST /api/v1/my/worlds/:id` (its own worlds only; 404 otherwise) |
+| Favourites | `GET`, `PUT` and `DELETE /api/v1/me/favourites[/:id]` (Bearer): kept with the account, so they follow it to any computer; 100 at most (`too-many`, 409); any world, whatever its status, and the list says it |
+| Checked by | `test/browser.test.ts` (fake worlds on real WebSockets) and `tools/bots/src/browse.ts` (every real program: bots fill a world one at a time until it leaves the list; CI runs it in the harness job) |
+
 ## Hosting From Home (S1.13)
 
 | Part | Rule |
 |---|---|
 | Relayed worlds | A world registered with the address `relay` takes players' WebRTC offers through the core: the join answers with `PUBLIC_URL/api/v1/worlds/ID/signal` as its address |
-| The host channel | `GET /api/v1/worlds/:id/host` (WebSocket, subprotocol `flatchat-host-1`): the core sends `challenge` with a nonce; the world answers `auth` with `HMAC-SHA256(world key, "flatchat host v1 " + nonce)` within 5 s (else 4001; a wrong proof 4003); then `welcome` and `ice` (its STUN and TURN servers for a day). One connection per world: a newer one closes the older with 4009 (`src/hosts.ts`) |
+| The host channel | `GET /api/v1/worlds/:id/host` (WebSocket, subprotocol `flatchat-host-1`): the core sends `challenge` with a nonce; the world answers `auth` with `HMAC-SHA256(world key, "flatchat host v1 " + nonce)` within 5 s (else 4001; a wrong proof 4003); then `welcome`, `limits` (the approved capacity) and `ice` (its STUN and TURN servers for a day). The world sends `status` reports (the world browser). One connection per world: a newer one closes the older with 4009 (`src/hosts.ts`) |
 | Signalling | `POST /api/v1/worlds/:id/signal` (Bearer) with `{ type: 'offer', sdp }` (64 KB at most): relayed as `offer` with an id, answered within 10 s, or `world-offline` (503) or `world-timeout` (504) |
 | ICE servers | Every join answer carries `iceServers` (`src/ice.ts`): STUN (Cloudflare's by default; `FLATCHAT_CORE_STUN=none` turns it off), coturn credentials from `FLATCHAT_CORE_TURN_URLS` and `FLATCHAT_CORE_TURN_SECRET` (username `expiry:account-id`, credential `base64(HMAC-SHA1(secret, username))`, an hour), Cloudflare Realtime TURN from `FLATCHAT_CORE_CF_TURN_KEY` and `FLATCHAT_CORE_CF_TURN_TOKEN` (cached for 12 h). Usernames carry account ids, never emails |
 | The operator's guide | `docs/hosting.md`: the tunnel, the relay, port mapping, TURN |

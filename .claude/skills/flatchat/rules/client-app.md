@@ -2,7 +2,7 @@
 title: The Client App — Sign-in Through the System Browser, Settings and Key Bindings, Two Languages, the World View, Chat, Voice and the End-to-End Test
 impact: HIGH
 impactDescription: An account token in the page, a sign-in that can be polled, a refresh raced by two calls, a word the Spanish screen lacks, a key the player cannot rebind, a joining player drawn as someone else, or a style leaking from a spike screen each break the first thing a tester sees.
-tags: client app, ClientApp, SignIn, HomeView, SettingsView, WorldView, MicQuestion, vue-i18n, i18n, en, es, translation, no-bare-strings-in-template, settings, settings.json, key bindings, remap, KeyboardEvent.code, Controls, pointer lock, mouse look, Remotes, interpolation, camera, third person, first person, CrowdView, instanced, name tags, canvas text, WorldSession, chat, push to talk, open microphone, mute, safeStorage, refresh token, auth, core-api, loopback, PKCE, --core, DEFAULT_CORE, e2e, Playwright, playwright-core, _electron
+tags: client app, ClientApp, SignIn, HomeView, WorldRow, world browser, favourites, join by ID, SettingsView, WorldView, MicQuestion, vue-i18n, i18n, en, es, translation, no-bare-strings-in-template, settings, settings.json, key bindings, remap, KeyboardEvent.code, Controls, pointer lock, mouse look, Remotes, interpolation, camera, third person, first person, CrowdView, instanced, name tags, canvas text, WorldSession, chat, push to talk, open microphone, mute, safeStorage, refresh token, auth, core-api, loopback, PKCE, --core, DEFAULT_CORE, e2e, Playwright, playwright-core, _electron
 ---
 
 With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in through the system browser, lists the core's approved worlds, joins one, and puts the player on the plaza with chat and proximity voice. The measuring modes (`--smoke`, `--bench`, `--crowd`, the voice tests, the lounge, the census) are untouched; `App.vue` picks `ClientApp` only when none is in the query.
@@ -11,14 +11,14 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 
 | File | Job |
 |---|---|
-| `src/main/core-api.ts` | `CoreApi` over `fetch` (injected in tests): login requests, the code exchange, refresh, sign-out, the world list, connect tokens; `coreBase()` accepts https anywhere and http only on this machine |
+| `src/main/core-api.ts` | `CoreApi` over `fetch` (injected in tests): login requests, the code exchange, refresh, sign-out, the world browser (`worlds()` the public list, `world(id)`, `favourites()`, `setFavourite()` with PUT and DELETE; `cleanWorlds()` keeps only well-formed rows), connect tokens; `coreBase()` accepts https anywhere and http only on this machine |
 | `src/main/loopback.ts` | The RFC 8252 loopback port: `listenForCallback(timeout, signal)` takes a port first, `expect(request)` afterwards; refuses any other request's callback (400); its page writes nothing from the request |
 | `src/main/auth.ts` | `Auth`: the PKCE pair, the whole browser sign-in, the refresh token in a `TokenStore`, `access()` (one refresh at a time), `join()` |
 | `src/main/settings-file.ts` | The settings file in the app's data folder, written to a temporary file then renamed |
 | `src/main/core-url.ts` | `DEFAULT_CORE` (OQ-27); `--core=URL` and the settings' `core` field override it |
 | `src/shared/settings.ts` | The settings shape and its cleaning, the actions and default keys, `bind`/`unbind`/`actionFor` (pure: main and page both import it) |
 | `src/renderer/src/i18n/` | `en.ts` and `es.ts` (key for key), `makeI18n`, `pickLocale` |
-| `src/renderer/src/ui/` | `ClientApp.vue` (the screens), `SignIn`, `HomeView`, `SettingsView` (rebinding by pressing a key; right-click clears), `WorldView`, `MicQuestion`, `keys.ts` (labels from the keyboard layout), `theme.css` |
+| `src/renderer/src/ui/` | `ClientApp.vue` (the screens; join errors through `home.reasons`), `SignIn`, `HomeView` (the world browser, S2.09: join by world ID, favourites, the public list with players of capacity), `WorldRow` (a world, its star, its join button: disabled offline or full), `SettingsView` (rebinding by pressing a key; right-click clears), `WorldView`, `MicQuestion`, `keys.ts` (labels from the keyboard layout), `theme.css` |
 | `src/renderer/src/world/` | `session.ts` (`WorldSession`), `controls.ts`, `remotes.ts`, `camera.ts`, `crowd-view.ts`, `plaza-scene.ts` |
 | `tools/bots/src/e2e.ts` | The end-to-end test (below) |
 
