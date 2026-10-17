@@ -117,6 +117,8 @@ npm run host -- unban WORLD_ID ACCOUNT                             # lift one yo
 
 A reversed ban reaches the world over its channel to the core at once, or when it next connects. The platform's own decisions (an account suspended or banned everywhere) are the core owner's, with their appeals on the core's admin page.
 
+If the core revokes your world's approval (for a serious breach of the host agreement), a world connected to the core ends every session at once and stops, and the host tool does not start it again; `npm run host -- worlds` shows the reason.
+
 ## 4. When the UDP port cannot be reached: TURN
 
 Carrier-grade NAT (common in Colombia: the census in [spikes/s-home.md](spikes/s-home.md) measures how common) means no port can be mapped. Then the game traffic goes through a TURN relay. The core hands out credentials that last an hour, so none is ever built into a client:
