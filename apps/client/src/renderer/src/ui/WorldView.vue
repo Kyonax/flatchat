@@ -73,6 +73,10 @@ const refusedDetail = computed(() => {
   const removed = (s.status === 'refused' && s.reason === 'banned') || (s.status === 'lost' && (s.reason === 'kicked' || s.reason === 'banned'));
   return removed ? t('world.reason', { reason: s.detail }) : '';
 });
+/** While the menu, the chat box, the People panel or a report is open, keys go to the page (its
+ *  buttons and fields), not to the avatar: the session leaves them alone. */
+const overlay = computed(() => menu.value || chatOpen.value || peopleOpen.value || reporting.value !== undefined);
+
 /** Banned here, now or before: the player may appeal to the world's owner (S3.07). */
 const banned = computed(() => (state.value?.status === 'refused' || state.value?.status === 'lost') && state.value.reason === 'banned' && !props.ticket.local);
 
@@ -83,7 +87,6 @@ function line(l: { from: string; text: string; notice?: 'joined' | 'left' }): st
 
 function openChat(): void {
   chatOpen.value = true;
-  if (session) session.typing = true;
   session?.unlock();
   void nextTick(() => input.value?.focus());
 }
@@ -91,7 +94,6 @@ function openChat(): void {
 function closeChat(): void {
   chatOpen.value = false;
   draft.value = '';
-  if (session) session.typing = false;
 }
 
 function send(): void {
@@ -127,7 +129,6 @@ function togglePeople(): void {
   peopleOpen.value = !peopleOpen.value;
   moderating.value = '';
   // Keys go to the panel's fields while it is open, not to the avatar.
-  if (session) session.typing = peopleOpen.value;
   if (peopleOpen.value) session?.unlock();
   else session?.lock();
 }
@@ -142,13 +143,11 @@ function startReport(target: ReportDraft['target']): void {
   reporting.value = target;
   peopleOpen.value = false;
   menu.value = false;
-  if (session) session.typing = true;
   session?.unlock();
 }
 
 function endReport(): void {
   reporting.value = undefined;
-  if (session) session.typing = false;
 }
 
 /** Builds the report with this visit's evidence and sends it through the core. */
@@ -178,7 +177,6 @@ function onLockChange(): void {
 function look(): void {
   if (state.value?.status !== 'joined' || chatOpen.value || asking.value) return;
   menu.value = false;
-  if (peopleOpen.value && session) session.typing = false;
   peopleOpen.value = false;
   session?.lock();
 }
@@ -221,6 +219,10 @@ watch(
 
 watch(updating, (now) => {
   if (now) emit('rejoin');
+});
+
+watch(overlay, (open) => {
+  if (session) session.typing = open;
 });
 
 watch(

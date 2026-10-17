@@ -308,12 +308,19 @@ export class WorldSession {
       if (document.pointerLockElement === this.canvas) this.controls.press(`Mouse${e.button}`);
     };
     const mouseup = (e: MouseEvent): void => this.controls.release(`Mouse${e.button}`);
+    // Chromium's first movement after a lock can be the pointer's whole jump to where it was
+    // locked: no hand moves that far in one event, so the camera does not swing round (the
+    // end-to-end test's walk to the portal caught it).
+    let lockedAt = 0;
     const mousemove = (e: MouseEvent): void => {
-      if (document.pointerLockElement === this.canvas) this.controls.look(e.movementX, e.movementY);
+      if (document.pointerLockElement !== this.canvas) return;
+      if (performance.now() - lockedAt < 100 || Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return;
+      this.controls.look(e.movementX, e.movementY);
     };
     const lockchange = (): void => {
       this.state.locked = document.pointerLockElement === this.canvas;
-      if (!this.state.locked) this.controls.clear();
+      if (this.state.locked) lockedAt = performance.now();
+      else this.controls.clear();
     };
     const blur = (): void => this.controls.clear();
     window.addEventListener('keydown', keydown);
