@@ -259,6 +259,7 @@ const relay =
         status: () => ({ players: server.players, recommended: server.recommended, maximum: server.capacity }),
         onLimits: (maximum) => server.setApprovedCapacity(maximum),
         onUnban: (account) => server.liftBanOnAppeal(account),
+        onRevoked: () => void shutdown('revoked'),
         log,
       })
     : undefined;

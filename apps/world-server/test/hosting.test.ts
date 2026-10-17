@@ -211,6 +211,28 @@ describe('ICE servers and the host channel', () => {
     }
   });
 
+  it('stops when the platform revokes the world (S3.12)', () => {
+    const listeners: Record<string, (ev: { data?: unknown }) => void> = {};
+    const socket = {
+      OPEN: 1,
+      readyState: 1,
+      send: () => undefined,
+      close: () => undefined,
+      addEventListener: (type: string, fn: (ev: { data?: unknown }) => void) => {
+        listeners[type] = fn;
+      },
+    } as unknown as WebSocket;
+    const logged: string[] = [];
+    let revoked = 0;
+    const relay = new CoreRelay({ core: 'http://127.0.0.1:1', worldId: 'w', worldKey: new Uint8Array(32), onRevoked: () => (revoked += 1), log: (e) => void logged.push(e), socketFactory: () => socket });
+    relay.start();
+    listeners['message']!({ data: JSON.stringify({ type: 'welcome' }) });
+    listeners['message']!({ data: JSON.stringify({ type: 'revoked' }) });
+    expect(revoked).toBe(1);
+    expect(logged).toContain('world-revoked');
+    relay.stop();
+  });
+
   it('takes no more players than the core approved', () => {
     const server = new WorldServer({ ...DEFAULT_SERVER, worldId: '00000000-0000-4000-8000-000000000001', worldKey: undefined, log: () => undefined, capacity: 10, recommended: 7 }, []);
     expect([server.capacity, server.recommended]).toEqual([10, 7]);

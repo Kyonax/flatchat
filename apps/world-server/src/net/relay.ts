@@ -52,6 +52,8 @@ export interface RelayOptions {
   onLimits?: (maximum: number) => void;
   /** A ban the world's owner reversed on appeal (S3.07). */
   onUnban?: (account: string) => void;
+  /** The platform revoked the world's approval (S3.12): it ends every session and stops. */
+  onRevoked?: () => void;
   log: (event: string, fields?: Record<string, unknown>) => void;
   /** For tests; the global WebSocket (Node.js 24 has one) otherwise. */
   socketFactory?: (url: string) => WebSocket;
@@ -158,6 +160,9 @@ export class CoreRelay {
     } else if (m.type === 'unban' && typeof m.appeal === 'string' && typeof m.account === 'string' && /^[0-9a-f-]{36}$/.test(m.account)) {
       this.o.onUnban?.(m.account);
       this.send(ws, { type: 'unbanned', appeal: m.appeal.slice(0, 64) });
+    } else if (m.type === 'revoked') {
+      this.o.log('world-revoked', {});
+      this.o.onRevoked?.();
     } else if (m.type === 'ice' && Array.isArray(m.iceServers)) {
       this.o.rtc?.setIceServers(m.iceServers.filter((s): s is IceServerSpec => typeof s === 'object' && s !== null && 'urls' in s));
     } else if (m.type === 'offer' && typeof m.id === 'string' && typeof m.sdp === 'string') {
