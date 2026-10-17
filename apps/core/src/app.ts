@@ -27,7 +27,21 @@ import {
   validPort,
 } from './sessions.ts';
 import { type Lang, pickLang, STRINGS } from './strings.ts';
-import { approveWorld, cleanAddress, cleanWorldName, connectToken, listWorlds, registerWorld, revokeWorld, worldById } from './worlds.ts';
+import {
+  approveWorld,
+  cleanAddress,
+  cleanWorldName,
+  connectToken,
+  favouriteWorlds,
+  listedWorlds,
+  MAX_CAPACITY,
+  registerWorld,
+  revokeWorld,
+  setFavourite,
+  updateOwnWorld,
+  type World,
+  worldById,
+} from './worlds.ts';
 
 export const CORE_VERSION = '0.1.0';
 
@@ -91,6 +105,15 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   };
   const hosts = new HostRegistry();
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
+
+  /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
+   *  players it reports; its capacity is the smaller of its own and the one the owner approved. */
+  function live(w: World): { id: string; name: string; online: boolean; players: number; recommended: number; capacity: number } {
+    const h = hosts.status(w.id);
+    const capacity = Math.min(w.capacity, h?.status?.maximum ?? w.capacity);
+    const recommended = Math.min(capacity, h?.status?.recommended ?? capacity);
+    return { id: w.id, name: w.name, online: h !== undefined, players: h?.status?.players ?? 0, recommended, capacity };
+  }
 
   const app = Fastify({
     logger: false,
@@ -389,26 +412,77 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const name = cleanWorldName(str(b['name'], 200));
     const address = cleanAddress(str(b['address'], 300));
     const capacity = b['capacity'] === undefined ? 50 : Number(b['capacity']);
-    if (!name || !address || !Number.isInteger(capacity) || capacity < 1 || capacity > 1000) {
-      return sendProblem(reply, problem(400, 'bad-request', 'a name (3-48 characters), an address (https, or http on a private address) and a capacity (1-1000)'));
+    const listed = b['listed'] === undefined ? true : b['listed'];
+    if (!name || !address || !Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY || typeof listed !== 'boolean') {
+      return sendProblem(reply, problem(400, 'bad-request', `a name (3-48 characters), an address (https, or http on a private address), a capacity (1-${MAX_CAPACITY}) and listed (true or false)`));
     }
-    const w = await registerWorld(o.db, { name, ownerId: who.accountId, address, capacity }, now());
-    return reply.code(201).send({ id: w.id, name: w.name, status: w.status, capacity: w.capacity });
+    const w = await registerWorld(o.db, { name, ownerId: who.accountId, address, capacity, listed }, now());
+    return reply.code(201).send({ id: w.id, name: w.name, status: w.status, capacity: w.capacity, listed: w.listed });
   });
 
-  // The approved worlds (S1.05; the public list with favourites and capacity comes in S2.09).
+  // The public list (S2.09, Q-L4, Q-L19): approved, listed worlds that are online and below their
+  // recommended count; a world drops off it at that count, and is still reached by its id or a
+  // favourite up to its capacity. Busiest first.
   app.get('/api/v1/worlds', async (req, reply) => {
     if (limited(limits.apiByAddress, req.ip, reply)) return reply;
-    const worlds = await listWorlds(o.db, 'approved');
-    return { worlds: worlds.map((w) => ({ id: w.id, name: w.name, capacity: w.capacity })) };
+    const open = (await listedWorlds(o.db))
+      .map(live)
+      .filter((w) => w.online && w.players < w.recommended)
+      .sort((a, b) => b.players - a.players || a.name.localeCompare(b.name));
+    return { worlds: open.slice(0, 200) };
+  });
+
+  // Favourites (S2.09, Q-L11): kept with the account, so they follow it to any computer.
+  app.get('/api/v1/me/favourites', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return { worlds: (await favouriteWorlds(o.db, who.accountId)).map((w) => ({ ...live(w), status: w.status })) };
+  });
+
+  app.put('/api/v1/me/favourites/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const result = await setFavourite(o.db, who.accountId, (req.params as { id: string }).id, true, now());
+    if (result === 'no-world') return sendProblem(reply, problem(404, 'no-world', 'no such world'));
+    if (result === 'too-many') return sendProblem(reply, problem(409, 'too-many', 'an account keeps up to 100 favourites'));
+    return reply.code(204).send();
+  });
+
+  app.delete('/api/v1/me/favourites/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const id = (req.params as { id: string }).id;
+    if (/^[0-9a-f-]{36}$/i.test(id)) await setFavourite(o.db, who.accountId, id, false, now());
+    return reply.code(204).send();
   });
 
   // A host's own worlds, and an approved world's key (S2.10): only for the account that registered it.
   app.get('/api/v1/my/worlds', async (req, reply) => {
     const who = await bearer(req, reply);
     if (!who) return reply;
-    const rows = await o.db.query<{ id: string; name: string; status: string; address: string; capacity: number }>('select id, name, status, address, capacity from worlds where owner_id = $1 order by created_at', [who.accountId]);
-    return { worlds: rows };
+    const rows = await o.db.query<{ id: string; name: string; status: string; address: string; capacity: number; listed: boolean }>(
+      'select id, name, status, address, capacity, listed from worlds where owner_id = $1 order by created_at',
+      [who.accountId],
+    );
+    return { worlds: rows.map((r) => ({ ...r, online: hosts.online(r.id), players: hosts.status(r.id)?.status?.players ?? 0 })) };
+  });
+
+  // A host lists or unlists its world, or changes its capacity (S2.09).
+  app.post('/api/v1/my/worlds/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const capacity = b['capacity'] === undefined ? undefined : Number(b['capacity']);
+    if ((b['listed'] !== undefined && typeof b['listed'] !== 'boolean') || (capacity !== undefined && (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY))) {
+      return sendProblem(reply, problem(400, 'bad-request', `listed (true or false) and a capacity (1-${MAX_CAPACITY})`));
+    }
+    const w = await updateOwnWorld(o.db, who.accountId, (req.params as { id: string }).id, {
+      ...(typeof b['listed'] === 'boolean' ? { listed: b['listed'] } : {}),
+      ...(capacity !== undefined ? { capacity } : {}),
+    });
+    if (!w) return sendProblem(reply, problem(404, 'no-world', 'no such world of yours'));
+    hosts.limits(w.id, w.capacity);
+    return { id: w.id, name: w.name, status: w.status, capacity: w.capacity, listed: w.listed };
   });
 
   app.get('/api/v1/worlds/:id/key', async (req, reply) => {
@@ -426,7 +500,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (limited(limits.apiByAddress, req.ip, reply)) return reply;
     const w = await worldById(o.db, (req.params as { id: string }).id);
     if (!w) return sendProblem(reply, problem(404, 'no-world', 'no such world'));
-    return { id: w.id, name: w.name, status: w.status, capacity: w.capacity, ...(w.status === 'approved' ? { address: w.address } : {}) };
+    return { ...live(w), status: w.status, listed: w.listed, ...(w.status === 'approved' ? { address: w.address } : {}) };
   });
 
   app.post('/api/v1/worlds/:id/join', async (req, reply) => {
@@ -434,6 +508,10 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!who) return reply;
     if (limited(limits.joinByAccount, who.accountId, reply)) return reply;
     const worldId = (req.params as { id: string }).id;
+    // A world that reports itself full takes no one else, whatever its own count says (S2.09).
+    const known = hosts.status(worldId)?.status;
+    const w = known ? await worldById(o.db, worldId) : undefined;
+    if (w && known && known.players >= live(w).capacity) return sendProblem(reply, problem(403, 'full', 'this world is full'));
     const result = await connectToken(o.db, sealing, who.accountId, worldId, now());
     if (!result.ok) return sendProblem(reply, problem(result.problem === 'no-world' ? 404 : 403, result.problem, 'this world cannot be joined now'));
     const sealed = Buffer.from(result.token).toString('base64url');
@@ -461,6 +539,9 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       },
       async (send) => {
         o.log?.('host-online', { world: worldId });
+        // The capacity the owner approved: the world takes no more players than this (S2.09).
+        const w = await worldById(o.db, worldId);
+        if (w) send({ type: 'limits', maximum: w.capacity });
         send({ type: 'ice', iceServers: await ice.for(`world-${worldId}`, now(), 86_400) });
       },
     );

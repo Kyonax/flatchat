@@ -3,6 +3,8 @@
 // key (an HMAC of a fresh nonce), and receives players' WebRTC offers through it, so the host opens
 // no TCP port. A player posts an offer to /api/v1/worlds/:id/signal; the core relays it to that
 // world and returns the world's answer. One connection per world: a newer one replaces the older.
+// The world also reports how many players it holds and the capacity its world.toml sets (S2.09),
+// which the world browser shows; the core answers with the capacity the owner approved.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const HOST_PROTOCOL = 'flatchat-host-1';
@@ -21,9 +23,27 @@ export function expectedProof(worldKey: Uint8Array, nonce: string): Buffer {
   return createHmac('sha256', worldKey).update(`flatchat host v1 ${nonce}`, 'utf8').digest();
 }
 
+/** What a world reports about itself (S2.09). */
+export interface HostStatus {
+  players: number;
+  recommended: number;
+  maximum: number;
+}
+
 interface Host {
   socket: HostSocket;
   pending: Map<string, { resolve: (sdp: string) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>;
+  status: HostStatus | undefined;
+}
+
+const count = (v: unknown, min: number): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= 1000 ? v : undefined);
+
+/** A status message's numbers, or undefined when one is missing or out of range. */
+export function cleanStatus(m: { players?: unknown; recommended?: unknown; maximum?: unknown }): HostStatus | undefined {
+  const players = count(m.players, 0);
+  const recommended = count(m.recommended, 1);
+  const maximum = count(m.maximum, 1);
+  return players !== undefined && recommended !== undefined && maximum !== undefined ? { players, recommended: Math.min(recommended, maximum), maximum } : undefined;
 }
 
 export class RelayError extends Error {
@@ -43,6 +63,12 @@ export class HostRegistry {
 
   get count(): number {
     return this.hosts.size;
+  }
+
+  /** A world's live status: undefined while it is offline; no numbers until its first report. */
+  status(worldId: string): { online: true; status: HostStatus | undefined } | undefined {
+    const host = this.hosts.get(worldId);
+    return host ? { online: true, status: host.status } : undefined;
   }
 
   /** Runs one host connection: the challenge, the proof, then relaying. `key` opens the world's key
@@ -75,7 +101,7 @@ export class HostRegistry {
       void (async () => {
         const text = typeof data === 'string' ? data : Buffer.isBuffer(data) ? data.toString('utf8') : '';
         if (text.length === 0 || text.length > MAX_SDP * 2) return;
-        let m: { type?: unknown; proof?: unknown; id?: unknown; sdp?: unknown; error?: unknown };
+        let m: { type?: unknown; proof?: unknown; id?: unknown; sdp?: unknown; error?: unknown; players?: unknown; recommended?: unknown; maximum?: unknown };
         try {
           m = JSON.parse(text) as typeof m;
         } catch {
@@ -93,13 +119,18 @@ export class HostRegistry {
           authed = true;
           clearTimeout(timer);
           this.hosts.get(worldId)?.socket.close(4009, 'replaced by a newer connection');
-          this.hosts.set(worldId, { socket, pending: new Map() });
+          this.hosts.set(worldId, { socket, pending: new Map(), status: undefined });
           send({ type: 'welcome' });
           await onOnline(send);
           return;
         }
         const host = this.hosts.get(worldId);
-        if (!host || host.socket !== socket || typeof m.id !== 'string') return;
+        if (!host || host.socket !== socket) return;
+        if (m.type === 'status') {
+          host.status = cleanStatus(m) ?? host.status;
+          return;
+        }
+        if (typeof m.id !== 'string') return;
         const p = host.pending.get(m.id);
         if (!p) return;
         host.pending.delete(m.id);
@@ -124,6 +155,18 @@ export class HostRegistry {
       host.pending.set(id, { resolve, reject, timer });
       host.socket.send(JSON.stringify({ type: 'offer', id, sdp }));
     });
+  }
+
+  /** Tells a connected world the capacity its owner approved (after a change, S2.09). */
+  limits(worldId: string, maximum: number): void {
+    const host = this.hosts.get(worldId);
+    if (host) {
+      try {
+        host.socket.send(JSON.stringify({ type: 'limits', maximum }));
+      } catch {
+        // the socket closed
+      }
+    }
   }
 
   /** Sends a message to every connected world (fresh ICE servers). */

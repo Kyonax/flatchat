@@ -11,6 +11,10 @@ import type { Db, Sql } from './db.ts';
 import { openWorldKey, sealWorldKey } from './secrets.ts';
 
 export const TOKEN_SECONDS = 60;
+/** The most players a world may hold in the MVP (Q-L19): its host sets less. */
+export const MAX_CAPACITY = 200;
+/** Favourites an account may keep. */
+export const MAX_FAVOURITES = 100;
 
 export interface World {
   id: string;
@@ -18,6 +22,8 @@ export interface World {
   ownerId: string;
   address: string;
   capacity: number;
+  /** On the public list (S2.09), or reached by its id only. */
+  listed: boolean;
   status: 'pending' | 'approved' | 'revoked';
   createdAt: Date;
   approvedAt: Date | null;
@@ -29,16 +35,18 @@ interface WorldRow {
   owner_id: string;
   address: string;
   capacity: number;
+  listed: boolean;
   status: World['status'];
   created_at: Date;
   approved_at: Date | null;
   key_sealed: Buffer | null;
 }
 
-const COLUMNS = 'id, name, owner_id, address, capacity, status, created_at, approved_at, key_sealed';
+const COLUMNS = 'id, name, owner_id, address, capacity, listed, status, created_at, approved_at, key_sealed';
+const W_COLUMNS = 'w.id, w.name, w.owner_id, w.address, w.capacity, w.listed, w.status, w.created_at, w.approved_at, w.key_sealed';
 
 function toWorld(r: WorldRow): World {
-  return { id: r.id, name: r.name, ownerId: r.owner_id, address: r.address, capacity: r.capacity, status: r.status, createdAt: r.created_at, approvedAt: r.approved_at };
+  return { id: r.id, name: r.name, ownerId: r.owner_id, address: r.address, capacity: r.capacity, listed: r.listed, status: r.status, createdAt: r.created_at, approvedAt: r.approved_at };
 }
 
 /** 3 to 48 characters, no control or direction characters. */
@@ -69,10 +77,10 @@ export function cleanAddress(address: string): string | undefined {
   return local ? url.toString() : undefined;
 }
 
-export async function registerWorld(db: Sql, o: { name: string; ownerId: string; address: string; capacity?: number }, now: Date): Promise<World> {
+export async function registerWorld(db: Sql, o: { name: string; ownerId: string; address: string; capacity?: number; listed?: boolean }, now: Date): Promise<World> {
   const [row] = await db.query<WorldRow>(
-    `insert into worlds (name, owner_id, address, capacity, created_at) values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
-    [o.name, o.ownerId, o.address, o.capacity ?? 50, now],
+    `insert into worlds (name, owner_id, address, capacity, listed, created_at) values ($1, $2, $3, $4, $5, $6) returning ${COLUMNS}`,
+    [o.name, o.ownerId, o.address, o.capacity ?? 50, o.listed ?? true, now],
   );
   await db.query("insert into world_events (world_id, kind, actor, at) values ($1, 'registered', $2, $3)", [row!.id, `account:${o.ownerId}`, now]);
   return toWorld(row!);
@@ -89,6 +97,41 @@ export async function listWorlds(db: Sql, status?: World['status']): Promise<Wor
     ? await db.query<WorldRow>(`select ${COLUMNS} from worlds where status = $1 order by created_at`, [status])
     : await db.query<WorldRow>(`select ${COLUMNS} from worlds order by created_at`);
   return rows.map(toWorld);
+}
+
+/** The worlds that may appear on the public list: approved and listed by their hosts. */
+export async function listedWorlds(db: Sql): Promise<World[]> {
+  return (await db.query<WorldRow>(`select ${COLUMNS} from worlds where status = 'approved' and listed order by name limit 2000`)).map(toWorld);
+}
+
+/** An account's favourite worlds, oldest first, whatever their status. */
+export async function favouriteWorlds(db: Sql, accountId: string): Promise<World[]> {
+  const rows = await db.query<WorldRow>(
+    `select ${W_COLUMNS} from favourites f join worlds w on w.id = f.world_id where f.account_id = $1 order by f.created_at, w.name`,
+    [accountId],
+  );
+  return rows.map(toWorld);
+}
+
+/** Adds or removes a favourite. */
+export async function setFavourite(db: Sql, accountId: string, worldId: string, on: boolean, now: Date): Promise<'ok' | 'no-world' | 'too-many'> {
+  if (!on) {
+    await db.query('delete from favourites where account_id = $1 and world_id = $2', [accountId, worldId]);
+    return 'ok';
+  }
+  if (!(await worldById(db, worldId))) return 'no-world';
+  const [{ n }] = (await db.query<{ n: number }>('select count(*)::int as n from favourites where account_id = $1', [accountId])) as [{ n: number }];
+  if (n >= MAX_FAVOURITES) return 'too-many';
+  await db.query('insert into favourites (account_id, world_id, created_at) values ($1, $2, $3) on conflict do nothing', [accountId, worldId, now]);
+  return 'ok';
+}
+
+/** A host changes its own world: whether it is listed, and its capacity (at most MAX_CAPACITY). */
+export async function updateOwnWorld(db: Sql, ownerId: string, id: string, change: { listed?: boolean; capacity?: number }): Promise<World | undefined> {
+  const w = await worldById(db, id);
+  if (!w || w.ownerId !== ownerId) return undefined;
+  const [row] = await db.query<WorldRow>(`update worlds set listed = $2, capacity = $3 where id = $1 returning ${COLUMNS}`, [id, change.listed ?? w.listed, change.capacity ?? w.capacity]);
+  return row ? toWorld(row) : undefined;
 }
 
 /** Approves a world and returns its new key (shown once, for the world server's environment).

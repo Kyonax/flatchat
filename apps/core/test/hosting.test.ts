@@ -110,7 +110,7 @@ describe('a world hosted from home', () => {
 
     // The right key: online, with its ICE servers, answering a player's offer.
     const w = await world(id, key);
-    expect(w.got.map((m) => m['type'])).toEqual(['challenge', 'welcome', 'ice']);
+    expect(w.got.map((m) => m['type'])).toEqual(['challenge', 'welcome', 'limits', 'ice']);
     const answered = await app.inject({ method: 'POST', url: `/api/v1/worlds/${id}/signal`, headers: auth, payload: { type: 'offer', sdp: 'v=0 hello' } });
     expect(answered.json()).toEqual({ type: 'answer', sdp: 'answer:v=0 hello' });
     expect((await app.inject({ method: 'POST', url: `/api/v1/worlds/${id}/signal`, payload: { type: 'offer', sdp: 'x' } })).statusCode).toBe(401);

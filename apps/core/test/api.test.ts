@@ -306,8 +306,9 @@ describe('worlds and connect tokens (S1.05, S1.06)', () => {
 
     expect(((await app.inject({ method: 'GET', url: '/api/v1/worlds' })).json() as { worlds: Array<{ id: string }> }).worlds.map((w) => w.id)).not.toContain(world.id);
     const key = await approveWorld(db, sealingKey(secret), world.id, 'admin:test', 'first world', clock);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/worlds' })).json()).toMatchObject({ worlds: expect.arrayContaining([{ id: world.id, name: 'Kyonax Plaza', capacity: 60 }]) });
-    expect((await app.inject({ method: 'GET', url: `/api/v1/worlds/${world.id}` })).json()).toMatchObject({ status: 'approved', address: 'http://127.0.0.1:7779/rtc', capacity: 60 });
+    // Approved but not connected to the core: reached by its id, not on the public list (S2.09).
+    expect(((await app.inject({ method: 'GET', url: '/api/v1/worlds' })).json() as { worlds: Array<{ id: string }> }).worlds.map((w) => w.id)).not.toContain(world.id);
+    expect((await app.inject({ method: 'GET', url: `/api/v1/worlds/${world.id}` })).json()).toMatchObject({ status: 'approved', address: 'http://127.0.0.1:7779/rtc', capacity: 60, online: false, players: 0 });
     const join = await app.inject({ method: 'POST', url: `/api/v1/worlds/${world.id}/join`, headers: auth });
     expect(join.statusCode).toBe(200);
     const body = join.json() as { token: string; address: string; expiresAt: number };

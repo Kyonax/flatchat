@@ -9,7 +9,7 @@
 //   node --env-file=PATH src/admin.ts accounts
 //   node --env-file=PATH src/admin.ts account EMAIL [--tester on|off] [--trust 0-7] [--status active|suspended|banned] [--admin on|off]
 //   node --env-file=PATH src/admin.ts worlds [--status pending|approved|revoked]
-//   node --env-file=PATH src/admin.ts world register --name N --owner EMAIL --address URL [--capacity 50]
+//   node --env-file=PATH src/admin.ts world register --name N --owner EMAIL --address URL [--capacity 50] [--unlisted]
 //   node --env-file=PATH src/admin.ts world approve ID [--note N]  prints the world's key, once
 //   node --env-file=PATH src/admin.ts world revoke ID [--note N]
 //   node --env-file=PATH src/admin.ts world events ID
@@ -21,7 +21,7 @@ import { ConfigError, readEnv } from './config.ts';
 import { Db, migrate } from './db.ts';
 import { sealingKey } from './secrets.ts';
 import { revokeAccountSessions } from './sessions.ts';
-import { approveWorld, cleanAddress, cleanWorldName, listWorlds, registerWorld, revokeWorld, worldById, worldEvents } from './worlds.ts';
+import { approveWorld, cleanAddress, cleanWorldName, listWorlds, MAX_CAPACITY, registerWorld, revokeWorld, worldById, worldEvents } from './worlds.ts';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -37,6 +37,7 @@ const { values, positionals } = parseArgs({
     owner: { type: 'string' },
     address: { type: 'string' },
     capacity: { type: 'string', default: '50' },
+    unlisted: { type: 'boolean', default: false },
   },
 });
 
@@ -124,7 +125,7 @@ try {
     case 'worlds': {
       const status = values.status as 'pending' | 'approved' | 'revoked' | undefined;
       if (status && !['pending', 'approved', 'revoked'].includes(status)) fail('--status pending|approved|revoked');
-      for (const w of await listWorlds(db, status)) say(`${w.id}  ${w.status.padEnd(8)}  cap ${String(w.capacity).padStart(4)}  ${JSON.stringify(w.name)}  ${w.address}`);
+      for (const w of await listWorlds(db, status)) say(`${w.id}  ${w.status.padEnd(8)}  cap ${String(w.capacity).padStart(4)}  ${w.listed ? 'listed  ' : 'unlisted'}  ${JSON.stringify(w.name)}  ${w.address}`);
       break;
     }
     case 'world': {
@@ -133,8 +134,8 @@ try {
         const address = cleanAddress(values.address ?? '') ?? fail('--address: an https URL, or http on a private address');
         const owner = (await accountByEmail(db, values.owner ?? '')) ?? fail(`--owner: no account ${values.owner ?? ''}`);
         const capacity = Number(values.capacity);
-        if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000) fail('--capacity 1 to 1000');
-        const w = await registerWorld(db, { name, ownerId: owner.id, address, capacity }, now);
+        if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY) fail(`--capacity 1 to ${MAX_CAPACITY}`);
+        const w = await registerWorld(db, { name, ownerId: owner.id, address, capacity, listed: !values.unlisted }, now);
         say(`registered ${w.id} (pending): approve it with: world approve ${w.id}`);
       } else if (sub === 'approve') {
         const id = arg ?? fail('world approve ID');
