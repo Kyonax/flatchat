@@ -172,7 +172,7 @@ ipcMain.handle('flatchat:join', async (_event, worldId: unknown) => {
   try {
     const ticket = await auth.join(worldId);
     joinedAddress = ticket.address;
-    return { ok: true, token: ticket.token, address: ticket.address, expiresAt: ticket.expiresAt, iceServers: ticket.iceServers };
+    return { ok: true, token: ticket.token, address: ticket.address, expiresAt: ticket.expiresAt, iceServers: ticket.iceServers, relayOnly: flags.relayOnly === true };
   } catch (err) {
     return failure(err);
   }

@@ -6,6 +6,9 @@
 //   --core=URL                                       the core to sign in to (https, or http on this
 //                                                    machine); else the settings' core, else the
 //                                                    built-in one (core-url.ts)
+//   --relay-only                                     connect to worlds only through the TURN relays the
+//                                                    core hands out, as a player behind a NAT that lets
+//                                                    nothing else through would (S2.12; tests, support)
 //   --smoke [--smoke-out=FILE]                       draw for a few seconds, report once, quit
 //           [--join=http://ADDRESS:PORT/rtc --join-token=HEX]
 //                                                    and join that world server over WebRTC (on
@@ -41,6 +44,8 @@ export interface Size {
 export interface ClientFlags {
   /** The core's address, checked: https, or http on this machine. */
   core?: string;
+  /** Worlds only through a TURN relay (WebRTC's relay-only policy). */
+  relayOnly?: boolean;
   smoke: boolean;
   smokeOut?: string;
   /** The smoke test's network check: a loopback world server's signaling URL and a sealed token. */
@@ -104,7 +109,7 @@ export function parseSize(text: string): Size | undefined {
 
 export function parseFlags(argv: readonly string[]): { flags: ClientFlags; errors: string[] } {
   const errors: string[] = [];
-  const flags: ClientFlags = { smoke: argv.includes('--smoke'), benchSize: DEFAULT_BENCH_SIZE };
+  const flags: ClientFlags = { smoke: argv.includes('--smoke'), benchSize: DEFAULT_BENCH_SIZE, ...(argv.includes('--relay-only') ? { relayOnly: true } : {}) };
   const smokeOut = value(argv, 'smoke-out');
   if (smokeOut) flags.smokeOut = smokeOut;
   const core = value(argv, 'core');

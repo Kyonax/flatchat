@@ -31,6 +31,9 @@ export interface JoinOptions {
   spawn?: string;
   /** The player's chosen height in centimetres (S2.07); the platform's default when left out. */
   height?: number;
+  /** Only TURN relay candidates (WebRTC's relay-only policy): a player behind a NAT that lets
+   *  nothing else through (S2.12). */
+  relayOnly?: boolean;
   timeoutMs?: number;
   /** Gets every message from the first one, the welcome, the join's roster and its snapshot included. */
   onMessage?: (m: Message) => void;
@@ -111,7 +114,7 @@ export class WorldConnection {
     const timeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const bridge = window.flatchat;
     if (!bridge) throw new Error('no preload bridge');
-    const pc = new RTCPeerConnection({ iceServers: options.iceServers ?? [] });
+    const pc = new RTCPeerConnection({ iceServers: options.iceServers ?? [], iceTransportPolicy: options.relayOnly ? 'relay' : 'all' });
     try {
       const reliable = pc.createDataChannel('reliable', { negotiated: true, id: 0 });
       const unreliable = pc.createDataChannel('unreliable', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 });

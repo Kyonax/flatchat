@@ -17,7 +17,7 @@ const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
 const systemLocale = ref('en');
 const showSettings = ref(false);
-const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; spawn?: string }; visit: number } | undefined>(undefined);
+const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly: boolean; spawn?: string }; visit: number } | undefined>(undefined);
 const joining = ref('');
 const joinError = ref('');
 const travel = ref<{ status: 'going' | 'failed'; text: string } | undefined>(undefined);
@@ -45,7 +45,7 @@ async function join(w: FlatchatWorld): Promise<void> {
     joinError.value = t('home.joinFailed', { reason: reason(r.error) });
     return;
   }
-  world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers }, visit: (visits += 1) };
+  world.value = { world: w, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, relayOnly: r.relayOnly }, visit: (visits += 1) };
 }
 
 function reason(code: string): string {
@@ -71,7 +71,7 @@ async function goThrough(to: { world: string; spawn: string }): Promise<void> {
     travel.value = { status: 'going', text: info.world.name };
     const r = await bridge.joinWorld(to.world);
     if (!r.ok) return fail(t('world.portalFailed', { reason: reason(r.error) }));
-    world.value = { world: info.world, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, ...(to.spawn ? { spawn: to.spawn } : {}) }, visit: (visits += 1) };
+    world.value = { world: info.world, ticket: { address: r.address, token: r.token, iceServers: r.iceServers, relayOnly: r.relayOnly, ...(to.spawn ? { spawn: to.spawn } : {}) }, visit: (visits += 1) };
     travel.value = undefined;
   } finally {
     travelling = false;

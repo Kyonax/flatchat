@@ -87,6 +87,8 @@ export interface Ticket {
   iceServers?: RTCIceServer[];
   /** The spawn group a portal named (S2.11). */
   spawn?: string;
+  /** Only through a TURN relay (the client's --relay-only, S2.12). */
+  relayOnly?: boolean;
 }
 
 /** Where a portal leads (S2.11). */
@@ -207,6 +209,7 @@ export class WorldSession {
         token: ticket.token,
         iceServers: ticket.iceServers ?? [],
         ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
+        ...(ticket.relayOnly ? { relayOnly: true } : {}),
         height: Math.round(this.settings.avatar.height * 100),
         onMessage: (m) => this.message(m),
       });

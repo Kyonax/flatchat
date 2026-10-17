@@ -52,7 +52,7 @@ interface FlatchatBridge {
   contentHas(hashes: string[]): Promise<string[]>;
   contentGet(hash: string): Promise<Uint8Array | undefined>;
   contentPut(hash: string, bytes: Uint8Array): Promise<boolean>;
-  joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[] }>>;
+  joinWorld(worldId: string): Promise<FlatchatResult<{ token: Uint8Array; address: string; expiresAt: number; iceServers: RTCIceServer[]; relayOnly: boolean }>>;
 }
 
 interface Window {
