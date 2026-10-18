@@ -10,9 +10,10 @@
 // same join goes through it. --relay needs coturn's turnserver on the PATH. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
 // client's loopback port); everything else is the client's own: an avatar uploaded, a standard body
-// taken and worn and the test tee uploaded (S5.05), the world browser, joining, the microphone
-// question, the tee put on from the outfits menu and drawn on the body, an outfit saved, walking,
-// chat, and walking through the portal into the second world, the outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
+// taken and worn, the test tee uploaded (S5.05) and published to the free gallery (S5.06), the world
+// browser, joining, the microphone question, the tee put on from the outfits menu and drawn on the
+// body, an outfit saved, walking, chat, and walking through the portal into the second world, the
+// outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--relay] [--keep]
 //
@@ -174,6 +175,18 @@ try {
       .waitFor({ timeout: 120_000 })
       .then(() => 'ready')
       .catch(async () => (await page.locator('[data-test=item]').first().getAttribute('data-status').catch(() => null)) ?? 'none');
+    // The free gallery (S5.06): the tee published under the strictest licence (the tester may
+    // publish), then found among the gallery's items with its makers.
+    await page.locator('[data-test=publish-item]').first().click({ timeout: 10_000 });
+    await page.locator('[data-test=publish-affirm]').check({ timeout: 10_000 });
+    await page.locator('[data-test=publish-send]').click({ timeout: 10_000 });
+    await page.locator('[data-test=item-published]').waitFor({ timeout: 15_000 });
+    await page.locator('[data-test=gallery-items]').click({ timeout: 10_000 });
+    steps['published'] = await page
+      .locator('[data-test=gallery-entry]', { hasText: 'Tee' })
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
     await snap('0-home');
     if (values.relay) {
       // Relay only, and no relay yet: the join cannot reach the world.
@@ -321,6 +334,7 @@ try {
     steps['avatarDrawn'] === true &&
     steps['kit'] === 'worn' &&
     steps['item'] === 'ready' &&
+    steps['published'] === true &&
     steps['dressed'] === true &&
     steps['outfitSaved'] === true &&
     steps['outfitKept'] === true &&
