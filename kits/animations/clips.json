@@ -1,0 +1,186 @@
+{
+ "made": "node tools/converter/scripts/default-animations.ts",
+ "converter": "1.0.0",
+ "sources": {
+  "mesh2motion": {
+   "what": "Mesh2Motion human clips (static/animations/human-base-animations.glb)",
+   "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/653a9698f5f315523072f1c3ff3496100401317b/static/animations/human-base-animations.glb",
+   "sha256": "406eb0a8dc4ab366e623b79b6e3005a4951392e1bda78ae39c1099d31147733c"
+  },
+  "mesh2motion-addon": {
+   "what": "Mesh2Motion human add-on clips (static/animations/human-addon-animations.glb)",
+   "url": "https://raw.githubusercontent.com/Mesh2Motion/mesh2motion-app/653a9698f5f315523072f1c3ff3496100401317b/static/animations/human-addon-animations.glb",
+   "sha256": "a0d64d555e0d492026b72d58bf8e16c5e86779295f9093e376dcc001915c2c95"
+  },
+  "quaternius": {
+   "what": "Quaternius Universal Animation Library, the standard pack (its Godot GLB)",
+   "url": "https://opengameart.org/sites/default/files/universal_animation_librarystandard.zip",
+   "sha256": "18ff1a7215f4852b320203e8aaf02a1578b5c8eef9027fbaedfcedc7b85a3ac2",
+   "entry": "Animation Library[Standard]/Godot/AnimationLibrary_Godot_Standard.glb"
+  }
+ },
+ "clips": [
+  {
+   "name": "idle",
+   "file": "idle.vrma",
+   "sha256": "1a10eba2224ac3049506a14e8ee6bebc3e3074a0adf613ff175866eb75185d11",
+   "bytes": 32436,
+   "from": "mesh2motion",
+   "clip": "Idle_A",
+   "kind": "stand",
+   "loop": true,
+   "seconds": 3.133,
+   "seam": 0,
+   "clearance": 0.1476
+  },
+  {
+   "name": "walk",
+   "file": "walk.vrma",
+   "sha256": "094a83c7264a2e548c5ad42876ce3eb4fdd7fb1a07fb2d47e24918479d9e27aa",
+   "bytes": 28072,
+   "from": "mesh2motion",
+   "clip": "Walk",
+   "kind": "walk",
+   "loop": true,
+   "seconds": 1.667,
+   "seam": 0,
+   "slide": 0.0166,
+   "speedPerLeg": 0.8629
+  },
+  {
+   "name": "jog",
+   "file": "jog.vrma",
+   "sha256": "9a5e47042efa49379e2a6f9cf67571b9fbc794f7359e667d8ca9a8db26f9080e",
+   "bytes": 23496,
+   "from": "quaternius",
+   "clip": "Jog_Fwd_Loop",
+   "kind": "walk",
+   "loop": true,
+   "seconds": 0.933,
+   "seam": 0.65,
+   "slide": 0.0186,
+   "speedPerLeg": 6.421
+  },
+  {
+   "name": "sprint",
+   "file": "sprint.vrma",
+   "sha256": "30f250452ef2684e762d9fd8d102bee91913f1cf2e1af69d6f7c40fa05f52e7b",
+   "bytes": 22148,
+   "from": "quaternius",
+   "clip": "Sprint_Loop",
+   "kind": "walk",
+   "loop": true,
+   "seconds": 0.667,
+   "seam": 0.65,
+   "speedPerLeg": 9.7004
+  },
+  {
+   "name": "jump-start",
+   "file": "jump-start.vrma",
+   "sha256": "9dc396e067ddcadf0b8655a7ddb64e1e9364921554b31cfa1552e3145081db12",
+   "bytes": 38180,
+   "from": "mesh2motion",
+   "clip": "Jump_Start",
+   "kind": "air",
+   "loop": false,
+   "seconds": 1.667,
+   "seam": 95.6
+  },
+  {
+   "name": "jump-air",
+   "file": "jump-air.vrma",
+   "sha256": "65fdf8e7f39dc549cf15687e6ea6f2d8d83da66aebdd78751d04b4277db458e9",
+   "bytes": 31684,
+   "from": "mesh2motion",
+   "clip": "Jump_air",
+   "kind": "air",
+   "loop": true,
+   "seconds": 3.133,
+   "seam": 0
+  },
+  {
+   "name": "land",
+   "file": "land.vrma",
+   "sha256": "e91b1cdd5ac3bb7b7983539f3bd4b8a62e0b055e5d7817113aae4906eb169125",
+   "bytes": 38180,
+   "from": "mesh2motion",
+   "clip": "Jump_Land",
+   "kind": "air",
+   "loop": false,
+   "seconds": 1.6,
+   "seam": 95.6
+  },
+  {
+   "name": "fall",
+   "file": "fall.vrma",
+   "sha256": "5e1e9ec783af1891851c4ed2a47f3169a411d79d3fec16c441caa79998511fac",
+   "bytes": 29608,
+   "from": "quaternius",
+   "clip": "Jump_Loop",
+   "kind": "air",
+   "loop": true,
+   "seconds": 2.5,
+   "seam": 0
+  },
+  {
+   "name": "sit-enter",
+   "file": "sit-enter.vrma",
+   "sha256": "e09271eff5e399fa7dbd110a7fe30c3da3797ca918a450e5727d7c6cfe0dac5b",
+   "bytes": 38184,
+   "from": "mesh2motion",
+   "clip": "Sitting_Enter",
+   "kind": "sit",
+   "loop": false,
+   "seconds": 1.633,
+   "seam": 98.27
+  },
+  {
+   "name": "sit-idle",
+   "file": "sit-idle.vrma",
+   "sha256": "971efc4951b6d1b498b93f390d4db9aca7f7f2e8f5682e4ed429b8a5e30daacc",
+   "bytes": 32284,
+   "from": "mesh2motion",
+   "clip": "Sitting_Idle",
+   "kind": "sit",
+   "loop": true,
+   "seconds": 2.067,
+   "seam": 0.01
+  },
+  {
+   "name": "sit-exit",
+   "file": "sit-exit.vrma",
+   "sha256": "4e0c022214009c7144c39042b237f6d0d406f7d9ac0f31addec1559e6e99ab06",
+   "bytes": 34256,
+   "from": "mesh2motion",
+   "clip": "Sitting_Exit",
+   "kind": "sit",
+   "loop": false,
+   "seconds": 1.3,
+   "seam": 98.27
+  },
+  {
+   "name": "greeting",
+   "file": "greeting.vrma",
+   "sha256": "e9edf08e7f9b5a65096c451f9904fb415c43599b477a3e89cfc9b66e7d1cfd16",
+   "bytes": 73276,
+   "from": "mesh2motion-addon",
+   "clip": "Greeting",
+   "kind": "gesture",
+   "loop": false,
+   "seconds": 4.8,
+   "seam": 0
+  },
+  {
+   "name": "dance",
+   "file": "dance.vrma",
+   "sha256": "cde5fc4215028412f96cb9bf9d81b83806588fbd17b5204ff76419aeef68ef22",
+   "bytes": 23816,
+   "from": "quaternius",
+   "clip": "Dance_Loop",
+   "kind": "gesture",
+   "loop": true,
+   "seconds": 1,
+   "seam": 0
+  }
+ ]
+}

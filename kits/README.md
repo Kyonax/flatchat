@@ -3,7 +3,7 @@
 The three body kits and the sources of the base library: free to use anywhere, with credit.
 
 - Licence: CC BY 4.0 ([LICENSE](LICENSE)); third-party parts keep theirs, listed in [CREDITS.md](../CREDITS.md)
-- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), and the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)). The base library's sources come later.
+- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)), and the default clips in [animations/](animations/) (Track P's P.05). The base library's sources come later.
 
 ## The three bodies
 
@@ -22,4 +22,20 @@ node tools/blender/bodykit/run.mts           # two runs that must agree, then th
 ```
 
 The presets and the expression recipes are JSON in `tools/blender/bodykit/`. The bodies are made from MakeHuman's CC0 assets ([provenance/body-kits.json](provenance/body-kits.json)), so they can be released as CC BY 4.0.
+## The default clips
+
+[animations/](animations/) holds the body's everyday motions as VRMA, which the client plays on every avatar:
+
+- standing: idle;
+- moving: walk, jog, sprint;
+- in the air: jump-start, jump-air, land, fall;
+- sitting: sit-enter, sit-idle, sit-exit;
+- gestures: greeting, dance.
+
+They come from two CC0 libraries, Mesh2Motion's human clips (Scott Petrovic and the Mesh2Motion contributors) and Quaternius's Universal Animation Library (its free standard pack), retargeted by the animation converter. [animations/clips.json](animations/clips.json) lists each clip's source and what it measured on the three bodies: its loop's seam, a walking clip's foot sliding and ground speed, and how far idle's hands stay from the torso. Neither library has an in-place turn. To make them again (it downloads the libraries once, each pinned by its SHA-256):
+
+```sh
+node tools/converter/scripts/default-animations.ts
+```
+
 - Provenance: [provenance/](provenance/) holds one record for each asset in the whole repository, with saved copies of others' licence pages in `provenance/archive/`. The fields are listed at the top of `tools/harness/src/asset-check.ts`, and `npm run harness` checks every record.

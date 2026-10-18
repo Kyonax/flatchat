@@ -1,0 +1,29 @@
+{
+ "files": ["kits/animations/*.vrma"],
+ "title": "The default clips (Track P's P.05): idle, walk, jog, sprint, jumping, falling, sitting, a greeting and a dance, as VRMA for every avatar",
+ "creator": "the FlatChat contributors",
+ "licence": "CC-BY-4.0",
+ "made": "node tools/converter/scripts/default-animations.ts: each clip taken by name from its library (pinned by its SHA-256 in tools/converter/src/animation/defaults.ts), retargeted to VRMA by the animation converter (S5.07), and checked on the three standard bodies against P.05's lines (kits/animations/clips.json)",
+ "derivedFrom": [
+  {
+   "what": "Mesh2Motion's human clips: Idle_A, Walk, Jump_Start, Jump_air, Jump_Land, Sitting_Enter, Sitting_Idle and Sitting_Exit, and Greeting from its add-on set",
+   "creator": "Scott Petrovic and the Mesh2Motion contributors",
+   "source": "https://github.com/Mesh2Motion/mesh2motion-app/tree/653a9698f5f315523072f1c3ff3496100401317b/static/animations",
+   "licence": "CC0-1.0",
+   "licencePage": {
+    "url": "https://github.com/Mesh2Motion/mesh2motion-app/blob/653a9698f5f315523072f1c3ff3496100401317b/LICENSE-CC0.MD",
+    "archived": "kits/provenance/archive/mesh2motion-LICENSE-CC0.md"
+   }
+  },
+  {
+   "what": "Quaternius's Universal Animation Library, the standard pack: Jog_Fwd_Loop, Sprint_Loop, Jump_Loop and Dance_Loop",
+   "creator": "Quaternius",
+   "source": "https://opengameart.org/content/universal-animation-library",
+   "licence": "CC0-1.0",
+   "licencePage": {
+    "url": "https://quaternius.com/packs/universalanimationlibrary.html",
+    "archived": "kits/provenance/archive/quaternius-ual-License.txt"
+   }
+  }
+ ]
+}
