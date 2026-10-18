@@ -132,6 +132,8 @@ jobs:
         run: xvfb-run -a node tools/bots/src/look-check.ts apps/client/release/linux-unpacked/flatchat
       - name: The look bench, every world screen effect builds and draws
         run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --bench=1 --bench-look=1 --bench-out=look-bench.json --enable-unsafe-swiftshader && cat look-bench.json
+      - name: The audio bench, the CPU cost of occlusion and reverb
+        run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --bench=2 --bench-audio=1 --bench-out=audio-bench.json --enable-unsafe-swiftshader && cat audio-bench.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
