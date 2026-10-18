@@ -64,8 +64,9 @@ Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV 
 - **The body:** each fit made on its kit. Its skeleton must sit within 1 cm of the body's at the trunk and legs, so a fit made on another body is refused.
 - **Each fit alone:** cleaned of everything but itself, with its textures fitted to the slot and encoded to KTX2, then checked with the client's own check.
 - **No clipping in seven reference poses** (T-pose, arms down, both strides, sitting, arms up, reaching forward):
-  - At rest, any skin the item leaves visible within 2.5 cm of the garment must lie under it, away from its openings.
-  - In each pose, that skin must stay under it, within 3 mm.
+  - Each point of the skin the item leaves visible looks along its normal. Cloth within 10 cm outside it covers it (a loose sleeve, a skirt, a boxy jacket's side); cloth within 3 cm under it is skin out through the garment, by that depth. Only cloth facing the way the skin does counts, so a fold's inner layer, a collar's band or a lining, which face the body, never do.
+  - At rest, the skin the item covers, or that already comes out through it, is the garment's, away from its openings. In each pose that skin must stay under it, within 3 mm.
+  - Skin the body hides itself is not counted: inside a fold (the crotch in a deep seat, the chest's side under an arm held down), or where the body crosses itself.
   - An item with more than 10 such points out and over 5% of those near it, or any point out by 25 mm, is refused; fewer is a warning in its manifest.
 
 The result is one file per fit and a manifest (`ItemManifest` in `packages/content/src/item.ts`), each named by its SHA-256.
@@ -86,6 +87,30 @@ Upload an item from the client's home screen (Upload an item: a `.glb`, a `.blen
 To wear clothes, wear a standard body: any account can take one of the three on the home screen (Wear the feminine, masculine or neutral body), with no upload. An avatar uploaded from a kit's own `.vrm` file, unchanged, counts as that body too. An edited copy is a new avatar, and the kit's items don't fit it. Attachments go on any avatar.
 
 An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop to an attachment point, and a `full` item with no top or bottom beside it. In a world, press O for the outfits menu: your saved outfits, your items to put on and take off (an item you put on takes the place of one it conflicts with), and Save what you wear. When you put an outfit on, everyone in the world sees the change, and the next world you join gets it too. Clothes show on the nearest players, as far as their avatars are drawn in full or lighter (LOD1, LOD2); farther away, as impostors, players show without them. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
+
+## The starter wardrobe
+
+Eight items made for the three standard bodies (Track P's P.08), in [kits/items/](../kits/items/): five full outfits (white tee and jeans, striped shirt and jeans, jacket and jeans, dark suit, overalls), brown shoes, black boots and a grey fedora. They are MakeHuman's own CC0 garments. MPFB fits each one on each body in headless Blender, the way MakeHuman fits clothes, from the same pinned tools as the body kits (`tools/blender/wardrobe/fit.py`). `tools/converter/src/item/wardrobe.ts` then makes each one an item:
+
+- **Weights.** Each vertex takes the weights of the skin straight under it, so the cloth bends with the body at the knees, shoulders and hips.
+- **Push.** Where skin still comes through in a test pose, the cloth is pushed out a little past it, 12 mm at most anywhere.
+- **Simplified.** The denser ones are simplified under their slot's caps.
+- **One texture.** Each keeps one base colour texture, 1024 pixels a side.
+- **Hides.** Each hides the regions it covers on every body, wholly, or in MakeHuman's own record of what a garment covers.
+
+The plan's "clipping fixed by hand" is done this way for every garment, so no minutes went into it by hand.
+
+Each item is checked on each body in the seven reference poses as made and at both ends of the proportion sliders, 21 poses in all; no skin comes through any of them (P.08's Verify). [kits/items/wardrobe.json](../kits/items/wardrobe.json) records what each one measured, and which of MakeHuman's garments were left out and why:
+
+- **Logos:** MakeHuman's logo is on its tees, and CC0 does not waive trademark. It was painted out of the white one.
+- **Brands:** two sneakers were photographed from branded shoes.
+- **Clipping:** the skirt, the low-waisted leggings and one dense outfit still clipped when seated.
+
+To make them again (the body kits' Blender, `node tools/blender/bodykit/run.mts --setup`, once):
+
+```sh
+node tools/converter/scripts/make-wardrobe.ts
+```
 
 ## Copies and takedowns
 
