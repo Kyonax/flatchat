@@ -109,6 +109,9 @@ export interface AvatarManifest {
   thumbnail?: string;
   /** The humanoid bones it has, the expressions it can make, and its height in metres. */
   bones: string[];
+  /** A body on the humanoid, or a free shape (a robot, a creature, a prop) the converter
+   *  completed with empty bones (S4.11); left out by earlier converters: humanoid. */
+  shape?: 'humanoid' | 'free';
   expressions: string[];
   height: number;
   /** Spring bones, for the client's per-rank budgets (S4.08). */
@@ -136,6 +139,7 @@ export function checkManifest(value: unknown): AvatarManifest {
     }) &&
     (m.thumbnail === undefined || HEX64.test(m.thumbnail)) &&
     Array.isArray(m.bones) &&
+    (m.shape === undefined || m.shape === 'humanoid' || m.shape === 'free') &&
     Array.isArray(m.expressions) &&
     Number.isFinite(m.height);
   if (!ok) throw new Error('not an avatar manifest of this format');
