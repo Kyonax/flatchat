@@ -37,6 +37,10 @@ The regions are `head`, `chest`, `belly`, `hips`, `upper_arm_l`, `upper_arm_r`, 
 
 Each region is the part of the body its bones move most. A region is hidden whole, so hide only what the item covers completely, or a hole shows. The regions are cut where garments end: a tee ends at the waist (chest and belly), and trousers start at the hips.
 
+## Skin layers
+
+Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV space, 1,024 px like `kits/bodies/<name>/<name>-skin.png`, transparent where they leave the skin alone. Whenever an outfit changes, the platform composites a body's layers into one texture, the same bytes on every machine (`compositeSkin` in `packages/content/src/layers.ts`). They stack as skin, then tattoos, then makeup, then underwear on top, which covers what lies under it. Each layer can blend normally or multiply (ink), at an opacity. It can also bring a roughness and metalness image (glTF's ORM), composited beside the colour, so a shiny or metallic layer stays so. A standard body is never shown without its underwear layer.
+
 ## What the converter checks
 
 - **The file:** a .glb that passes the Khronos glTF-Validator, with everything inside it.
