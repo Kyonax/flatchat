@@ -31,6 +31,7 @@ FlatChat is invitation-only during the closed test: an invitation link creates t
 | `packages/sim` | Movement rules, shared by the client's prediction and the server's checks |
 | `packages/content` | World and avatar manifests, performance ranks and the world format's validator |
 | `packages/plugin-sdk` | What a world plugin can call |
+| `packages/effects` | Effects: the pinned Effekseer runtime, its guard layer and the dry run every uploaded effect gets |
 | `tools/converter` | Turns uploaded models into the platform's format |
 | `tools/host-tool` | The world server, the converter and a capacity advisor in one download for hosts |
 | `tools/bots` | Headless clients that speak the real protocol, for load tests |

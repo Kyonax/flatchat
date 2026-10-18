@@ -31,6 +31,7 @@ Durante la prueba cerrada FlatChat es solo por invitación: un enlace de invitac
 | `packages/sim` | Las reglas de movimiento, compartidas por la predicción del cliente y las comprobaciones del servidor |
 | `packages/content` | Los manifiestos de mundos y avatares, los rangos de rendimiento y el validador del formato de mundo |
 | `packages/plugin-sdk` | Lo que puede llamar un plugin de mundo |
+| `packages/effects` | Los efectos: el runtime de Effekseer fijado, su capa de protección y la prueba en seco de cada efecto subido |
 | `tools/converter` | Convierte los modelos subidos al formato de la plataforma |
 | `tools/host-tool` | El servidor de mundo, el conversor y un asesor de capacidad, en una sola descarga para anfitriones |
 | `tools/bots` | Clientes sin interfaz que hablan el protocolo real, para pruebas de carga |

@@ -1,0 +1,40 @@
+diff --git i/src/cpp/CMakeLists.txt w/src/cpp/CMakeLists.txt
+index de6b583..69b13ae 100644
+--- i/src/cpp/CMakeLists.txt
++++ w/src/cpp/CMakeLists.txt
+@@ -93,6 +93,8 @@ target_link_options(${OUTPUT_NAME} PRIVATE
+   -sDISABLE_EXCEPTION_CATCHING=1
+   -sNO_EXIT_RUNTIME=1
+   -sALLOW_MEMORY_GROWTH=1
++  -sMAXIMUM_MEMORY=1GB
++  -sEXPORT_ES6=1
+   -sEXPORT_NAME='${EXPORT_NAME}'
+   -sEXPORTED_FUNCTIONS=['_malloc','_free']
+   -sEXPORTED_RUNTIME_METHODS=['cwrap','UTF8ToString','UTF16ToString','stackSave','stackRestore','stackAlloc','setValue']
+diff --git i/src/cpp/RuntimeBindings.cpp w/src/cpp/RuntimeBindings.cpp
+index 0e68fea..07a8259 100644
+--- i/src/cpp/RuntimeBindings.cpp
++++ w/src/cpp/RuntimeBindings.cpp
+@@ -328,6 +328,22 @@ extern "C"
+ 	int EXPORT EffekseerGetUpdateTime(Context* context) { return context->manager->GetUpdateTime(); }
+ 	int EXPORT EffekseerGetDrawTime(Context* context) { return context->manager->GetDrawTime(); }
+ 
++	// FlatChat (S6.01): what the guard layer reads and sets per playing effect.
++	int32_t EXPORT EffekseerGetInstanceCount(Context* context, int handle) { return context->manager->GetInstanceCount(handle); }
++	int32_t EXPORT EffekseerGetTotalInstanceCount(Context* context) { return context->manager->GetTotalInstanceCount(); }
++	void EXPORT EffekseerSetSpawnDisabled(Context* context, int handle, int disabled) { context->manager->SetSpawnDisabled(handle, disabled != 0); }
++	int EXPORT EffekseerEnableGpuTimer(Context* context)
++	{
++		auto timer = context->renderer->CreateGpuTimer();
++		if (timer == nullptr)
++		{
++			return 0;
++		}
++		context->manager->SetGpuTimer(timer);
++		return 1;
++	}
++	int32_t EXPORT EffekseerGetGpuTime(Context* context, int handle) { return context->manager->GetGpuTime(handle); }
++
+ 	int EXPORT EffekseerIsVertexArrayObjectSupported(Context* context)
+ 	{
+ #if defined(EFFEKSEER_FOR_WEB_WEBGL)

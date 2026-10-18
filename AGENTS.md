@@ -50,6 +50,7 @@ npm run standin -- plan --target iris-xe      # print the weak-laptop stand-in's
 | `apps/core` | The central service: `src/app.ts` (the routes), `src/main.ts` (the program), `src/admin.ts` (the admin command line), accounts, the age rule, sign-in and sessions, worlds and connect tokens, `src/migrations/` (PostgreSQL) |
 | `packages/sim` | Movement rules shared by client and server: the controller, the move checks, the greybox plaza |
 | `packages/content` | The world format's manifest, markers and validator ([docs/world-format.md](docs/world-format.md)) |
+| `packages/effects` | Effects: the pinned Effekseer runtime (`third_party/effekseer/`), its bindings, the guard layer and the dry run ([docs/effects.md](docs/effects.md)) |
 | `packages/*` | A separate plugin SDK package (not started: plugins import the world server's `@flatchat/world-server/plugins`) |
 | `tools/harness` | The harness, the trap linter, the skill check and the stand-in |
 | `tools/repo` | The layout check and `layout.json` |

@@ -15,6 +15,7 @@ FlatChat is open source. Each folder has its own licence, chosen for its role. E
 | `packages/sim` | Apache License 2.0 | `Apache-2.0` |
 | `packages/content` | Apache License 2.0 | `Apache-2.0` |
 | `packages/plugin-sdk` | Apache License 2.0 | `Apache-2.0` |
+| `packages/effects` | Apache License 2.0 | `Apache-2.0` |
 | `tools/blender` | GNU General Public License v3.0 or later | `GPL-3.0-or-later` |
 | `kits` | Creative Commons Attribution 4.0 International | `CC-BY-4.0` |
 | `docs` | Creative Commons Attribution 4.0 International | `CC-BY-4.0` |

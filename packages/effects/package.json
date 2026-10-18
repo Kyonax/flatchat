@@ -1,0 +1,23 @@
+{
+  "name": "@flatchat/effects",
+  "version": "0.0.0",
+  "private": true,
+  "description": "FlatChat's effects: the pinned Effekseer runtime for the client's WebGPU and WebGL2 renderers, its guard layer, and the dry run every uploaded effect gets.",
+  "license": "Apache-2.0",
+  "author": "Kyonax",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime/*": "./third_party/effekseer/*"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@flatchat/content": "*"
+  }
+}

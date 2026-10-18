@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2024",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": [],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "src/index.ts",
+    "src/native.ts",
+    "src/runtime.ts",
+    "src/guard.ts"
+  ]
+}
