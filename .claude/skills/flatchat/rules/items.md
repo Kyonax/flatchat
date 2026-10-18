@@ -2,7 +2,7 @@
 title: Items — Clothes for the Three Bodies, Slots, Hide-Mask Regions, the Item Converter and the No-Clipping Check
 impact: HIGH
 impactDescription: A region cut where no garment ends leaves a hole or skin through cloth; a fit made on another body floats or sinks; a clipping check that reads the wrong bind pose or counts a thigh below a hem refuses good items, and one that skips covered skin passes bad ones; a fit with a foreign bone or extension is refused by the client after the core called it ready.
-tags: items, clothes, garments, S5.02, S5.01, dp-001, dp-002, cl-004, item format, flatchat_item, flatchat_fit, BODY_KITS, BodyKit, KIT_BONES, REGIONS, regionOfBone, chest, belly, hips, SLOTS, SLOT_REPLACES, caps, ItemDeclaration, readItemDeclaration, ItemFormatError, ItemManifest, checkItemManifest, checkItemFit, ITEM_EXTENSIONS, convertItem, ItemError, ITEM_CONVERTER_VERSION, clipping, clippingOf, REFERENCE_POSES, poseMatrices, Turn, kitBody, skeletonOffset, bind pose, edge zone, test tee, make-test-item, kits/items
+tags: items, clothes, garments, S5.02, S5.01, dp-001, dp-002, cl-004, item format, flatchat_item, flatchat_fit, BODY_KITS, BodyKit, KIT_BONES, REGIONS, regionOfBone, chest, belly, hips, SLOTS, SLOT_REPLACES, caps, ItemDeclaration, readItemDeclaration, ItemFormatError, ItemManifest, checkItemManifest, checkItemFit, ITEM_EXTENSIONS, convertItem, ItemError, ITEM_CONVERTER_VERSION, clipping, clippingOf, REFERENCE_POSES, poseMatrices, Turn, kitBody, skeletonOffset, bind pose, edge zone, test tee, make-test-item, kits/items, skin layers, S5.03, compositeSkin, LAYER_KINDS, LayerError, SkinLayer, RgbaImage, tattoo, makeup, underwear layer, ORM, multiply
 ---
 
 Items are made for the three standard bodies (rule `body-kits`). Each carries one fitted mesh per body it fits, refitted between the bodies while it is made (shared topology), never at runtime (dp-001; Roblox's cage-fitting patents, cl-004). It fills one fixed slot and hides whole regions of the body (dp-002). Creators' guide: `docs/items.md`.
@@ -28,6 +28,10 @@ Items are made for the three standard bodies (rule `body-kits`). Each carries on
 | Pose with `poseMatrices` (stride.ts) and put the rest world back for skinning: world = (posed × rest⁻¹) × rest, then × inverse bind | The impostor's stride code gives skinning matrices for world-space rest positions; a fit's vertices are in its bind space |
 | Change the item format or the checks: bump `ITEM_CONVERTER_VERSION`; regions or bones: `packages/content` first, then `generate.py`'s `REGIONS` and `run.mts`, then `make-test-item.ts` | Every program reads the same rules; the kits' `mask_*` groups and the tee must match them |
 
+## Skin Layers (S5.03)
+
+`packages/content/src/layers.ts`: `compositeSkin(layers, {requireUnderwear})` composites RGBA images in the kits' UV space, the order fixed by `LAYER_KINDS` (skin, tattoo, makeup, underwear on top). Blending is `normal` or `multiply` at an opacity, in integer arithmetic, so the bytes are the same on every machine; an optional ORM image per layer is composited beside the colour (the PBR awareness dp-002 asks for; normal maps are not merged yet). It throws `LayerError` for a stack with no skin, with no underwear (OQ-11, unless `requireUnderwear: false`), or with a size that differs from the skin's. The kits write their layers apart (`generate.py` `underwear()`: `<name>-skin.png`, `<name>-underwear.png`). `tools/converter/test/layers.test.ts` composites them and compares the result with each kit VRM's own texture: zero pixels differ.
+
 ## Not Yet
 
-Wearing items in the world (the client attaching a fit to a kit body by bone names, hiding regions, outfits) is S5.05; uploads, the gallery and licence fields are S5.06; skin layers are S5.03; attachment points (the kits' `attach_*` nodes) are S5.04.
+Wearing items and layers in the world (the client attaching a fit to a kit body by bone names, hiding regions, compositing the skin at outfit change, outfits) is S5.05; uploads, the gallery and licence fields are S5.06; attachment points (the kits' `attach_*` nodes) are S5.04.
