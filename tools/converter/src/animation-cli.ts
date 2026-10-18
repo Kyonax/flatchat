@@ -6,8 +6,10 @@
 // runs first); `--from fbx` and the original's SHA-256 and size then go in the manifest.
 //
 //   node src/animation-cli.ts UPLOAD OUTDIR [--use emote|dance] [--from fbx --source SHA256:BYTES]
+//                             [--audio SOUND [--cues RHUBARB.json]]
 //
-// Writes OUTDIR/<sha256> (the VRMA), OUTDIR/manifest.json, and last OUTDIR/result.json:
+// A sound goes with it (and its mouth cues, which the core makes with Rhubarb Lip Sync before this
+// runs). Writes OUTDIR/<sha256> (the VRMA, and the sound), OUTDIR/manifest.json, and last OUTDIR/result.json:
 // { ok: true, id, manifest } or { ok: false, problems }. Exit 0 when converted, 1 when refused, 2 on
 // a usage error.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -18,20 +20,27 @@ import { AnimationError, convertAnimation } from './animation/convert.ts';
 
 let parsed;
 try {
-  parsed = parseArgs({ allowPositionals: true, options: { use: { type: 'string', default: 'emote' }, from: { type: 'string' }, source: { type: 'string' } } });
+  parsed = parseArgs({ allowPositionals: true, options: { use: { type: 'string', default: 'emote' }, from: { type: 'string' }, source: { type: 'string' }, audio: { type: 'string' }, cues: { type: 'string' } } });
 } catch {
   parsed = undefined;
 }
 const [input, out] = parsed?.positionals ?? [];
 const use = parsed?.values.use as AnimationUse | undefined;
 const source = /^([0-9a-f]{64}):(\d{1,12})$/.exec(parsed?.values.source ?? '');
-if (!parsed || !input || !out || parsed.positionals.length !== 2 || !(ANIMATION_USES as readonly unknown[]).includes(use) || (parsed.values.from !== undefined && (parsed.values.from !== 'fbx' || !source))) {
-  process.stderr.write('usage: animation-cli.ts UPLOAD OUTDIR [--use emote|dance] [--from fbx --source SHA256:BYTES]\n');
+if (!parsed || !input || !out || parsed.positionals.length !== 2 || !(ANIMATION_USES as readonly unknown[]).includes(use) || (parsed.values.from !== undefined && (parsed.values.from !== 'fbx' || !source)) || (parsed.values.cues !== undefined && parsed.values.audio === undefined)) {
+  process.stderr.write('usage: animation-cli.ts UPLOAD OUTDIR [--use emote|dance] [--from fbx --source SHA256:BYTES] [--audio SOUND [--cues RHUBARB.json]]\n');
   process.exit(2);
 }
 const write = (name: string, bytes: Uint8Array | string): void => writeFileSync(join(out, name), bytes, { flag: 'wx' });
 try {
-  const r = await convertAnimation(new Uint8Array(readFileSync(input)), { use: use!, ...(source ? { from: 'fbx' as const, source: { sha256: source[1]!, bytes: Number(source[2]) } } : {}) });
+  const audio = parsed.values.audio ? new Uint8Array(readFileSync(parsed.values.audio)) : undefined;
+  const cues = parsed.values.cues ? (JSON.parse(readFileSync(parsed.values.cues, 'utf8')) as unknown) : undefined;
+  const r = await convertAnimation(new Uint8Array(readFileSync(input)), {
+    use: use!,
+    ...(source ? { from: 'fbx' as const, source: { sha256: source[1]!, bytes: Number(source[2]) } } : {}),
+    ...(audio ? { audio } : {}),
+    ...(cues !== undefined ? { cues } : {}),
+  });
   for (const [hash, bytes] of r.files) write(hash, bytes);
   write('manifest.json', r.manifestBytes);
   write('result.json', JSON.stringify({ ok: true, id: r.id, manifest: r.manifest }));

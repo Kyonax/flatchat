@@ -24,5 +24,10 @@
     "vrma": "ddf5d5c063f52914e8027380785bbf15abaae24b2c87ad8e67d51582f7088369",
     "bytes": 9592,
     "warnings": []
+  },
+  "bvh+song": {
+    "vrma": "bb5b20300632e063fb1417073da773d2dde227ff6f376a54ef6c36c06dc53ab9",
+    "bytes": 11384,
+    "warnings": []
   }
 }

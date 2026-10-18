@@ -5,13 +5,15 @@
 // before this). Each becomes one VRMA on VRM 1.0's normalized humanoid (retarget.ts), checked with
 // the client's own check and the Khronos glTF-Validator, and a manifest; both named by SHA-256.
 import { createHash } from 'node:crypto';
-import { ANIMATION_FORMAT, ANIMATION_MAX_SECONDS, ANIMATION_SOURCE_LIMIT, type AnimationManifest, type AnimationSource, type AnimationUse, checkAnimationFile, readGltf, VRMC_VRM_ANIMATION } from '@flatchat/content';
+import { ANIMATION_FORMAT, ANIMATION_MAX_SECONDS, ANIMATION_SOURCE_LIMIT, type AnimationAudioType, type AnimationManifest, type AnimationSource, type AnimationUse, checkAnimationFile, readGltf, VRMC_VRM_ANIMATION } from '@flatchat/content';
 import type { Node } from '@gltf-transform/core';
 import { avatarIO, validateGltf } from '../avatar/convert.ts';
 import { HUMAN_BONE_NAMES, humanBoneOf, mapByNames, REQUIRED_BONES } from '../avatar/humanoid.ts';
+import { AudioError, readAudio } from './audio.ts';
 import { readBvh } from './bvh.ts';
 import { readGltfMotion } from './gltf-motion.ts';
 import { type Joint, type Motion, MotionError } from './motion.ts';
+import { mouthTrack, readCues } from './mouth.ts';
 import { loops, retarget } from './retarget.ts';
 import { writeVrma } from './vrma-write.ts';
 
@@ -39,6 +41,10 @@ export interface AnimationOptions {
   from?: AnimationSource;
   /** The upload's own SHA-256 and size, when `bytes` is that conversion. */
   source?: { sha256: string; bytes: number };
+  /** Its sound (WAV or Ogg), played with it, and the sound's mouth cues from Rhubarb Lip Sync (its
+   *  JSON), baked into the VRMA's mouth expressions. */
+  audio?: Uint8Array;
+  cues?: unknown;
 }
 
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
@@ -154,11 +160,32 @@ export async function convertAnimation(bytes: Uint8Array, o: AnimationOptions = 
   }
   const duration = Math.max(1 / humanoid.fps, (humanoid.frames - 1) / humanoid.fps);
   if (duration > ANIMATION_MAX_SECONDS + 0.5) throw new AnimationError([`${duration.toFixed(1)} s long: ${ANIMATION_MAX_SECONDS} s at most`]);
-  const file = writeVrma(humanoid, `FlatChat animation converter ${ANIMATION_CONVERTER_VERSION}`);
+  const warnings = [...humanoid.warnings];
+  // Its sound, and the mouth track baked from the sound.
+  let sound: { type: AnimationAudioType; duration: number } | undefined;
+  if (o.audio) {
+    try {
+      sound = readAudio(o.audio);
+    } catch (err) {
+      throw new AnimationError([err instanceof AudioError ? err.message : 'the sound could not be read']);
+    }
+  }
+  let mouth: ReturnType<typeof mouthTrack> | undefined;
+  if (o.cues !== undefined && sound) {
+    try {
+      mouth = mouthTrack(readCues(o.cues, Math.max(duration, sound.duration)));
+    } catch (err) {
+      throw new Error(`the mouth cues: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    }
+  } else if (sound) warnings.push('no mouth track: this server has no Rhubarb Lip Sync, so the mouth does not follow the sound');
+  const file = writeVrma(humanoid, `FlatChat animation converter ${ANIMATION_CONVERTER_VERSION}`, mouth);
   checkAnimationFile(readGltf(file, 'animation.glb').json as Record<string, unknown>);
   const written = await validateGltf(file, false);
   if (written.problems.length > 0) throw new Error(`the converter wrote an invalid VRMA: ${written.problems.slice(0, 3).join('; ')}`);
   const fileHash = sha256(file);
+  const files = new Map([[fileHash, file]]);
+  const audioHash = o.audio && sound ? sha256(o.audio) : undefined;
+  if (audioHash && o.audio) files.set(audioHash, o.audio);
   const manifest: AnimationManifest = {
     format: ANIMATION_FORMAT,
     kind: 'animation',
@@ -171,8 +198,10 @@ export async function convertAnimation(bytes: Uint8Array, o: AnimationOptions = 
     bones: humanoid.bones,
     file: fileHash,
     bytes: file.length,
-    warnings: humanoid.warnings,
+    ...(audioHash && sound && o.audio ? { audio: { file: audioHash, bytes: o.audio.length, type: sound.type, duration: sound.duration } } : {}),
+    mouth: mouth !== undefined,
+    warnings,
   };
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
-  return { manifest, manifestBytes, id: sha256(manifestBytes), files: new Map([[fileHash, file]]) };
+  return { manifest, manifestBytes, id: sha256(manifestBytes), files };
 }

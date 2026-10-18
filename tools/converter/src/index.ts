@@ -7,4 +7,4 @@ export { AVATAR_CONVERTER_VERSION, AvatarError, type AvatarResult, convertAvatar
 export { type KitBody, kitBody, REFERENCE_POSES } from './item/clipping.ts';
 export { convertItem, ITEM_CONVERTER_VERSION, ItemError, type ItemOptions, type ItemResult } from './item/convert.ts';
 export { ANIMATION_CONVERTER_VERSION, AnimationError, animationFormat, convertAnimation } from './animation/convert.ts';
-export { sampleBvh, sampleClip } from './animation/samples.ts';
+export { sampleBvh, sampleClip, sampleSong } from './animation/samples.ts';

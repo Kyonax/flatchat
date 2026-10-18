@@ -6,6 +6,8 @@
 //   - GLB clip: Mixamo's names under an armature scaled from centimetres, facing -Z, resting in an
 //     A-pose (arms 45° down), its first frame the A-pose: the converter must turn it round,
 //     straighten its rest into the T-pose and undo the scale.
+// And a sound for it: two seconds of sung vowels (a, i, u, o between short silences), synthesised
+// from a 120 Hz voice through two formant resonators, so the mouth track has something to follow.
 import { Document, NodeIO } from '@gltf-transform/core';
 import { invert } from '../avatar/matrix.ts';
 import { IDENTITY, type Quat, qaxis, type Vec3 } from './quat.ts';
@@ -123,4 +125,55 @@ export async function sampleClip(): Promise<Uint8Array> {
   armature.addChild(doc.createNode('Body').setMesh(doc.createMesh('Body').addPrimitive(prim)).setSkin(skin));
   doc.createScene('Scene').addChild(armature);
   return new NodeIO().writeBinary(doc);
+}
+
+/** The sample's sound: a 16 kHz mono WAV of sung vowels (a, i, u, o) between short silences. */
+export function sampleSong(): Uint8Array {
+  const RATE = 16_000;
+  const VOWELS: Record<string, [number, number]> = { a: [800, 1200], i: [300, 2300], u: [320, 800], o: [500, 900] };
+  const PLAN: Array<[number, number, string]> = [
+    [0.2, 0.5, 'a'],
+    [0.6, 0.9, 'i'],
+    [1.0, 1.3, 'u'],
+    [1.4, 1.7, 'o'],
+  ];
+  const n = RATE * SAMPLE_SECONDS;
+  const out = new Float64Array(n);
+  // A two-pole resonator per formant over a 120 Hz pulse train.
+  const resonate = (x: Float64Array, f: number, bw: number): Float64Array => {
+    const r = Math.exp((-Math.PI * bw) / RATE);
+    const a1 = 2 * r * Math.cos((2 * Math.PI * f) / RATE);
+    const a2 = -r * r;
+    const y = new Float64Array(x.length);
+    for (let i = 0; i < x.length; i++) y[i] = (1 - r) * x[i]! + a1 * (y[i - 1] ?? 0) + a2 * (y[i - 2] ?? 0);
+    return y;
+  };
+  for (const [from, to, v] of PLAN) {
+    const a = Math.round(from * RATE);
+    const pulses = new Float64Array(Math.round(to * RATE) - a).map((_, i) => (i % Math.round(RATE / 120) === 0 ? 1 : 0));
+    const [f1, f2] = VOWELS[v]!;
+    const s1 = resonate(pulses, f1, 80);
+    const s2 = resonate(pulses, f2, 120);
+    for (let i = 0; i < pulses.length; i++) out[a + i] = (s1[i]! + 0.6 * s2[i]!) * Math.min(1, i / 400, (pulses.length - i) / 400);
+  }
+  let peak = 0;
+  for (const v of out) peak = Math.max(peak, Math.abs(v));
+  const pcm = new Int16Array(n).map((_, i) => Math.round((out[i]! / (peak || 1)) * 0.8 * 32767));
+  const wav = new Uint8Array(44 + pcm.byteLength);
+  const v = new DataView(wav.buffer);
+  const ascii = (at: number, t: string): void => [...t].forEach((c, k) => wav.set([c.charCodeAt(0)], at + k));
+  ascii(0, 'RIFF');
+  v.setUint32(4, 36 + pcm.byteLength, true);
+  ascii(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, RATE, true);
+  v.setUint32(28, RATE * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  ascii(36, 'data');
+  v.setUint32(40, pcm.byteLength, true);
+  wav.set(new Uint8Array(pcm.buffer), 44);
+  return wav;
 }

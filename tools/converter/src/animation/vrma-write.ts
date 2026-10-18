@@ -2,15 +2,19 @@
 // Writes a humanoid motion as VRMA (VRMC_vrm_animation 1.0, S5.07): one node per human bone,
 // unrotated and placed where VRM's T-pose puts it, named by the bone; one animation with each
 // bone's rotation (normalized 16-bit integers, as glTF allows for rotations: 8 bytes a key) and
-// the hips' position. A track that never moves keeps one key. Written by hand rather than through
-// glTF-Transform, which would drop the extension; deterministic, so golden files compare bytes.
+// the hips' position. A track that never moves keeps one key. A sound's mouth track (mouth.ts) goes
+// in as VRM's mouth expressions: one node each, its weight the X of the node's translation, as
+// VRMC_vrm_animation says. Written by hand rather than through glTF-Transform, which would drop the
+// extension; deterministic, so golden files compare bytes.
+import { VISEMES } from '@flatchat/content';
+import type { MouthTrack } from './mouth.ts';
 import { qangle, type Quat } from './quat.ts';
 import type { Humanoid } from './retarget.ts';
 
 /** A bone that never turns more than this from its first pose keeps one key (degrees). */
 const STILL = 0.05;
 
-export function writeVrma(h: Humanoid, generator: string): Uint8Array {
+export function writeVrma(h: Humanoid, generator: string, mouth?: MouthTrack): Uint8Array {
   const chunks: Uint8Array[] = [];
   let length = 0;
   const bufferViews: Array<Record<string, unknown>> = [];
@@ -67,6 +71,24 @@ export function writeVrma(h: Humanoid, generator: string): Uint8Array {
   samplers.push({ input: allTimes, output: hipsAccessor, interpolation: 'LINEAR' });
   channels.push({ sampler: samplers.length - 1, target: { node: h.bones.indexOf('hips'), path: 'translation' } });
 
+  // The mouth: one node per viseme the track moves, its weight in the translation's X.
+  const expressions: Record<string, { node: number }> = {};
+  if (mouth && mouth.times.length > 0) {
+    const t = new Float32Array(mouth.times);
+    const input = accessor({ bufferView: add(new Uint8Array(t.buffer)), componentType: 5126, count: t.length, type: 'SCALAR', min: [t[0]!], max: [t[t.length - 1]!] });
+    for (const v of VISEMES) {
+      const w = mouth.weights[v];
+      if (!w.some((x) => x > 0)) continue;
+      const node = nodes.length;
+      nodes.push({ name: `expression.${v}` });
+      expressions[v] = { node };
+      const values = new Float32Array(w.flatMap((x) => [x, 0, 0]));
+      const output = accessor({ bufferView: add(new Uint8Array(values.buffer)), componentType: 5126, count: w.length, type: 'VEC3' });
+      samplers.push({ input, output, interpolation: 'LINEAR' });
+      channels.push({ sampler: samplers.length - 1, target: { node, path: 'translation' } });
+    }
+  }
+
   const bin = new Uint8Array(length + ((4 - (length % 4)) % 4));
   let at = 0;
   for (const c of chunks) {
@@ -76,9 +98,15 @@ export function writeVrma(h: Humanoid, generator: string): Uint8Array {
   const json = {
     asset: { version: '2.0', generator },
     extensionsUsed: ['VRMC_vrm_animation'],
-    extensions: { VRMC_vrm_animation: { specVersion: '1.0', humanoid: { humanBones: Object.fromEntries(h.bones.map((b, i) => [b, { node: i }])) } } },
+    extensions: {
+      VRMC_vrm_animation: {
+        specVersion: '1.0',
+        humanoid: { humanBones: Object.fromEntries(h.bones.map((b, i) => [b, { node: i }])) },
+        ...(Object.keys(expressions).length > 0 ? { expressions: { preset: expressions } } : {}),
+      },
+    },
     scene: 0,
-    scenes: [{ nodes: [h.bones.indexOf('hips')] }],
+    scenes: [{ nodes: [h.bones.indexOf('hips'), ...Object.values(expressions).map((e) => e.node)] }],
     nodes,
     animations: [{ name: 'flatchat', samplers, channels }],
     accessors,

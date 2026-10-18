@@ -16,20 +16,22 @@ import { type AnimationManifest, checkAnimationFile, checkAnimationManifest, rea
 import { describe, expect, it } from 'vitest';
 import { AnimationError, animationFormat, convertAnimation } from '../src/animation/convert.ts';
 import { qangle, qaxis, type Quat } from '../src/animation/quat.ts';
-import { sampleBvh, sampleClip } from '../src/animation/samples.ts';
+import { sampleBvh, sampleClip, sampleSong } from '../src/animation/samples.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, 'fixtures', 'animation');
 const GOLDEN = join(HERE, 'golden', 'animations.json');
 const FBX = new Uint8Array(readFileSync(join(FIXTURES, 'wave.fbx')));
 const FBX_GLB = new Uint8Array(readFileSync(join(FIXTURES, 'wave-fbx.glb')));
+/** Rhubarb Lip Sync 1.14.0's cues for sampleSong() (phonetic, extended shapes), as the core makes them. */
+const CUES = JSON.parse(readFileSync(join(FIXTURES, 'song-cues.json'), 'utf8')) as { mouthCues: Array<{ start: number; end: number; value: string }> };
 const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 const deg = (a: Quat, b: Quat): number => (qangle(a, b) * 180) / Math.PI;
 const rotZ = (d: number): Quat => qaxis([0, 0, 1], (d * Math.PI) / 180);
 const rotX = (d: number): Quat => qaxis([1, 0, 0], (d * Math.PI) / 180);
 
 interface Vrma {
-  extensions: { VRMC_vrm_animation: { humanoid: { humanBones: Record<string, { node: number }> } } };
+  extensions: { VRMC_vrm_animation: { humanoid: { humanBones: Record<string, { node: number }> }; expressions?: { preset: Record<string, { node: number }> } } };
   animations: Array<{ channels: Array<{ sampler: number; target: { node: number; path: string } }>; samplers: Array<{ output: number }> }>;
   accessors: Array<{ bufferView: number; componentType: number; count: number; type: string }>;
   bufferViews: Array<{ byteOffset: number }>;
@@ -91,10 +93,27 @@ describe('animation imports', () => {
     expect(again.manifest.source.format).toBe('vrma');
     expect(again.manifest.file).toBe(sha(outputs.get('bvh')!));
     golden['vrma'] = { vrma: again.manifest.file, bytes: again.manifest.bytes, warnings: again.manifest.warnings };
+    // With its sound and Rhubarb's mouth cues: the sound kept as it came, the mouth baked in.
+    const sung = await convertAnimation(new TextEncoder().encode(sampleBvh()), { use: 'dance', audio: sampleSong(), cues: CUES });
+    const song = sampleSong();
+    expect(sung.manifest).toMatchObject({ mouth: true, audio: { file: sha(song), bytes: song.length, type: 'audio/wav', duration: 2 }, warnings: [] });
+    expect(sung.files.get(sha(song))).toEqual(song);
+    const sungFile = sung.files.get(sung.manifest.file)!;
+    expect(() => checkAnimationFile(readGltf(sungFile, 'animation.glb').json as Record<string, unknown>)).not.toThrow();
+    const sungJson = (readGltf(sungFile, 'animation.glb') as unknown as { json: Vrma }).json;
+    expect(Object.keys(sungJson.extensions.VRMC_vrm_animation.expressions!.preset).sort()).toEqual(['aa', 'ee', 'ih']);
+    golden['bvh+song'] = { vrma: sung.manifest.file, bytes: sung.manifest.bytes, warnings: sung.manifest.warnings };
     const json = `${JSON.stringify(golden, null, 2)}\n`;
     if (process.env['FLATCHAT_GOLDEN_WRITE'] === '1') writeFileSync(GOLDEN, json);
     expect(JSON.parse(json)).toEqual(JSON.parse(readFileSync(GOLDEN, 'utf8')));
   }, 120_000);
+
+  it('keep a sound without a mouth track when there are no cues, and refuse what is not a sound', async () => {
+    const plain = await convertAnimation(new TextEncoder().encode(sampleBvh()), { audio: sampleSong() });
+    expect(plain.manifest.mouth).toBe(false);
+    expect(plain.manifest.warnings.join(' ')).toMatch(/no mouth track/);
+    await expect(convertAnimation(new TextEncoder().encode(sampleBvh()), { audio: new TextEncoder().encode('not a sound at all, just some text') })).rejects.toThrow(/not a sound FlatChat plays/);
+  });
 
   it('know a file by its first bytes', async () => {
     expect(animationFormat(FBX)).toBe('fbx');
@@ -142,4 +161,19 @@ describe.runIf(existsSync(BLENDER))('the FBX through headless Blender', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 180_000);
+});
+
+// Rhubarb Lip Sync, where it is (this desktop; CI reads the cues it wrote).
+const RHUBARB = process.env['FLATCHAT_RHUBARB'] ?? join(homedir(), '.local', 'opt', 'rhubarb-1.14.0', 'rhubarb');
+describe.runIf(existsSync(RHUBARB))('the sound through Rhubarb Lip Sync', () => {
+  it('gives the cues the fixture holds', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fcrhubarb-'));
+    try {
+      writeFileSync(join(dir, 'song.wav'), sampleSong());
+      const out = execFileSync(RHUBARB, ['-f', 'json', '-r', 'phonetic', '--extendedShapes', 'GHX', '--machineReadable', '-q', join(dir, 'song.wav')], { timeout: 60_000 }).toString();
+      expect((JSON.parse(out) as typeof CUES).mouthCues).toEqual(CUES.mouthCues);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 90_000);
 });
