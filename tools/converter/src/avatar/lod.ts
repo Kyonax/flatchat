@@ -7,8 +7,9 @@
 // - LOD2, a fifth of the triangles, keeping only the mouth and blink shapes: the other morph
 //   targets and expressions go, and the vertices those two move are locked.
 // - The impostor: one mesh, one 512 px texture, on about 20 bones (the body's, no fingers, eyes or
-//   jaw: each dropped bone's weight goes to its nearest kept ancestor), 1,000 to 2,000 triangles,
-//   unlit; it keeps the humanoid, so the same animations move it.
+//   jaw: each dropped bone's weight goes to its nearest kept ancestor), about 1,500 triangles never
+//   joined across what a walk pulls apart (stride.ts), a plain material (no MToon); it keeps the
+//   humanoid, so the same animations move it.
 // LOD1 and LOD2 also merge their materials, as spike S0.09 measured they must (VRoid's 15 to 17
 // materials made a crowd draw 1,848 calls; merged, 85): one atlas per alpha mode, and within each
 // mesh the primitives that now share a material joined into one.
@@ -18,6 +19,8 @@ import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { PNG } from 'pngjs';
 import { decodeImage, type Rgba } from '../textures.ts';
 import { HUMAN_BONES, IMPOSTOR_BONES } from './humanoid.ts';
+import { apply, invert, type M4, mul } from './matrix.ts';
+import { posePositions, strideMatrices } from './stride.ts';
 import type { Json, JsonObject, VRMData } from './vrm.ts';
 
 /** The expressions LOD2 keeps: the mouth's five shapes and the blinks. */
@@ -335,23 +338,66 @@ function joinWithTargets(doc: Document, prims: Primitive[]): Primitive | undefin
 
 // ------------------------------------------------------------------------------- impostor
 
-type M4 = number[];
-function mul(a: M4, b: M4): M4 {
-  const o = new Array<number>(16).fill(0);
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) o[c * 4 + r]! += a[k * 4 + r]! * b[c * 4 + k]!;
-  return o;
+/** How much a vertex's place in the strides counts against its place at rest, when simplifying. */
+const STRIDE_WEIGHT = 2;
+
+/** The longest side of the positions' bounding box. */
+function extentOf(p: Float32Array): number {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i++) {
+    lo[i % 3] = Math.min(lo[i % 3]!, p[i]!);
+    hi[i % 3] = Math.max(hi[i % 3]!, p[i]!);
+  }
+  return Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!);
 }
-function apply(m: M4, x: number, y: number, z: number): [number, number, number] {
-  return [m[0]! * x + m[4]! * y + m[8]! * z + m[12]!, m[1]! * x + m[5]! * y + m[9]! * z + m[13]!, m[2]! * x + m[6]! * y + m[10]! * z + m[14]!];
-}
-function invert(m: M4): M4 {
-  // A rigid transform with scale: invert the 3x3 block, then the translation.
-  const [a, b, c, , d, e, f, , g, h, i] = m as [number, number, number, number, number, number, number, number, number, number, number];
-  const det = a * (e * i - f * h) - d * (b * i - c * h) + g * (b * f - c * e);
-  const s = 1 / (det || 1);
-  const r = [(e * i - f * h) * s, (c * h - b * i) * s, (b * f - c * e) * s, 0, (f * g - d * i) * s, (a * i - c * g) * s, (c * d - a * f) * s, 0, (d * h - e * g) * s, (b * g - a * h) * s, (a * e - b * d) * s, 0];
-  const [tx, ty, tz] = [m[12]!, m[13]!, m[14]!];
-  return [...r, -(r[0]! * tx + r[4]! * ty + r[8]! * tz), -(r[1]! * tx + r[5]! * ty + r[9]! * tz), -(r[2]! * tx + r[6]! * ty + r[10]! * tz), 1];
+
+/** Grid-merges each bone's part of a mesh on its own, to about `target` indices in all. Only the
+ *  triangles whose three corners follow the same bone are merged, part by part, so nothing is
+ *  merged across limbs; a triangle between bones (a knee, a dress between the legs) is kept as it
+ *  is, since merging made it larger and a walk then stretched it into a sheet. */
+function sloppyByBone(idx: Uint32Array, positions: Float32Array, joints: readonly number[], weights: readonly number[], target: number): Uint32Array<ArrayBuffer> {
+  const boneOf = (v: number): number => {
+    let best = 0;
+    for (let k = 1; k < 4; k++) if (weights[v * 4 + k]! > weights[v * 4 + best]!) best = k;
+    return joints[v * 4 + best]!;
+  };
+  const parts = new Map<number, number[]>();
+  const between: number[] = [];
+  for (let t = 0; t + 2 < idx.length; t += 3) {
+    const [a, b, c] = [boneOf(idx[t]!), boneOf(idx[t + 1]!), boneOf(idx[t + 2]!)];
+    if (a !== b || a !== c) {
+      between.push(idx[t]!, idx[t + 1]!, idx[t + 2]!);
+      continue;
+    }
+    let part = parts.get(a);
+    if (!part) parts.set(a, (part = []));
+    part.push(idx[t]!, idx[t + 1]!, idx[t + 2]!);
+  }
+  const whole = idx.length - between.length;
+  const budget = Math.max(target - between.length, target / 3);
+  const out = [...between];
+  for (const part of parts.values()) {
+    const share = Math.max(3, Math.round(((part.length / whole) * budget) / 3) * 3);
+    if (part.length <= share) {
+      for (const i of part) out.push(i);
+      continue;
+    }
+    // The part's own vertices only: the grid picks each cell's vertex from every vertex it is
+    // given, and with the whole mesh's a left foot's cell took a right foot's vertex.
+    const local = new Map<number, number>();
+    const back: number[] = [];
+    const localIdx = Uint32Array.from(part, (v) => {
+      let l = local.get(v);
+      if (l === undefined) local.set(v, (l = back.push(v) - 1));
+      return l;
+    });
+    const localPos = new Float32Array(back.length * 3);
+    back.forEach((v, l) => localPos.set(positions.subarray(v * 3, v * 3 + 3), l * 3));
+    // The share is what counts; the error is measured against the part's own size, so no limit.
+    for (const l of MeshoptSimplifier.simplifySloppy(localIdx, localPos, 3, null, share, 1)[0]) out.push(back[l]!);
+  }
+  return Uint32Array.from(out);
 }
 
 /** Builds the impostor in place of the document's meshes. `slot` is the atlas side per material. */
@@ -492,13 +538,28 @@ export function makeImpostor(doc: Document, data: VRMData): { triangles: number 
     uvs[v * 2 + 1] = v0 + pad + fv * (w - 2 * pad);
   }
 
-  // 1,000 to 2,000 triangles: the attribute-aware simplifier first, the sloppy one if it stalls.
+  // About 1,500 triangles, never joining what a walk pulls apart. The simplifier also weighs every
+  // vertex's place in two strides (stride.ts), so it does not merge across the legs, nor a skirt
+  // with the thighs under it. A mesh it cannot bring under 2,000 (hair cards, seams and open edges
+  // stop it: VRoid's avatars stay near 9,000) is then merged on a grid one bone's part at a time,
+  // never across parts. The grid run over the whole mesh joined the legs, and some real avatars'
+  // impostors walked with a sheet between them or a sliver from their feet (S4.12).
   let idx = Uint32Array.from(indices);
   const posArr = Float32Array.from(positions);
   const target = 1500 * 3;
   if (idx.length > target) {
-    idx = Uint32Array.from(MeshoptSimplifier.simplify(idx, posArr, 3, target, 0.08, [])[0]);
-    if (idx.length > 2000 * 3) idx = Uint32Array.from(MeshoptSimplifier.simplifySloppy(idx, posArr, 3, null, target, 0.2)[0]);
+    const poses = strideMatrices(kept, bones).map((m) => posePositions(posArr, joints, weights, m));
+    const count = posArr.length / 3;
+    const strides = new Float32Array(count * 6);
+    for (let v = 0; v < count; v++) {
+      strides.set(poses[0]!.subarray(v * 3, v * 3 + 3), v * 6);
+      strides.set(poses[1]!.subarray(v * 3, v * 3 + 3), v * 6 + 3);
+    }
+    // The simplifier measures positions against the mesh's size; the strides are in metres.
+    const w = STRIDE_WEIGHT / Math.max(1e-3, extentOf(posArr));
+    const strideWeights = [w, w, w, w, w, w];
+    idx = Uint32Array.from(MeshoptSimplifier.simplifyWithAttributes(idx, posArr, 3, strides, 6, strideWeights, null, target, 0.08, [])[0]);
+    if (idx.length > 2000 * 3) idx = sloppyByBone(idx, posArr, joints, weights, target);
   }
 
   // Replace everything with the one mesh and its one skin.

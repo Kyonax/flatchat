@@ -2,7 +2,8 @@
 // The avatar converter (S4.02, S4.03): the reference avatars (VRM 1.0, VRM 0.x, a Mixamo-named GLB)
 // convert as the golden file says, every level passes vrm-validator, a VRM 0.x is turned to face
 // +Z, the levels keep what they promise (LOD1 its face, LOD2 only the mouth and blinks, the
-// impostor 20 bones, one texture and at most 2,000 triangles), the rank follows the table, the same
+// impostor 20 bones, one texture and at most 2,000 triangles, none of them stretched by a stride),
+// the rank follows the table, the same
 // file always gives the same avatar, the converter runs sandboxed, and a malformed corpus is
 // refused with a reason and without a crash.
 import { spawnSync } from 'node:child_process';
@@ -17,6 +18,7 @@ import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AvatarError, type AvatarResult, convertAvatar } from '../src/avatar/convert.ts';
 import { sampleAvatar, type SampleKind } from '../src/avatar/samples.ts';
+import { impostorStretch, stretchedTriangles } from '../src/avatar/stride.ts';
 import { VRMExtension, type VRMData } from '../src/avatar/vrm.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -109,6 +111,15 @@ describe('the reference avatars', () => {
     expect(impostor.materialSlots).toBe(1);
     const { doc } = await read(level('vrm1', 'impostor'));
     expect(doc.getRoot().listTextures().map((t) => t.getSize())).toEqual([[512, 512]]);
+  });
+
+  it('walk with whole impostors: a stride stretches none of their triangles (S4.12)', async () => {
+    for (const kind of KINDS) {
+      const { doc, vrm } = await read(level(kind, 'impostor'));
+      const r = impostorStretch(doc, vrm.humanBones());
+      expect(r.triangles, kind).toBeGreaterThan(0);
+      expect(r.stretched, kind).toBe(0);
+    }
   });
 
   it('give the same avatar for the same file', async () => {
@@ -235,3 +246,13 @@ describe('free shapes (S4.11)', () => {
   });
 });
 
+
+describe('the stride check (S4.12)', () => {
+  it('counts a triangle a walk pulls into a sheet, not one it carries along', () => {
+    const rest = [0, 0, 0, 0.1, 0, 0, 0.05, 0.1, 0];
+    const carried = rest.map((v, i) => (i % 3 === 2 ? v + 0.5 : v));
+    const pulled = [0, 0, 0, 0.1, 0, 0.8, 0.05, 0.1, 0];
+    expect(stretchedTriangles(rest, [0, 1, 2], [carried])).toBe(0);
+    expect(stretchedTriangles(rest, [0, 1, 2], [carried, pulled])).toBe(1);
+  });
+});

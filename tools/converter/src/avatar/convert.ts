@@ -39,7 +39,7 @@ import { makeImpostor, makeLod1, makeLod2 } from './lod.ts';
 import { type Json, type JsonObject, VRMC_VRM, VRMData, type VRMDocument, VRMExtension } from './vrm.ts';
 import { migrateVrm0, type SourceMeta } from './vrm0.ts';
 
-export const AVATAR_CONVERTER_VERSION = '1.1.0';
+export const AVATAR_CONVERTER_VERSION = '1.2.0';
 
 export class AvatarError extends Error {
   readonly problems: string[];
@@ -199,6 +199,12 @@ function kindOf(json: Gltf): AvatarSourceKind {
   if (ext['VRMC_vrm']) return 'vrm1';
   if (ext['VRM']) return 'vrm0';
   return 'glb';
+}
+
+/** A converted level read back, with its VRM data (tests and audits). */
+export async function readAvatarLevel(bytes: Uint8Array): Promise<{ doc: Document; data: VRMData }> {
+  const doc = await io().readBinary(bytes);
+  return { doc, data: doc.getRoot().getExtension<VRMData>(VRMC_VRM)! };
 }
 
 function io(): NodeIO {
