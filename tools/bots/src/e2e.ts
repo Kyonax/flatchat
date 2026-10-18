@@ -12,8 +12,8 @@
 // client's loopback port); everything else is the client's own: an avatar uploaded, a standard body
 // taken and worn, the test tee uploaded (S5.05) and published to the free gallery (S5.06), the world
 // browser, joining, the microphone question, the tee put on from the outfits menu and drawn on the
-// body, an outfit saved, a dance uploaded and played from the emotes menu until walking ends it
-// (S5.07), walking, chat, and walking through the portal into the second world, the outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
+// body, an outfit saved, a dance uploaded with its sound and played from the emotes menu, the
+// sound with it, until walking ends it (S5.07), walking, chat, and walking through the portal into the second world, the outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--relay] [--keep]
 //
@@ -23,7 +23,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { sampleBvh } from '@flatchat/converter/animation-samples';
+import { sampleBvh, sampleSong } from '@flatchat/converter/animation-samples';
 import { sampleAvatar } from '@flatchat/converter/samples';
 import { _electron as electron } from 'playwright-core';
 import { children, freePort, run, start, startTurn, stop, waitFor } from './procs.ts';
@@ -90,6 +90,9 @@ try {
   // A dance (S5.07): the converter's sample motion as BVH.
   const danceFile = join(dir, 'wave.bvh');
   writeFileSync(danceFile, sampleBvh());
+  // Its sound: the converter's sung vowels.
+  const songFile = join(dir, 'song.wav');
+  writeFileSync(songFile, sampleSong());
 
   // 2. Two plazas whose portals lead to each other, registered and approved, taking their offers
   //    through the core.
@@ -125,7 +128,7 @@ try {
   const app = await electron.launch({
     executablePath: client,
     args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
-    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile, FLATCHAT_E2E_ITEM: TEE, FLATCHAT_E2E_ANIMATION: danceFile },
+    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile, FLATCHAT_E2E_ITEM: TEE, FLATCHAT_E2E_ANIMATION: danceFile, FLATCHAT_E2E_AUDIO: songFile },
     timeout: 60_000,
   });
   try {
@@ -192,6 +195,7 @@ try {
       .then(() => true)
       .catch(() => false);
     // An emote or a dance (S5.07): the sample uploaded as a dance and converted into VRMA.
+    await page.locator('[data-test=upload-with-sound]').check({ timeout: 10_000 });
     await page.locator('[data-test=upload-dance]').click({ timeout: 10_000 });
     steps['animation'] = await page
       .locator('[data-test=animation][data-status=ready]')
@@ -258,6 +262,12 @@ try {
     steps['emoted'] = await page
       .locator('[data-test=emote][data-playing="1"]')
       .waitFor({ state: 'attached', timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+    // Its sound plays at the dancer, in step.
+    steps['danceSound'] = await page
+      .locator('[data-test=emote][data-sounds="1"]')
+      .waitFor({ state: 'attached', timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
     await page.waitForTimeout(700);
@@ -368,6 +378,7 @@ try {
     steps['outfitKept'] === true &&
     steps['animation'] === 'ready' &&
     steps['emoted'] === true &&
+    steps['danceSound'] === true &&
     steps['emoteStopped'] === true &&
     /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
