@@ -14,6 +14,7 @@ import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
 import EmoteMenu from './EmoteMenu.vue';
 import OutfitMenu from './OutfitMenu.vue';
+import ScreenOverlays from './ScreenOverlays.vue';
 
 const props = defineProps<{
   world: FlatchatWorld;
@@ -125,6 +126,12 @@ function send(): void {
 }
 
 function onKey(e: KeyboardEvent): void {
+  // The safe-mode key (S6.02): Shift+Esc, always, whatever is open.
+  if (e.code === 'Escape' && e.shiftKey && state.value?.status === 'joined') {
+    e.preventDefault();
+    session?.toggleSafeMode();
+    return;
+  }
   if (chatOpen.value || menu.value || reporting.value || props.paused || state.value?.status !== 'joined') return;
   const action = actionFor(props.settings.keys, e.code);
   if (action === 'chat' && !peopleOpen.value) {
@@ -225,6 +232,12 @@ function volumeOf(p: Person): number {
 }
 
 /** Hides or shows a person's avatar on this screen (S4.09): hidden, it shows as the impostor. */
+/** Overlays from this person on the viewer's screen (S6.02): allowed person by person. */
+function toggleOverlays(p: Person): void {
+  const allowed = props.settings.overlays.allowed;
+  emit('change', { overlays: { ...props.settings.overlays, allowed: allowed.includes(p.account) ? allowed.filter((a) => a !== p.account) : [...allowed, p.account] } });
+}
+
 function toggleAvatar(p: Person): void {
   const hidden = props.settings.avatar.hidden;
   emit('change', { avatar: { ...props.settings.avatar, hidden: hidden.includes(p.account) ? hidden.filter((a) => a !== p.account) : [...hidden, p.account] } });
@@ -336,6 +349,19 @@ onBeforeUnmount(() => {
       class="view"
       @click="look"
     />
+    <ScreenOverlays
+      v-if="state?.status === 'joined'"
+      :overlays="state.overlays"
+      :safe-mode="state.safeMode"
+    />
+    <div
+      v-if="state?.safeMode"
+      class="whud safe"
+      role="status"
+      data-test="safe-mode"
+    >
+      {{ t('world.safeMode') }}
+    </div>
     <div class="whud top">
       <strong>{{ world.name }}</strong>
       <span
@@ -539,6 +565,15 @@ onBeforeUnmount(() => {
               @click="toggleAvatar(p)"
             >
               {{ settings.avatar.hidden.includes(p.account) ? t('people.showAvatar') : t('people.hideAvatar') }}
+            </button>
+            <button
+              type="button"
+              class="small"
+              data-test="allow-overlays"
+              :data-on="settings.overlays.allowed.includes(p.account)"
+              @click="toggleOverlays(p)"
+            >
+              {{ settings.overlays.allowed.includes(p.account) ? t('people.blockOverlays') : t('people.allowOverlays') }}
             </button>
             <button
               v-if="!ticket.local"
@@ -802,6 +837,18 @@ onBeforeUnmount(() => {
 .top {
   top: 12px;
   left: 12px;
+}
+
+/* Safe mode's notice (S6.02): centred below the top bar, above the overlays it cleared. */
+.safe {
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  text-align: center;
+  z-index: 3;
+  border: 1px solid #f9cd26;
 }
 
 .small {

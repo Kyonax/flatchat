@@ -36,6 +36,13 @@ interface FlatchatItemDeclaration {
   hides: string[];
   authors: string[];
   attach?: string;
+  /** An effect's scale (S6.01); an overlay's screen point, size, opacity, motion and audience (S6.02). */
+  scale?: number;
+  hud?: string;
+  size?: number;
+  opacity?: number;
+  motion?: string;
+  audience?: string;
 }
 
 /** One of the account's avatars (S4.01). */
@@ -174,7 +181,7 @@ interface FlatchatBridge {
    *  needs-declaration, and goes when its declaration is given with the token. */
   uploadItem(given?: { token: string; declaration: FlatchatItemDeclaration }): Promise<FlatchatResult<{ id: string }> | { ok: false; error: 'needs-declaration'; token: string; name: string; format: string }>;
   deleteItem(id: string): Promise<FlatchatResult<object>>;
-  itemFile(manifest: string, part: 'manifest' | 'prop' | 'effect' | import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ manifest: import('@flatchat/content').ItemManifest; bytes?: ArrayBuffer }>>;
+  itemFile(manifest: string, part: 'manifest' | 'prop' | 'effect' | 'overlay' | import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ manifest: import('@flatchat/content').ItemManifest; bytes?: ArrayBuffer }>>;
   outfits(): Promise<FlatchatResult<{ outfits: FlatchatOutfit[] }>>;
   saveOutfit(id: string | null, name: string, items: FlatchatWorn[]): Promise<FlatchatResult<{ outfit: FlatchatOutfit }>>;
   deleteOutfit(id: string): Promise<FlatchatResult<object>>;

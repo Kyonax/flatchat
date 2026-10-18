@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { ATTACH_POINTS, type AttachPoint, ItemFormatError, MODEL_SLOTS, readItemDeclaration, REGIONS, type Region, type Slot } from '@flatchat/content';
+import { ATTACH_POINTS, type AttachPoint, HUD_POINTS, type HudPoint, ItemFormatError, MODEL_SLOTS, OVERLAY_AUDIENCES, OVERLAY_LIMITS, OVERLAY_MOTIONS, type OverlayAudience, type OverlayMotion, readItemDeclaration, REGIONS, type Region, type Slot } from '@flatchat/content';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -8,14 +8,21 @@ import { useI18n } from 'vue-i18n';
 // before it is sent the account gives its name, its slot, and the body it covers (hidden under it)
 // or, for an attachment, the point it is worn at; and who made it. An effect (S6.01: an Effekseer
 // file, package or zip) keeps none either: its slot is the effect's, and it asks the point it is
-// worn at and the scale it plays at. Checked here as the core and the converter check it
+// worn at and the scale it plays at. An overlay (S6.02: a PNG) asks its screen point, its size,
+// opacity and motion, and who sees it. Checked here as the core and the converter check it
 // (packages/content's readItemDeclaration), then sent with the file the main process holds for it.
 const props = defineProps<{ token: string; name: string; format: string }>();
 const emit = defineEmits<{ done: []; cancel: [] }>();
 const { t, te } = useI18n();
 const name = ref(props.name);
 const effect = props.format === 'effect';
-const slot = ref<Slot>(effect ? 'effect' : 'top');
+const overlay = props.format === 'image';
+const slot = ref<Slot>(effect ? 'effect' : overlay ? 'overlay' : 'top');
+const hud = ref<HudPoint>('top-right');
+const size = ref(0.15);
+const opacity = ref(1);
+const motion = ref<OverlayMotion>('none');
+const audience = ref<OverlayAudience>('self');
 const attach = ref<AttachPoint>(effect ? 'hips' : 'head_top');
 const scale = ref(1);
 const hides = ref<Region[]>([]);
@@ -26,7 +33,7 @@ const error = ref('');
 const slots = MODEL_SLOTS;
 const points = Object.keys(ATTACH_POINTS) as AttachPoint[];
 const regions = Object.keys(REGIONS) as Region[];
-const formatName = computed(() => (props.format === 'blend' ? '.blend' : props.format === 'gltf' ? 'GLB' : effect ? 'Effekseer' : props.format.toUpperCase()));
+const formatName = computed(() => (props.format === 'blend' ? '.blend' : props.format === 'gltf' ? 'GLB' : effect ? 'Effekseer' : overlay ? 'PNG' : props.format.toUpperCase()));
 
 async function send(): Promise<void> {
   error.value = '';
@@ -37,7 +44,13 @@ async function send(): Promise<void> {
       name: name.value,
       slot: slot.value,
       authors: authors.value.split(',').map((a) => a.trim()).filter(Boolean),
-      ...(slot.value === 'attachment' ? { attach: attach.value, hides: [] } : slot.value === 'effect' ? { attach: attach.value, hides: [], scale: Number(scale.value) } : { hides: [...hides.value] }),
+      ...(slot.value === 'attachment'
+        ? { attach: attach.value, hides: [] }
+        : slot.value === 'effect'
+          ? { attach: attach.value, hides: [], scale: Number(scale.value) }
+          : slot.value === 'overlay'
+            ? { hides: [], hud: hud.value, size: Number(size.value), opacity: Number(opacity.value), motion: motion.value, audience: audience.value }
+            : { hides: [...hides.value] }),
     });
   } catch (err) {
     problems.value = err instanceof ItemFormatError ? err.problems : [String(err)];
@@ -74,7 +87,7 @@ async function send(): Promise<void> {
         data-test="declare-name"
       >
     </label>
-    <label v-if="!effect">
+    <label v-if="!effect && !overlay">
       {{ t('declare.slot') }}
       <select
         v-model="slot"
@@ -111,7 +124,70 @@ async function send(): Promise<void> {
         data-test="declare-scale"
       >
     </label>
-    <fieldset v-if="slot !== 'attachment' && slot !== 'effect'">
+    <template v-if="slot === 'overlay'">
+      <label>
+        {{ t('declare.hud') }}
+        <select
+          v-model="hud"
+          data-test="declare-hud"
+        >
+          <option
+            v-for="h in HUD_POINTS"
+            :key="h"
+            :value="h"
+          >{{ t(`declare.huds.${h}`) }}</option>
+        </select>
+      </label>
+      <label>
+        {{ t('declare.size') }}
+        <input
+          v-model.number="size"
+          type="number"
+          :min="OVERLAY_LIMITS.size.min"
+          :max="OVERLAY_LIMITS.size.max"
+          step="0.01"
+          data-test="declare-size"
+        >
+      </label>
+      <label>
+        {{ t('declare.opacity') }}
+        <input
+          v-model.number="opacity"
+          type="number"
+          :min="OVERLAY_LIMITS.opacity.min"
+          max="1"
+          step="0.05"
+          data-test="declare-opacity"
+        >
+      </label>
+      <label>
+        {{ t('declare.motion') }}
+        <select
+          v-model="motion"
+          data-test="declare-motion"
+        >
+          <option
+            v-for="m in OVERLAY_MOTIONS"
+            :key="m"
+            :value="m"
+          >{{ t(`declare.motions.${m}`) }}</option>
+        </select>
+      </label>
+      <label>
+        {{ t('declare.audience') }}
+        <select
+          v-model="audience"
+          data-test="declare-audience"
+        >
+          <option
+            v-for="a in OVERLAY_AUDIENCES"
+            :key="a"
+            :value="a"
+          >{{ t(`declare.audiences.${a}`) }}</option>
+        </select>
+      </label>
+    </template>
+    <fieldset v-if="slot !== 'attachment' && slot !== 'effect' && slot !== 'overlay'">
       <legend>{{ t('declare.hides') }}</legend>
       <label
         v-for="r in regions"

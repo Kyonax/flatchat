@@ -46,6 +46,10 @@ describe('settings', () => {
     expect(unbind(moved, 'jump', 1).jump).toEqual(['KeyW']);
     expect(actionFor(moved, 'KeyW')).toBe('jump');
     expect(actionFor(moved, 'Mouse0')).toBeUndefined();
+    // Screen overlays (S6.02): the viewer's own and worlds' on, nobody allowed until the viewer says so.
+    expect(defaultSettings().overlays).toEqual({ mine: true, world: true, allowed: [] });
+    const allowed = cleanSettings({ overlays: { mine: 'no', world: false, allowed: ['3fa85f64-5717-4562-b3fc-2c963f66afa6', 'not an account', 7] } }).overlays;
+    expect(allowed).toEqual({ mine: true, world: false, allowed: ['3fa85f64-5717-4562-b3fc-2c963f66afa6'] });
     const merged = mergeSettings(defaultSettings(), { voice: { mode: 'push' }, view: { person: 'first' } });
     expect(merged.voice).toMatchObject({ mode: 'push', volume: 1 });
     expect(merged.view.person).toBe('first');

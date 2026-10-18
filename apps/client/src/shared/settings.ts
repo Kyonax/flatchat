@@ -153,6 +153,14 @@ export interface EffectSettings {
   strangers: boolean;
 }
 
+/** Screen overlays (S6.02, Q-M13, T-14): the viewer's own, worlds' (on until switched off), and
+ *  the accounts whose overlays the viewer allowed, person by person. */
+export interface ScreenOverlaySettings {
+  mine: boolean;
+  world: boolean;
+  allowed: string[];
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -164,6 +172,7 @@ export interface Settings {
   avatar: AvatarSettings;
   sound: SoundSettings;
   effects: EffectSettings;
+  overlays: ScreenOverlaySettings;
 }
 
 export function defaultSettings(): Settings {
@@ -177,6 +186,7 @@ export function defaultSettings(): Settings {
     avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
     sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
     effects: { show: true, strangers: false },
+    overlays: { mine: true, world: true, allowed: [] },
   };
 }
 
@@ -220,6 +230,7 @@ export function cleanSettings(raw: unknown): Settings {
   const avatar = obj(r['avatar']);
   const sound = obj(r['sound']);
   const effects = obj(r['effects']);
+  const overlays = obj(r['overlays']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -262,6 +273,11 @@ export function cleanSettings(raw: unknown): Settings {
     },
     sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui), emotes: num(sound['emotes'], 0, 1, d.sound.emotes) },
     effects: { show: bool(effects['show'], d.effects.show), strangers: bool(effects['strangers'], d.effects.strangers) },
+    overlays: {
+      mine: bool(overlays['mine'], d.overlays.mine),
+      world: bool(overlays['world'], d.overlays.world),
+      allowed: Array.isArray(overlays['allowed']) ? [...new Set(overlays['allowed'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
+    },
   };
 }
 
@@ -276,6 +292,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     avatar: { ...current.avatar, ...obj(p['avatar']) },
     sound: { ...current.sound, ...obj(p['sound']) },
     effects: { ...current.effects, ...obj(p['effects']) },
+    overlays: { ...current.overlays, ...obj(p['overlays']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

@@ -64,6 +64,7 @@ const view = (patch: Partial<Settings['view']>): void => emit('change', { view: 
 const avatar = (patch: Partial<Settings['avatar']>): void => emit('change', { avatar: { ...props.settings.avatar, ...patch } });
 const sound = (patch: Partial<Settings['sound']>): void => emit('change', { sound: { ...props.settings.sound, ...patch } });
 const effects = (patch: Partial<Settings['effects']>): void => emit('change', { effects: { ...props.settings.effects, ...patch } });
+const overlays = (patch: Partial<Settings['overlays']>): void => emit('change', { overlays: { ...props.settings.overlays, ...patch } });
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -302,6 +303,27 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
         >
         <span>{{ t('settings.effectsStrangers') }}</span>
       </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.overlays.mine"
+          data-test="overlays-mine"
+          @change="overlays({ mine: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.overlaysMine') }}</span>
+      </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.overlays.world"
+          data-test="overlays-world"
+          @change="overlays({ world: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.overlaysWorld') }}</span>
+      </label>
+      <p class="muted small">
+        {{ t('settings.safeModeHint') }}
+      </p>
 
       <h2>{{ t('settings.voice') }}</h2>
       <div class="row">

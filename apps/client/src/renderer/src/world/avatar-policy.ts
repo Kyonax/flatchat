@@ -51,6 +51,8 @@ export interface Viewer {
   trustOf(entity: number): number;
   friends: ReadonlySet<string>;
   me: number;
+  /** Safe mode (S6.02, the safe-mode key): everyone else's avatar shows as its fallback. */
+  safe?: boolean;
 }
 
 /** The layer's policy from the viewer's settings, the tier and the tuner. */
@@ -64,6 +66,7 @@ export function viewerPolicy(s: AvatarSettings, factor: number, viewer: Viewer):
     minRank: s.minRank,
     shown: (entity) => {
       if (entity === viewer.me) return 'full';
+      if (viewer.safe) return 'impostor';
       const account = viewer.accountOf(entity);
       if (account && hidden.has(account)) return 'impostor';
       if (s.shield > 0 && viewer.trustOf(entity) < s.shield && !(account && viewer.friends.has(account))) return 'impostor';

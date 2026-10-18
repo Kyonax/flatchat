@@ -35,6 +35,7 @@ import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
 import { builtInEmote } from './clips';
 import { EffectsLayer, type EffectStats } from './effects';
+import { OverlayLayer, type ShownOverlay } from './overlays';
 import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
 import { PathWalker } from './walker';
@@ -126,6 +127,9 @@ export interface WorldState {
   /** Effects (S6.01): playing, their particles, refused, stopped by the guard, drawn with the
    *  scene's depth, the runtime's backend, and whether it could not start. */
   effects: EffectStats;
+  /** Screen overlays showing now (S6.02), and safe mode: the safe-mode key's state. */
+  overlays: ShownOverlay[];
+  safeMode: boolean;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -176,6 +180,8 @@ export class WorldSession {
   /** Players' own avatars (S4.05), over the placeholders. */
   private avatarLayer: AvatarLayer | undefined;
   private effects: EffectsLayer | undefined;
+  /** Screen overlays (S6.02): worn ones and the world's, by the viewer's consent. */
+  private overlays: OverlayLayer | undefined;
   /** Each player's worn avatar (its manifest's hash) and face (S4.07), from the roster. */
   private readonly worn = new Map<number, string>();
   private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
@@ -292,6 +298,8 @@ export class WorldSession {
       emoting: false,
       emoteSounds: 0,
       effects: { playing: 0, world: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false },
+      overlays: [],
+      safeMode: false,
     });
   }
 
@@ -355,6 +363,21 @@ export class WorldSession {
         this.detachers.push(() => this.effects?.dispose());
       }
     }
+    // Screen overlays (S6.02): the core's items when signed in, a world's own in any world.
+    const itemFile = bridge?.itemFile;
+    this.overlays = new OverlayLayer(
+      this.settings.overlays,
+      itemFile
+        ? async (manifest, part) => {
+            const r = await itemFile(manifest, part);
+            if (!r.ok) throw new Error(r.error);
+            return { manifest: r.manifest, ...(r.bytes ? { bytes: r.bytes } : {}) };
+          }
+        : undefined,
+      (shown) => {
+        this.state.overlays = shown;
+      },
+    );
     this.scene = view.scene;
     this.mapMeshes = view.scene.children.filter((o) => o.name.startsWith('surface:'));
     await loadPhysics();
@@ -504,6 +527,10 @@ export class WorldSession {
       this.conn?.send({ type: 'appearance', height: Math.round(s.avatar.height * 100), proportions: percent(s.avatar.proportions) });
     }
     this.settings = s;
+    if (this.overlays) {
+      this.overlays.settings = s.overlays;
+      this.overlays.refresh();
+    }
     this.controls.keys = s.keys;
     this.controls.sensitivity = s.view.sensitivity;
     this.controls.invertY = s.view.invertY;
@@ -713,23 +740,39 @@ export class WorldSession {
       if (since > 3000 && since < 15_000) this.bench.samples.push(frameMs);
       else if (since >= 15_000) this.state.measuredTier = tierOf(this.bench.samples);
     }
-    if (now - this.policyAt < 250 || !this.avatarLayer) return;
+    if (now - this.policyAt < 250) return;
     this.policyAt = now;
     const friends = new Set(this.state.friends);
+    const safe = this.state.safeMode;
     const policy = viewerPolicy(s, s.autoTune ? this.tuner.factor : 1, {
       accountOf: (e) => this.people.get(e)?.account,
       trustOf: (e) => this.trusts.get(e) ?? 0,
       friends,
       me: this.entity,
+      safe,
     });
-    this.avatarLayer.policy = policy;
+    if (this.overlays) {
+      const hidden = new Set(s.hidden);
+      this.overlays.me = this.entity;
+      this.overlays.safeMode = safe;
+      this.overlays.accountOf = (e) => this.people.get(e)?.account;
+      this.overlays.hiddenOf = (e) => {
+        const account = this.people.get(e)?.account;
+        return account !== undefined && (hidden.has(account) || this.state.blocked.includes(account));
+      };
+      this.overlays.refresh(now);
+    }
+    if (this.avatarLayer) this.avatarLayer.policy = policy;
     if (this.effects) {
       // Whose effects show (S6.01, Q-M10): one's own and the world's; anyone else's when their
       // avatar is not shielded or hidden, a stranger's only when the viewer allows strangers'.
       const fx = this.settings.effects;
       this.effects.allowed = (owner) => {
         if (!fx.show) return false;
-        if (owner === 'world' || owner === this.entity) return true;
+        if (owner === this.entity) return true;
+        // Safe mode (S6.02): nobody else's, and not the world's.
+        if (safe) return false;
+        if (owner === 'world') return true;
         if (policy.shown?.(owner) === 'impostor') return false;
         const account = this.people.get(owner)?.account;
         return fx.strangers || (account !== undefined && friends.has(account));
@@ -914,6 +957,7 @@ export class WorldSession {
       // What they wear (S5.05), as the world fitted it.
       const outfit = p.outfit.map((w) => ({ item: toHex(w.item), ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
       this.avatarLayer?.dress(p.entity, outfit);
+      this.overlays?.dress(p.entity, outfit.map((w) => w.item));
       // The emote or dance they play (S5.07), and when it started.
       if (p.emote) this.emotes.set(p.entity, { anim: toHex(p.emote.anim), tick: p.emote.tick });
       else this.emotes.delete(p.entity);
@@ -953,6 +997,7 @@ export class WorldSession {
       this.trusts.delete(id);
       this.emotes.delete(id);
       this.avatarLayer?.drop(id);
+      this.overlays?.drop(id);
     }
     this.rosterSeen = true;
     this.state.players = this.names.size;
@@ -1061,6 +1106,14 @@ export class WorldSession {
     return buildReport(draft, evidence, this.recorder, now, wall, (entity) => this.everyone.get(entity));
   }
 
+  /** The safe-mode key (S6.02, T-14): every other avatar to its fallback, every overlay and
+   *  everyone else's effects off, at once; pressed again, everything back as the viewer had it. */
+  toggleSafeMode(): void {
+    this.state.safeMode = !this.state.safeMode;
+    // Applied on the next frame, not after the policy's quarter second.
+    this.policyAt = -Infinity;
+  }
+
   /** Asks the world to kick, ban or mute someone, with the reason they are told (S3.07). */
   moderate(account: string, action: 'kick' | 'ban' | 'unban' | 'mute' | 'unmute', minutes: number, reason: string): void {
     if (this.state.status === 'joined') this.conn?.send({ type: 'moderate', account, action, minutes, reason: reason.slice(0, 160) });
@@ -1109,6 +1162,8 @@ export class WorldSession {
       marker.updateMatrixWorld(true);
       void this.effects.wearWorld(e, marker, bytes);
     }
+    // The world's screen overlays (S6.02): on for everyone until a viewer switches them off.
+    this.overlays?.setWorld(world.overlays ?? [], files);
     // The base library's parts, drawn from the client's own definitions (S2.05).
     const parts = world.scenes.flatMap((sc) => sc.parts);
     if (parts.length > 0) {
@@ -1237,6 +1292,7 @@ export class WorldSession {
     this.navigation?.dispose();
     this.emoteSounds?.close();
     this.sounds?.close();
+    this.overlays?.dispose();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     if (this.outfitTimer) clearTimeout(this.outfitTimer);
     if (this.emoteTimer) clearTimeout(this.emoteTimer);

@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { type AttachPoint, resolveOutfit, type Slot } from '@flatchat/content';
+import { type AttachPoint, type HudPoint, resolveOutfit, type Slot } from '@flatchat/content';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -15,6 +15,7 @@ const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
 /** Each attachment's and effect's point, from its manifest. */
 const points = ref<Record<string, AttachPoint>>({});
+const huds = ref<Record<string, HudPoint>>({});
 const name = ref('');
 const error = ref('');
 const saving = ref(false);
@@ -27,9 +28,11 @@ async function load(): Promise<void> {
   if (a?.ok) items.value = a.items;
   if (b?.ok) outfits.value = b.outfits;
   for (const i of ready.value) {
-    if ((i.slot !== 'attachment' && i.slot !== 'effect') || points.value[i.manifest!]) continue;
+    if ((i.slot !== 'attachment' && i.slot !== 'effect' && i.slot !== 'overlay') || points.value[i.manifest!] || huds.value[i.manifest!]) continue;
     const r = await window.flatchat?.itemFile(i.manifest!, 'manifest');
     if (r?.ok && r.manifest.attach) points.value = { ...points.value, [i.manifest!]: r.manifest.attach };
+    // An overlay's screen point (S6.02): one overlay to a point.
+    if (r?.ok && r.manifest.overlay) huds.value = { ...huds.value, [i.manifest!]: r.manifest.overlay.hud };
   }
 }
 
@@ -45,7 +48,7 @@ function toggle(i: FlatchatItem): void {
   const known = new Map(ready.value.map((x) => [x.manifest!, x]));
   // Items this account no longer lists stay as they are; the rest are settled by slot.
   const unknown = next.filter((w) => !known.has(w.item));
-  const placed = next.filter((w) => known.has(w.item)).map((w) => ({ w, slot: known.get(w.item)!.slot ?? ('attachment' as Slot), attach: points.value[w.item] }));
+  const placed = next.filter((w) => known.has(w.item)).map((w) => ({ w, slot: known.get(w.item)!.slot ?? ('attachment' as Slot), attach: points.value[w.item], hud: huds.value[w.item] }));
   emit('wear', [...unknown, ...resolveOutfit(placed).map((p) => p.w)]);
 }
 

@@ -3,6 +3,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import effectStarters from '../../../../../../kits/effects/starters.json';
+import overlayStarters from '../../../../../../kits/overlays/starters.json';
 import wardrobe from '../../../../../../kits/items/wardrobe.json';
 import DeclareItemForm from './DeclareItemForm.vue';
 import PublishForm from './PublishForm.vue';
@@ -12,9 +13,9 @@ import PublishForm from './PublishForm.vue';
 // it; the page never holds the file or the token), saying what it is when its file cannot
 // (DeclareItemForm.vue); watch it convert, see the bodies it fits or why it was refused, delete it;
 // and the saved outfits, to delete. Wearing them is the world's quick menu (OutfitMenu.vue). The
-// starter wardrobe (P.08, kits/items/) and the starter effects (S6.01, kits/effects/) are any
-// account's for the taking, with no upload: each once, then one of the account's items like any
-// other. An effect is uploaded the same way (an Effekseer file, package or zip), always declared.
+// starter wardrobe (P.08, kits/items/), the starter effects (S6.01, kits/effects/) and the starter
+// overlays (S6.02, kits/overlays/) are any account's for the taking, with no upload: each once,
+// then one of the account's items like any other. An effect is uploaded the same way (an Effekseer file, package or zip), always declared.
 const { t, te } = useI18n();
 const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
@@ -26,7 +27,7 @@ const publishing = ref('');
 const declaring = ref<{ token: string; name: string; format: string } | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
 /** The starter wardrobe, and the one being taken. */
-const starters = [...wardrobe.items.map((i) => ({ id: i.id, slot: i.slot })), ...effectStarters.starters.map((s) => ({ id: s.id, slot: 'effect' }))];
+const starters = [...wardrobe.items.map((i) => ({ id: i.id, slot: i.slot })), ...effectStarters.starters.map((s) => ({ id: s.id, slot: 'effect' })), ...overlayStarters.starters.map((s) => ({ id: s.id, slot: 'overlay' }))];
 const taking = ref('');
 const taken = computed(() => new Set(items.value.filter((i) => i.starter && i.status !== 'refused' && i.status !== 'failed').map((i) => i.starter!)));
 

@@ -42,6 +42,11 @@ describe('what each person shows as', () => {
     expect([1, 2, 3, 4, 5].map((e) => p.shown!(e))).toEqual(['full', 'full', 'impostor', 'impostor', 'full']);
     expect(viewerPolicy({ ...s, shield: 0, hidden: [] }, 1, viewer).shown!(3)).toBe('full');
   });
+  it('shows everyone but the viewer as a fallback in safe mode (S6.02)', () => {
+    const s = { ...defaultSettings().avatar, shield: 0, hidden: [] };
+    const p = viewerPolicy(s, 1, { ...viewer, safe: true });
+    expect([1, 2, 3, 4, 5].map((e) => p.shown!(e))).toEqual(['full', 'impostor', 'impostor', 'impostor', 'impostor']);
+  });
   it('scales the counts with the tuner', () => {
     const s = { ...defaultSettings().avatar, full: 8, tier: 'medium' as const };
     expect(viewerPolicy(s, 1, viewer).full).toBe(8);

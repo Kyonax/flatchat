@@ -407,9 +407,10 @@ ipcMain.handle('flatchat:items:upload', async (event, given: unknown) => {
     : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, {
         title: 'Upload an item',
         filters: [
-          { name: 'Items and effects', extensions: [...MODEL_EXTENSIONS.filter((e) => e !== 'vrm'), ...EFFECT_EXTENSIONS] },
+          { name: 'Items, effects and overlays', extensions: [...MODEL_EXTENSIONS.filter((e) => e !== 'vrm'), ...EFFECT_EXTENSIONS, 'png'] },
           { name: 'Items (GLB, FBX, OBJ, DAE, .blend)', extensions: MODEL_EXTENSIONS.filter((e) => e !== 'vrm') },
           { name: 'Effects (Effekseer .efkefc, .efk, .efkpkg, or a .zip)', extensions: [...EFFECT_EXTENSIONS] },
+          { name: 'Overlays (a PNG, 512 px a side at most)', extensions: ['png'] },
         ],
         properties: ['openFile'],
       });
@@ -439,7 +440,7 @@ ipcMain.handle('flatchat:items:delete', async (_event, id: unknown) => {
 const itemDeliveries = new Map<string, { at: number; d: Promise<{ manifest: unknown; links: Record<string, string> }> }>();
 ipcMain.handle('flatchat:item-file', async (_event, manifest: unknown, part: unknown) => {
   if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || !auth || !cache) return { ok: false, error: 'bad-request' };
-  if (part !== 'manifest' && part !== 'prop' && part !== 'effect' && !(BODY_KITS as readonly unknown[]).includes(part)) return { ok: false, error: 'bad-request' };
+  if (part !== 'manifest' && part !== 'prop' && part !== 'effect' && part !== 'overlay' && !(BODY_KITS as readonly unknown[]).includes(part)) return { ok: false, error: 'bad-request' };
   try {
     let entry = itemDeliveries.get(manifest);
     if (!entry || Date.now() - entry.at > 50 * 60_000) {
@@ -450,7 +451,7 @@ ipcMain.handle('flatchat:item-file', async (_event, manifest: unknown, part: unk
     const d = await entry.d;
     const m = checkItemManifest(d.manifest);
     if (part === 'manifest') return { ok: true, manifest: m };
-    const hash = part === 'prop' ? m.prop?.file : part === 'effect' ? m.effect?.file : m.fits[part as (typeof BODY_KITS)[number]]?.file;
+    const hash = part === 'prop' ? m.prop?.file : part === 'effect' ? m.effect?.file : part === 'overlay' ? m.overlay?.file : m.fits[part as (typeof BODY_KITS)[number]]?.file;
     const link = d.links[part as string];
     if (!hash || !link) return { ok: false, error: 'not-found' };
     const bytes = await cachedFile(hash, link);
