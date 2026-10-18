@@ -142,6 +142,11 @@ jobs:
         run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --bench=1 --bench-look=1 --bench-out=look-bench.json --enable-unsafe-swiftshader && cat look-bench.json
       - name: The audio bench, the CPU cost of occlusion and reverb
         run: xvfb-run -a apps/client/release/linux-unpacked/flatchat --bench=2 --bench-audio=1 --bench-out=audio-bench.json --enable-unsafe-swiftshader && cat audio-bench.json
+      # S7.01: the self-update with the packaged client: a later version in a feed signed with a
+      # throwaway key is downloaded and checked; a feed changed after signing, a package that is not
+      # the one named, and another key are each refused.
+      - name: The self-update, a signed feed and three tampered ones
+        run: xvfb-run -a node tools/bots/src/update-check.ts apps/client/release/linux-unpacked/flatchat
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -196,8 +201,29 @@ jobs:
           $code = $LASTEXITCODE
           Get-Content smoke-windows.json
           exit $code
+      # S7.01: the installer goes in silently for this user, the installed FlatChat draws, and the
+      # uninstaller takes it out again, as the self-update and a player would.
+      - name: The installer, in and out silently
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem apps/client/release/*-setup.exe | Select-Object -First 1
+          if (-not $setup) { throw 'no installer was built' }
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/S'
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Depth 2 -Filter FlatChat.exe | Select-Object -First 1
+          if (-not $exe) { throw 'FlatChat.exe is not installed' }
+          Write-Output "installed: $($exe.FullName)"
+          Start-Process -Wait -FilePath $exe.FullName -ArgumentList '--smoke', '--smoke-out=installed-smoke.json'
+          Get-Content installed-smoke.json
+          $uninstaller = Get-ChildItem $exe.DirectoryName -Filter 'Uninstall*.exe' | Select-Object -First 1
+          if (-not $uninstaller) { throw 'no uninstaller beside FlatChat.exe' }
+          Start-Process -Wait -FilePath $uninstaller.FullName -ArgumentList '/S'
+          Start-Sleep -Seconds 10
+          if (Test-Path $exe.FullName) { throw 'FlatChat.exe is still there after the uninstall' }
+          Write-Output 'uninstalled'
       - uses: actions/upload-artifact@v7
         with:
           name: client-windows
-          path: apps/client/release/*.zip
+          path: |
+            apps/client/release/*.zip
+            apps/client/release/*-setup.exe
           retention-days: 30
