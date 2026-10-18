@@ -141,3 +141,39 @@ export function checkManifest(value: unknown): AvatarManifest {
   if (!ok) throw new Error('not an avatar manifest of this format');
   return m;
 }
+
+/** The extensions an avatar level may use: the converter writes no others. */
+export const LEVEL_EXTENSIONS: ReadonlySet<string> = new Set([
+  'VRMC_vrm',
+  'VRMC_springBone',
+  'VRMC_materials_mtoon',
+  'VRMC_node_constraint',
+  'VRMC_materials_hdr_emissiveMultiplier',
+  'KHR_texture_basisu',
+  'KHR_materials_unlit',
+  'KHR_texture_transform',
+  'KHR_mesh_quantization',
+  'EXT_meshopt_compression',
+]);
+
+/** A level the client is about to parse, checked first (it came from the core's store by its
+ *  hash, so this guards the parser, not the content): one GLB, everything inside it, VRM 1.0,
+ *  only the converter's extensions, within the hard limits. Throws with the reason. */
+export function checkAvatarLevel(json: Record<string, unknown>): void {
+  const list = (k: string): Array<Record<string, unknown>> => (Array.isArray(json[k]) ? (json[k] as Array<Record<string, unknown>>) : []);
+  if ((json['asset'] as { version?: unknown } | undefined)?.version !== '2.0') throw new Error('not glTF 2.0');
+  if ([...list('buffers'), ...list('images')].some((x) => x['uri'] !== undefined)) throw new Error('an avatar level keeps every buffer and image inside it');
+  const used = (json['extensionsUsed'] ?? []) as unknown[];
+  for (const e of used) if (typeof e !== 'string' || !LEVEL_EXTENSIONS.has(e)) throw new Error(`an extension the converter does not write: ${String(e)}`);
+  const vrm = (json['extensions'] as Record<string, { specVersion?: unknown }> | undefined)?.['VRMC_vrm'];
+  if (vrm?.specVersion !== '1.0') throw new Error('not a VRM 1.0 avatar');
+  const over = (n: number, max: number, what: string): void => {
+    if (n > max) throw new Error(`${n} ${what}, over ${max}`);
+  };
+  over(list('nodes').length, AVATAR_LIMITS.nodes, 'nodes');
+  over(list('meshes').length, AVATAR_LIMITS.meshes, 'meshes');
+  over(list('materials').length, AVATAR_LIMITS.materials, 'materials');
+  over(list('images').length, AVATAR_LIMITS.textures, 'textures');
+  over(list('skins').length, AVATAR_LIMITS.skins, 'skins');
+}
+
