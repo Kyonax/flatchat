@@ -5,6 +5,7 @@ import { checkJoin, type NetCheck } from './net-check';
 import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
 import { runConvertedCrowd } from './crowd/converted';
+import { runLookCheck } from './crowd/look';
 import { runCrowd } from './crowd/crowd';
 import LoungeView from './lounge/LoungeView.vue';
 import ClientApp from './ui/ClientApp.vue';
@@ -73,6 +74,15 @@ const appMode = !smoke && !(benchSeconds > 0) && !(crowdSeconds > 0) && !loungeU
 onMounted(async () => {
   if (loungeUrl || appMode) return;
   if (!canvas.value) return;
+  // The look check (S6.03, S6.04): the default materials against a VRM viewer's, creator shaders drawn.
+  if (crowdSeconds > 0 && params.get('look') === '1') {
+    const report = await runLookCheck(canvas.value, (line) => {
+      crowdLine.value = line;
+    });
+    crowdLine.value = report['error'] ? `Look check failed: ${String(report['error'])}` : 'Look check done';
+    await window.flatchat?.crowdReport(report);
+    return;
+  }
   if (crowdSeconds > 0 && params.get('converted') === '1') {
     const report = await runConvertedCrowd(canvas.value, {
       seconds: crowdSeconds,

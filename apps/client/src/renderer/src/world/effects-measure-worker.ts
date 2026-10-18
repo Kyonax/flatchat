@@ -20,7 +20,9 @@ self.onmessage = (ev: MessageEvent<{ id: number; bytes: Uint8Array; scale: numbe
       const check = checkEffectBundle(readBundle(bytes), 'world');
       if (check.problems.length) throw new Error(check.problems.join('; '));
       build ??= effectsBuild();
-      const result = await measure(await build, check.bundle, { scale });
+      // Two seeds for five seconds, a third of the converter's run: the peaks decide here, and the
+      // guard's caps and trimming catch a seed this missed while it plays.
+      const result = await measure(await build, check.bundle, { scale, frames: 300, seeds: [1, 2] });
       const stats = { version: check.file.version, textures: check.textures, texturePixels: check.texturePixels, models: check.models, sounds: check.sounds, distortion: check.file.resources.distortionImages.length > 0 };
       self.postMessage({ id, ok: true, result, stats });
     } catch (err) {

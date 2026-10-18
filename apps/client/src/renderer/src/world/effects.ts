@@ -41,8 +41,10 @@ export interface EffectStats {
   playing: number;
   world: number;
   instances: number;
-  /** Effects not played: over a budget, blocked, or not allowed (Q-M10). */
+  /** Effects not played: over a budget, blocked, or not allowed (Q-M10); and why the last one was
+   *  (a world's effect that did not pass the client's own check, or its budget). */
   refused: number;
+  refusedWhy: string;
   /** Effects stopped by the guard this visit. */
   stopped: number;
   /** Whether the scene's depth hid effects behind what stands in front of them. */
@@ -81,11 +83,12 @@ const visible = (o: THREE.Object3D): boolean => {
 };
 
 /** A world effect's slowest update in the client's dry run, at most: far above a busy worker's
- *  scheduling noise, far below the runtime's worst (a broken file took 32 s). */
-const WORLD_HITCH_US = 100_000;
+ *  scheduling noise (a loaded machine drawing in software paused the worker past 100 ms), far
+ *  below the runtime's worst (a broken file took 32 s). */
+const WORLD_HITCH_US = 1_000_000;
 
 export class EffectsLayer implements EffectSink {
-  readonly stats: EffectStats = { playing: 0, world: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false };
+  readonly stats: EffectStats = { playing: 0, world: 0, instances: 0, refused: 0, refusedWhy: '', stopped: 0, depth: false, backend: '', failed: false };
   /** The viewer's policy: whether an owner's effects show. */
   allowed: (owner: Owner) => boolean = () => true;
   private runtime: EffectsRuntime | undefined;
@@ -118,17 +121,20 @@ export class EffectsLayer implements EffectSink {
     let measured;
     try {
       measured = await this.measurer.measure(bytes, e.scale);
-    } catch {
+    } catch (err) {
       this.stats.refused += 1;
+      this.stats.refusedWhy = (err instanceof Error ? err.message : String(err)).slice(0, 200);
       return undefined;
     }
     const { run, stats } = measured;
     const fit: EffectFit = { file: e.file, bytes: bytes.length, ...stats, peak: run.peak, frames: run.frames, scale: e.scale, updateUs: run.updateUs };
     // Its peaks decide here. Its time is judged on this machine while it plays (the watches): the
     // dry run's update limit is for the converter's machine, and a weak laptop is slower. One
-    // update the dry run saw take a tenth of a second would freeze the view as long, so that refuses.
-    if (run.missing.length || run.slowestUs > WORLD_HITCH_US || effectFitProblems({ ...fit, updateUs: 0 }, 'world').length) {
+    // update the dry run saw take a whole second would freeze the view as long, so that refuses.
+    const problems = [...(run.missing.length ? [`it asked for ${run.missing.join(', ')}, which its bundle lacks`] : []), ...(run.slowestUs > WORLD_HITCH_US ? [`one of its updates took ${Math.round(run.slowestUs / 1000)} ms`] : []), ...effectFitProblems({ ...fit, updateUs: 0 }, 'world')];
+    if (problems.length) {
       this.stats.refused += 1;
+      this.stats.refusedWhy = problems.join('; ').slice(0, 200);
       return undefined;
     }
     this.sources.set(e.file, async () => bytes);
@@ -178,7 +184,10 @@ export class EffectsLayer implements EffectSink {
     if (this.stats.failed || w.admitted || !this.allowed(w.owner)) return;
     const refusal = this.budget.admit(w.owner, w.id, w.fit.file, w.fit.peak);
     if (refusal) {
-      if (!w.refused) this.stats.refused += 1;
+      if (!w.refused) {
+        this.stats.refused += 1;
+        this.stats.refusedWhy = refusal;
+      }
       w.refused = true;
       return;
     }

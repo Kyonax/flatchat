@@ -106,6 +106,9 @@ export interface AvatarSettings {
   hidden: string[];
   /** While frames are slow, fewer avatars in full (S4.09). */
   autoTune: boolean;
+  /** Creator shaders (S6.03, T-01): the viewer's own and friends' always; strangers' only when this
+   *  is on (and never on the low tier); everyone else sees each material's own look. */
+  shadersStrangers: boolean;
   /** The avatar's proportions (S4.10), each a share of the avatar as made, 0.8 to 1.25. */
   proportions: { width: number; arms: number; legs: number; head: number };
   /** What each account on this computer wears now (S5.05), by account id: sent to every world it
@@ -183,7 +186,7 @@ export function defaultSettings(): Settings {
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
-    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
+    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, shadersStrangers: false, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
     sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
     effects: { show: true, strangers: false },
     overlays: { mine: true, world: true, allowed: [] },
@@ -259,6 +262,7 @@ export function cleanSettings(raw: unknown): Settings {
       shield: Math.round(num(avatar['shield'], 0, 4, d.avatar.shield)),
       hidden: Array.isArray(avatar['hidden']) ? [...new Set(avatar['hidden'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
       autoTune: bool(avatar['autoTune'], d.avatar.autoTune),
+      shadersStrangers: bool(avatar['shadersStrangers'], d.avatar.shadersStrangers),
       proportions: (() => {
         const p = obj(avatar['proportions']);
         const share = (v: unknown): number => Math.round(num(v, PROPORTION_RANGE.min, PROPORTION_RANGE.max, 1) * 100) / 100;

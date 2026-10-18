@@ -33,10 +33,11 @@ import type { VRM } from '@pixiv/three-vrm';
 import { createVRMAnimationClip, type VRMAnimation } from '@pixiv/three-vrm-animation';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three/webgpu';
-import { disposeLevel, parseAnimation, parseItemFile, parseLevel } from './avatar-loader';
+import { disposeLevel, type MaterialShader, parseAnimation, parseItemFile, parseLevel } from './avatar-loader';
 import { type BoneAngles, type Expression, handPose, type HandPose, mouthShapes } from './avatar-pose';
 import { builtInEmote } from './clips';
 import { Motion } from './motion';
+import { compileCreatorShader } from './creator-shader';
 import type { EffectSink } from './effects';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 import { addSegments, type Segments, setSegments, useSegments } from './segments';
@@ -73,6 +74,9 @@ export interface AvatarPolicy {
   minRank: Rank;
   /** Entities the viewer chose to see as impostors (S4.09). */
   shown?: (entity: number) => 'full' | 'impostor';
+  /** Whose creator shaders the viewer sees on their full avatar (S6.03, T-01); the rest see each
+   *  material's own look. None when left out. */
+  shaders?: (entity: number) => boolean;
 }
 
 export const DEFAULT_POLICY: AvatarPolicy = { full: 8, lower: 20, springs: 6, minRank: 'poor' };
@@ -150,6 +154,10 @@ interface Entry {
   playing: { anim: string; vrm: VRM; mixer: THREE.AnimationMixer; action: THREE.AnimationAction; duration: number; loop: boolean; mouth: boolean } | undefined;
   /** The emote last loaded or tried for this level: tried once, not every frame. */
   emoteTried: string | undefined;
+  /** The full level's meshes with a creator shader (S6.03): each mesh's own material (the
+   *  fallback), the shader, and the material made of it once it was first wanted. */
+  shaders: Array<{ mesh: THREE.Mesh; fallback: THREE.Material; shader: MaterialShader; made?: THREE.Material; broken?: boolean }>;
+  shaderOn: boolean;
 }
 
 const euler = new THREE.Euler();
@@ -305,6 +313,8 @@ export class AvatarLayer {
       emote: this.pendingEmotes.get(entity),
       playing: undefined,
       emoteTried: undefined,
+      shaders: [],
+      shaderOn: false,
     });
   }
 
@@ -369,6 +379,13 @@ export class AvatarLayer {
   }
 
   private clear(e: Entry): void {
+    // Creator shaders' materials are this entry's own: the fallbacks go back before the level goes.
+    for (const r of e.shaders) {
+      r.mesh.material = r.fallback;
+      r.made?.dispose();
+    }
+    e.shaders = [];
+    e.shaderOn = false;
     e.rest = new Map();
     e.segments = undefined;
     // The worn items share their parsed files with every other wearer: off before the level goes.
@@ -440,9 +457,37 @@ export class AvatarLayer {
         if (e.vrm && e.dressed !== this.outfitKey(e)) this.dressUp(s.entity, e);
         if (e.vrm && e.emote) this.readyEmote(e);
       }
+      this.applyShaders(e, s.entity);
       if (!s.hidden) drawn.add(s.entity);
     }
     return drawn;
+  }
+
+  /** Creator shaders on or off for one avatar, as the policy says (S6.03): each material made from
+   *  its graph the first time it is wanted; one that fails to build keeps its fallback for good. */
+  private applyShaders(e: Entry, entity: number): void {
+    const want = e.level === 'lod0' && e.shaders.length > 0 && (this.policy.shaders?.(entity) ?? false);
+    if (want === e.shaderOn) return;
+    e.shaderOn = want;
+    for (const r of e.shaders) {
+      if (want && !r.broken) {
+        try {
+          r.made ??= compileCreatorShader(r.shader.graph, r.shader.textures, r.fallback);
+          r.mesh.material = r.made;
+        } catch {
+          r.broken = true;
+          this.shaderFailures += 1;
+        }
+      } else r.mesh.material = r.fallback;
+    }
+  }
+
+  /** Creator shaders that failed to build, and the avatars drawing theirs now. */
+  shaderFailures = 0;
+  shaderCount(): number {
+    let n = 0;
+    for (const e of this.entries.values()) if (e.shaderOn) n += 1;
+    return n;
   }
 
   /** One load at a time: fetch, parse, then swap in. */
@@ -484,6 +529,12 @@ export class AvatarLayer {
           e.rest2 = restPlaces(parsed.vrm.scene);
           e.segments = addSegments(parsed.vrm.scene, (b) => parsed.vrm.humanoid.getRawBoneNode(b as Parameters<VRM['humanoid']['getRawBoneNode']>[0]) ?? undefined);
           e.holder.add(parsed.vrm.scene);
+          // Creator shaders come on the full level only (the converter leaves them off the rest).
+          parsed.vrm.scene.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            const shader = mesh.isMesh && !Array.isArray(mesh.material) ? (mesh.material.userData['flatchatShader'] as MaterialShader | undefined) : undefined;
+            if (shader) e.shaders.push({ mesh, fallback: mesh.material as THREE.Material, shader });
+          });
         }
         e.level = level;
         this.applyProportions(e);

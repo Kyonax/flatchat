@@ -24,7 +24,7 @@ const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint
 const offline = ref(false);
 const joining = ref('');
 const joinError = ref('');
-const travel = ref<{ status: 'going' | 'failed' | 'updating'; text: string } | undefined>(undefined);
+const travel = ref<{ status: 'going' | 'failed' | 'updating' | 'gpu'; text: string } | undefined>(undefined);
 let visits = 0;
 let travelling = false;
 let offAuth: (() => void) | undefined;
@@ -110,15 +110,16 @@ async function goThrough(to: { world: string; spawn: string }): Promise<void> {
   }
 }
 
-/** A world that took a new build restarts on it (S3.06): once it is online again, back in. */
-async function rejoin(): Promise<void> {
+/** A world that took a new build restarts on it (S3.06): once it is online again, back in. After
+ *  a GPU reset (S6.03, `fast`) the world is still there: back in at once, with a fresh renderer. */
+async function rejoin(fast = false): Promise<void> {
   const current = world.value;
   if (!bridge || !current || current.ticket.local || travelling) return;
   travelling = true;
-  travel.value = { status: 'updating', text: '' };
+  travel.value = { status: fast ? 'gpu' : 'updating', text: '' };
   try {
     for (let attempt = 0; attempt < 20; attempt++) {
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, fast && attempt === 0 ? 200 : 3000));
       if (world.value !== current) return;
       const info = await bridge.world(current.world.id);
       if (!info.ok || !info.world.online) continue;

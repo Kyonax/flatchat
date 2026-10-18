@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('flatchat', {
     chrome: process.versions['chrome'],
     node: process.versions['node'],
   },
+  // The end-to-end test's own hooks (a GPU reset it causes, S6.03): only when it runs the client.
+  e2e: process.env['FLATCHAT_E2E_AVATAR'] !== undefined,
   signal: (url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }> => ipcRenderer.invoke('flatchat:signal', url, offer),
   smokeReport: (report: unknown): Promise<void> => ipcRenderer.invoke('flatchat:smoke-report', report),
   benchReport: (report: unknown): Promise<void> => ipcRenderer.invoke('flatchat:bench-report', report),

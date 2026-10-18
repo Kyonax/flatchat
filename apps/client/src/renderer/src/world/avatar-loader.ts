@@ -5,15 +5,57 @@
 // only the converter's extensions, the hard limits). MToon becomes node materials on the WebGPU
 // renderer; each avatar gets one skeleton, shared texture objects and no outline pass, as spike
 // S0.09 measured a crowd needs.
-import { checkAnimationFile, checkAvatarLevel, checkItemFit, checkItemProp, readGltf } from '@flatchat/content';
+import { type CheckedGraph, checkAnimationFile, checkAvatarLevel, checkItemFit, checkItemProp, checkShaderGraph, readGltf, SHADER_EXTENSION } from '@flatchat/content';
 import { MToonMaterialLoaderPlugin, type VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { type VRMAnimation, VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
 import { MToonNodeMaterial } from '@pixiv/three-vrm/nodes';
+import type { GLTF, GLTFLoaderPlugin, GLTFParser } from 'three/addons/loaders/GLTFLoader.js';
 import type * as THREE from 'three/webgpu';
 import { shareTextures } from '../crowd/avatar';
 import { loader } from './scene-loader';
 
 export class AvatarLoadError extends Error {}
+
+/** A material's creator shader (S6.03) as the loader leaves it: the graph checked again here (the
+ *  client trusts no file), and the textures it reads. Drawn only when the viewer's policy allows. */
+export interface MaterialShader {
+  graph: CheckedGraph;
+  textures: Array<THREE.Texture | undefined>;
+}
+
+/** FLATCHAT_shader read onto each material it is on (material.userData.flatchatShader). A graph
+ *  that does not check is left out: the material keeps its own look. */
+class CreatorShaderPlugin implements GLTFLoaderPlugin {
+  readonly name = SHADER_EXTENSION;
+  private readonly parser: GLTFParser;
+  constructor(parser: GLTFParser) {
+    this.parser = parser;
+  }
+  async afterRoot(result: GLTF): Promise<void> {
+    const defs = (this.parser.json as { materials?: Array<{ extensions?: Record<string, { graph?: unknown; textures?: Array<{ index?: unknown } | null> }> }> }).materials ?? [];
+    const users = new Map<number, THREE.Material[]>();
+    result.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const index = this.parser.associations.get(m)?.materials;
+        if (index !== undefined) users.set(index, [...(users.get(index) ?? []), m]);
+      }
+    });
+    for (const [i, def] of defs.entries()) {
+      const ext = def.extensions?.[SHADER_EXTENSION];
+      if (!ext || !users.has(i)) continue;
+      let graph: CheckedGraph;
+      try {
+        graph = checkShaderGraph(ext.graph);
+      } catch {
+        continue;
+      }
+      const textures = await Promise.all((ext.textures ?? []).map(async (t) => (t && typeof t.index === 'number' ? ((await this.parser.getDependency('texture', t.index)) as THREE.Texture) : undefined)));
+      for (const m of users.get(i)!) m.userData['flatchatShader'] = { graph, textures } satisfies MaterialShader;
+    }
+  }
+}
 
 export interface ParsedLevel {
   vrm: VRM;
@@ -30,6 +72,7 @@ export async function parseLevel(renderer: THREE.WebGPURenderer, bytes: ArrayBuf
   }
   const l = loader(renderer);
   l.register((parser) => new VRMLoaderPlugin(parser, { mtoonMaterialPlugin: new MToonMaterialLoaderPlugin(parser, { materialType: MToonNodeMaterial }) }));
+  l.register((parser) => new CreatorShaderPlugin(parser));
   const gltf = await l.parseAsync(bytes, '');
   const vrm = gltf.userData['vrm'] as VRM | undefined;
   if (!vrm) throw new AvatarLoadError('the level has no VRM data');

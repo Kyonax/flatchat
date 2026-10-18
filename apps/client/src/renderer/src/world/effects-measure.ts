@@ -2,7 +2,7 @@
 // Measuring a world's effect before it plays (S6.01): one worker (effects-measure-worker.ts,
 // inlined, so it starts under the page's policy), effects measured one at a time, the worker ended
 // and replaced when one runs past the deadline (a broken effect can stall the runtime in one call).
-import { EFFECT_LIMITS, type EffectFit } from '@flatchat/content';
+import type { EffectFit } from '@flatchat/content';
 import type { DryRun } from '@flatchat/effects';
 import MeasureWorker from './effects-measure-worker?worker&inline';
 
@@ -13,6 +13,12 @@ export interface Measured {
   run: DryRun;
   stats: EffectStatsRead;
 }
+
+/** How long one effect's measuring may take here: longer than the converter's 20 s, because this is
+ *  a viewer's machine, maybe a weak or busy one, and the measuring runs beside the view without
+ *  holding it up (a loaded desktop took over 20 s for the tornado). It only has to stop a broken
+ *  effect, whose single update can take half a minute. */
+export const MEASURE_MS = 45_000;
 
 export class EffectMeasurer {
   private worker: Worker | undefined;
@@ -34,8 +40,8 @@ export class EffectMeasurer {
       const timer = setTimeout(() => {
         worker.terminate();
         if (this.worker === worker) this.worker = undefined;
-        reject(new Error(`the effect took longer than ${EFFECT_LIMITS.dryRunMs / 1000} s to play`));
-      }, EFFECT_LIMITS.dryRunMs);
+        reject(new Error(`the effect took longer than ${MEASURE_MS / 1000} s to play`));
+      }, MEASURE_MS);
       const done = (ev: MessageEvent<{ id: number; ok: boolean; result?: DryRun; stats?: EffectStatsRead; error?: string }>): void => {
         if (ev.data.id !== id) return;
         clearTimeout(timer);

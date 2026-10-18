@@ -33,6 +33,8 @@
 //           [--crowd-headroom=1] [--crowd-out=FILE] [--crowd-shot=FILE.png] [--bench-size=WxH]
 //                                                    spike S0.09: a crowd of the folder's VRM avatars
 //           [--crowd-converted=1 [--crowd-in-view=55] [--crowd-tier=low|medium|high] [--crowd-proportions=1]]
+//           [--crowd-look=1]                         S6.03/S6.04's look check: the folder's avatars against a
+//                                                    VRM viewer's pipeline, creator shaders drawn (look-check.ts)
 //                                                    S4.05/S4.12: the folder holds converted avatars
 //                                                    (tools/bots/src/avatar-bench.ts), drawn by the world's own avatar layer
 //                                                    (with --crowd-tier: that tier's policy as it ships,
@@ -106,6 +108,9 @@ export interface CrowdFlags {
   tier?: 'low' | 'medium' | 'high';
   /** S4.10's look check: everyone at the ends of the proportion sliders (80 and 125 %). */
   proportions?: boolean;
+  /** S6.03 and S6.04's look check (crowd/look.ts): each avatar against a VRM viewer's pipeline,
+   *  creator shaders drawn; the folder holds look-check.ts's avatars. */
+  look?: boolean;
 }
 
 export const DEFAULT_BENCH_SIZE: Size = { width: 1280, height: 720 };
@@ -236,6 +241,7 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
       inView: number('crowd-in-view', Math.min(55, present), 0, 1000),
     };
     if (number('crowd-proportions', 0, 0, 1) === 1) flags.crowd.proportions = true;
+    if (number('crowd-look', 0, 0, 1) === 1) flags.crowd.look = true;
     const tier = value(argv, 'crowd-tier');
     if (tier === 'low' || tier === 'medium' || tier === 'high') flags.crowd.tier = tier;
     else if (tier !== undefined) errors.push(`--crowd-tier must be low, medium or high, got ${tier}`);
@@ -272,6 +278,7 @@ export function rendererQuery(flags: ClientFlags): Record<string, string> {
       lodratio: String(c.lodRatio),
       merge: c.merge ? '1' : '0',
       ...(c.converted ? { converted: '1', inview: String(c.inView), ...(c.tier ? { tier: c.tier } : {}), ...(c.proportions ? { proportions: '1' } : {}) } : {}),
+      ...(c.look ? { look: '1' } : {}),
     };
   }
   if (flags.bench !== undefined) {

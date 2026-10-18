@@ -35,6 +35,7 @@ import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
 import { builtInEmote } from './clips';
 import { EffectsLayer, type EffectStats } from './effects';
+import { gpuResets, loseGpu, watchGpu } from './gpu-reset';
 import { OverlayLayer, type ShownOverlay } from './overlays';
 import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
@@ -130,6 +131,12 @@ export interface WorldState {
   /** Screen overlays showing now (S6.02), and safe mode: the safe-mode key's state. */
   overlays: ShownOverlay[];
   safeMode: boolean;
+  /** Avatars drawing their creator shaders now (S6.03), and whether the GPU was reset under this
+   *  view (the page then joins again, with creator shaders off for the session). */
+  shaders: number;
+  gpuReset: boolean;
+  /** GPU resets in this run of the client (creator shaders stay off after one). */
+  gpuResets: number;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -297,9 +304,12 @@ export class WorldSession {
       emote: '',
       emoting: false,
       emoteSounds: 0,
-      effects: { playing: 0, world: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false },
+      effects: { playing: 0, world: 0, instances: 0, refused: 0, refusedWhy: '', stopped: 0, depth: false, backend: '', failed: false },
       overlays: [],
       safeMode: false,
+      shaders: 0,
+      gpuReset: false,
+      gpuResets: gpuResets.count,
     });
   }
 
@@ -310,6 +320,13 @@ export class WorldSession {
     const renderer = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
     await renderer.init();
     this.renderer = renderer;
+    // A GPU reset (S6.03, T-01): creator shaders off for the session; the page joins again.
+    this.detachers.push(
+      watchGpu(renderer, this.canvas, () => {
+        this.state.gpuReset = true;
+      }),
+    );
+    if (window.flatchat?.e2e) (window as unknown as { flatchatTest?: { loseGpu(): void } }).flatchatTest = { loseGpu: () => loseGpu(renderer) };
     this.state.backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     const resize = (): void => {
@@ -653,6 +670,8 @@ export class WorldSession {
       this.state.fps = Math.round((this.frames * 1000) / (now - this.fpsAt));
       if (this.avatarLayer) {
         this.state.avatars = this.avatarLayer.counts();
+        this.state.shaders = this.avatarLayer.shaderCount();
+        this.state.gpuResets = gpuResets.count;
         this.state.dressed = this.avatarLayer.dressedItems();
         this.state.emoting = this.avatarLayer.emoting(this.entity);
         this.state.emoteSounds = this.emoteSounds?.count ?? 0;
@@ -762,6 +781,16 @@ export class WorldSession {
       };
       this.overlays.refresh(now);
     }
+    // Whose creator shaders show (S6.03, T-01): none after a GPU reset or in safe mode; the
+    // viewer's own and friends'; strangers' only when allowed, not on the low tier, not shielded.
+    const shadersOk = gpuResets.count === 0 && !safe;
+    policy.shaders = (e) => {
+      if (!shadersOk) return false;
+      if (e === this.entity) return true;
+      const account = this.people.get(e)?.account;
+      if (account !== undefined && friends.has(account)) return true;
+      return s.shadersStrangers && s.tier !== 'low' && policy.shown?.(e) !== 'impostor';
+    };
     if (this.avatarLayer) this.avatarLayer.policy = policy;
     if (this.effects) {
       // Whose effects show (S6.01, Q-M10): one's own and the world's; anyone else's when their

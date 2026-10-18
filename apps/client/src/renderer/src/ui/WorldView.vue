@@ -23,9 +23,9 @@ const props = defineProps<{
   paused: boolean;
   /** A portal's journey (S2.11): where to, or why it failed; or the way back into a world that
    *  restarted on a new build (S3.06). */
-  travel: { status: 'going' | 'failed' | 'updating'; text: string } | undefined;
+  travel: { status: 'going' | 'failed' | 'updating' | 'gpu'; text: string } | undefined;
 }>();
-const emit = defineEmits<{ leave: []; settings: []; change: [patch: Partial<Settings>]; travel: [to: Travel]; rejoin: [] }>();
+const emit = defineEmits<{ leave: []; settings: []; change: [patch: Partial<Settings>]; travel: [to: Travel]; rejoin: [fast?: boolean] }>();
 const { t } = useI18n();
 
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -129,6 +129,9 @@ function onKey(e: KeyboardEvent): void {
   // The safe-mode key (S6.02): Shift+Esc, always, whatever is open.
   if (e.code === 'Escape' && e.shiftKey && state.value?.status === 'joined') {
     e.preventDefault();
+    safeKeyAt = performance.now();
+    // The pointer's release may have come first and opened the menu: not for this key.
+    if (menu.value && safeKeyAt - lockMenuAt < 500) menu.value = false;
     session?.toggleSafeMode();
     return;
   }
@@ -267,10 +270,19 @@ function give(p: Person, role: string): void {
   if (giving.value.includes(role as Role)) session?.giveRole(p.account, role as Role);
 }
 
+/** When the safe-mode key was last pressed, and when a released pointer last opened the menu: the
+ *  browser always releases the pointer on Esc, Shift held or not, in either order with the key. */
+let safeKeyAt = -Infinity;
+let lockMenuAt = -Infinity;
+
 function onLockChange(): void {
   // Esc releases the pointer (the browser's own key): that opens the menu, unless chat, the
-  // People panel or a report took it.
-  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !emotesOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
+  // People panel or a report took it, or it was the safe-mode key (Shift+Esc).
+  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !emotesOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) {
+    if (performance.now() - safeKeyAt < 500) return;
+    menu.value = true;
+    lockMenuAt = performance.now();
+  }
 }
 
 function look(): void {
@@ -323,6 +335,14 @@ watch(
 watch(updating, (now) => {
   if (now) emit('rejoin');
 });
+
+// A GPU reset (S6.03): this view's renderer is gone; join again at once with a fresh one.
+watch(
+  () => state.value?.gpuReset,
+  (reset) => {
+    if (reset) emit('rejoin', true);
+  },
+);
 
 watch(overlay, (open) => {
   if (session) session.typing = open;
@@ -391,6 +411,8 @@ onBeforeUnmount(() => {
       :data-lod1="state.avatars.lod1"
       :data-lod2="state.avatars.lod2"
       :data-impostor="state.avatars.impostor"
+      :data-shaders="state.shaders"
+      :data-gpu-resets="state.gpuResets"
     />
     <span
       v-if="state?.status === 'joined'"
@@ -407,6 +429,7 @@ onBeforeUnmount(() => {
       :data-world="state.effects.world"
       :data-instances="state.effects.instances"
       :data-refused="state.effects.refused"
+      :data-refused-why="state.effects.refusedWhy"
       :data-stopped="state.effects.stopped"
       :data-depth="state.effects.depth"
       :data-backend="state.effects.backend"
@@ -434,8 +457,9 @@ onBeforeUnmount(() => {
       :class="{ error: travel.status === 'failed' }"
       role="status"
       data-test="travel"
+      :data-status="travel.status"
     >
-      {{ travel.status === 'updating' ? t('world.updating') : travel.status === 'going' ? (travel.text ? t('world.travelling', { world: travel.text }) : t('world.portalOpening')) : travel.text }}
+      {{ travel.status === 'updating' ? t('world.updating') : travel.status === 'gpu' ? t('world.gpuReset') : travel.status === 'going' ? (travel.text ? t('world.travelling', { world: travel.text }) : t('world.portalOpening')) : travel.text }}
     </div>
     <div
       v-else-if="state?.status === 'connecting'"

@@ -306,6 +306,15 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
       <label class="row">
         <input
           type="checkbox"
+          :checked="settings.avatar.shadersStrangers"
+          data-test="shaders-strangers"
+          @change="avatar({ shadersStrangers: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.shadersStrangers') }}</span>
+      </label>
+      <label class="row">
+        <input
+          type="checkbox"
           :checked="settings.overlays.mine"
           data-test="overlays-mine"
           @change="overlays({ mine: ($event.target as HTMLInputElement).checked })"

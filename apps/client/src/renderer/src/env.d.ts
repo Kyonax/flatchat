@@ -134,6 +134,8 @@ interface FlatchatPerson {
 
 interface FlatchatBridge {
   versions: { electron: string; chrome: string; node: string };
+  /** Running under the end-to-end test (its hooks: a GPU reset it causes). */
+  e2e?: boolean;
   signal(url: string, offer: { type: string; sdp: string }): Promise<{ type: string; sdp: string }>;
   smokeReport(report: unknown): Promise<void>;
   benchReport(report: unknown): Promise<void>;
