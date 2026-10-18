@@ -3,3 +3,4 @@
 export { addBox, type MeshSpec, type NodeSpec, writeGlb } from './glb-writer.ts';
 export { decodeImage, fitTextures, gpuBytes, halve, type Rgba, type TextureLimits } from './textures.ts';
 export { addLevelsOfDetail, type ConvertOptions, type ConvertResult, ConvertError, convertWorld, decompose, LOD_MIN_TRIANGLES, LODS, readFolder, writeBuilt } from './world.ts';
+export { AVATAR_CONVERTER_VERSION, AvatarError, type AvatarResult, convertAvatar } from './avatar/convert.ts';
