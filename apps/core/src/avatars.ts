@@ -8,14 +8,17 @@
 // avatar's levels through signed links (they see it in the world anyway); the source is never
 // handed out. The three standard bodies (kits/bodies/, dp-001) are avatars too: any account may
 // take one without an upload (`kit`), and an avatar whose source is a kit's exact bytes is that
-// body (its delivery says `kit`), so the client knows the items made for it fit.
+// body (its delivery says `kit`), so the client knows the items made for it fit. A VRM, a GLB or a
+// DAE goes to the converter as it is; an FBX, an OBJ or a .blend is first turned into a GLB by
+// headless Blender in a sandbox of its own (S5.08, sandbox.ts); a core without Blender
+// (FLATCHAT_CORE_BLENDER unset) refuses those with that reason.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AVATAR_SOURCE_LIMIT, type AvatarManifest, BODY_KITS, type BodyKit, checkManifest, LEVELS } from '@flatchat/content';
 import type { Db, Sql } from './db.ts';
-import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter } from './sandbox.ts';
+import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter, throughBlender } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -75,6 +78,8 @@ export interface AvatarsOptions {
   converter?: ConverterProgram;
   /** The standard bodies' folder (default: the repository's kits/bodies/). */
   kits?: string;
+  /** Headless Blender (its executable), for FBX, OBJ and .blend; without it those are refused. */
+  blender?: string;
 }
 
 export class Avatars {
@@ -200,10 +205,21 @@ export class Avatars {
     const input = join(dir, 'upload');
     const out = join(dir, 'out');
     const started = Date.now();
+    const refuse = async (problems: string[]): Promise<void> => {
+      await this.o.db.query("update avatars set status = 'refused', problems = $2, converted_at = $3 where id = $1", [id, problems.join('\n').slice(0, 4000), new Date()]);
+      this.o.log?.('avatar-refused', { problems: problems.length, ms: Date.now() - started });
+    };
     try {
-      writeFileSync(input, this.o.store.read(source)!);
+      const upload = this.o.store.read(source)!;
+      writeFileSync(input, upload);
       mkdirSync(out);
-      const run = await runConverter(converterArgs(this.converter, input, out, this.o.ktx2 !== false), out, { isolated: this.isolated, timeoutMs: CONVERT_MS });
+      // An FBX, OBJ or .blend: the GLB Blender makes of it, and what it was.
+      const blended = await throughBlender(this.o.blender, upload, input, { dir, source: { sha256: source, bytes: upload.length }, isolated: this.isolated });
+      if (blended && 'refused' in blended) {
+        await refuse([blended.refused]);
+        return;
+      }
+      const run = await runConverter(converterArgs(this.converter, blended?.input ?? input, out, this.o.ktx2 !== false, { args: blended?.args ?? [] }), out, { isolated: this.isolated, timeoutMs: CONVERT_MS });
       const { code, result } = run;
       if (result?.ok && code === 0) {
         const manifest = checkManifest(result.manifest);
@@ -221,8 +237,7 @@ export class Avatars {
         await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, kit = $4, converted_at = $5, name = case when name = '' then $6 else name end where id = $1", [id, manifestHash, manifest.rank, kit, new Date(), cleanName(manifest.name, NAME_MAX)]);
         this.o.log?.('avatar-ready', { rank: manifest.rank, ...(kit ? { kit } : {}), ms: Date.now() - started });
       } else if (result && !result.ok) {
-        await this.o.db.query("update avatars set status = 'refused', problems = $2, converted_at = $3 where id = $1", [id, (result.problems ?? []).join('\n').slice(0, 4000), new Date()]);
-        this.o.log?.('avatar-refused', { problems: (result.problems ?? []).length, ms: Date.now() - started });
+        await refuse(result.problems ?? []);
       } else {
         throw new Error(converterFailure(run));
       }

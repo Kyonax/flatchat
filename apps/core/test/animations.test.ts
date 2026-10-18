@@ -36,7 +36,7 @@ const dirs: string[] = [];
 async function core(blender?: string, rhubarb?: string): Promise<FastifyInstance> {
   const dir = mkdtempSync(join(tmpdir(), 'fccoreanim-'));
   dirs.push(dir);
-  const app = await buildCore({ db, secret, publicUrl: PUBLIC, operator: 'T', contact: 't@example.org', cost: TEST_COST, ice: { stun: [], turnUrls: [] }, now: () => clock, store: localStore(dir, secret, PUBLIC), avatars: { ktx2: false }, animations: { ...(blender ? { blender } : {}), ...(rhubarb ? { rhubarb } : {}) } });
+  const app = await buildCore({ db, secret, publicUrl: PUBLIC, operator: 'T', contact: 't@example.org', cost: TEST_COST, ice: { stun: [], turnUrls: [] }, now: () => clock, store: localStore(dir, secret, PUBLIC), avatars: { ktx2: false }, ...(blender ? { blender } : {}), animations: { ...(rhubarb ? { rhubarb } : {}) } });
   apps.push(app);
   return app;
 }

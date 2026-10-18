@@ -6,10 +6,19 @@
 // (the standard bodies, for an item), writes only its own folder, loads no native addon and starts
 // no worker or child process, runs in an empty network namespace where the system allows one, and
 // has a time and a memory limit; a crash or a hostile file costs that process alone. Headless
-// Blender, which reads FBX (S5.07), cannot run under that model: runBlender is its own sandbox.
+// Blender, which reads FBX animations (S5.07) and FBX, OBJ and .blend models (S5.08), cannot run
+// under that model: runBlender is its own sandbox.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BLENDER_FORMATS, MODEL_FORMAT_NAMES, type ModelFrom, uploadFormat } from '@flatchat/content';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+/** Blender's script that turns an FBX, OBJ or .blend avatar or item into a GLB (S5.08). */
+export const TO_GLB = join(ROOT, 'tools', 'blender', 'convert', 'to-glb.py');
+/** How long Blender may take over one model. */
+export const BLENDER_MODEL_MS = 5 * 60_000;
 
 /** A converter program: its script, the hook that keeps native addons out, and what it may read. */
 export interface ConverterProgram {
@@ -117,7 +126,7 @@ export async function runBlender(blender: string, script: string, args: string[]
     const timer = setTimeout(() => child.kill('SIGKILL'), o.timeoutMs);
     child.on('error', (e) => {
       clearTimeout(timer);
-      resolve({ code: -1, stderr: `fbx2glb: Blender could not start (${e.message.slice(0, 120)})` });
+      resolve({ code: -1, stderr: `Blender could not start (${e.message.slice(0, 120)})` });
     });
     child.on('close', (c) => {
       clearTimeout(timer);
@@ -146,4 +155,21 @@ export async function runRhubarb(rhubarb: string, sound: string, out: string, o:
       resolve({ code: c, stderr: err });
     });
   });
+}
+
+/** An avatar or item upload only Blender reads (an FBX, an OBJ or a .blend, S5.08), turned into a
+ *  GLB by to-glb.py in runBlender's sandbox, for the converter to read with the upload's own format,
+ *  SHA-256 and size. Undefined for any other upload (a VRM or a GLB, or a DAE, which the converter
+ *  reads itself); the refusal when the core has no Blender or Blender cannot read the file. A
+ *  Blender that does not start is the core's failure, not the file's: that throws. */
+export async function throughBlender(blender: string | undefined, upload: Uint8Array, input: string, o: { dir: string; source: { sha256: string; bytes: number }; isolated: boolean }): Promise<undefined | { refused: string } | { input: string; args: string[] }> {
+  const format = uploadFormat(upload);
+  if (!BLENDER_FORMATS.includes(format as ModelFrom)) return undefined;
+  const name = MODEL_FORMAT_NAMES[format as ModelFrom];
+  if (!blender) return { refused: `the ${name} file needs headless Blender on the core, which this one does not have: export a VRM or a GLB instead` };
+  const glb = join(o.dir, 'from-blender.glb');
+  const run = await runBlender(blender, TO_GLB, [input, glb, format], { isolated: o.isolated, timeoutMs: BLENDER_MODEL_MS, home: o.dir });
+  if (run.code === -1) throw new Error(run.stderr);
+  if (run.code !== 0) return { refused: run.code === null ? `Blender ran out of time reading the ${name} file` : (run.stderr.split('\n').find((l) => l.startsWith('to-glb:'))?.replace(/^to-glb: /, '') ?? `Blender could not read the ${name} file`) };
+  return { input: glb, args: ['--from', format, '--source', `${o.source.sha256}:${o.source.bytes}`] };
 }

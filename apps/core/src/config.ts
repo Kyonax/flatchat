@@ -15,7 +15,8 @@
 //   FLATCHAT_CORE_TRUST     trust levels 1-3 as days:active,days:active,days:active (default 3:1,14:5,60:20)
 //   FLATCHAT_CORE_STORE     the file store's folder (S4.04; default ~/.local/share/flatchat/core-store)
 //   FLATCHAT_CORE_KTX2      off to keep avatars' textures as PNG (quicker conversions; default on)
-//   FLATCHAT_CORE_BLENDER   headless Blender's executable (5.2 LTS), for FBX emotes and dances (S5.07; unset: FBX refused)
+//   FLATCHAT_CORE_BLENDER   headless Blender's executable (5.2 LTS), for FBX, OBJ and .blend avatars and items and FBX
+//                           emotes and dances (S5.07, S5.08; unset: those are refused)
 //   FLATCHAT_CORE_RHUBARB   Rhubarb Lip Sync's executable (1.14.0), for a dance's mouth track (S5.07; unset: no mouth track)
 
 import { homedir } from 'node:os';
@@ -42,7 +43,7 @@ export interface CoreEnv {
   store: string;
   /** Avatars' textures as KTX2 (S4.03); off keeps PNG. */
   ktx2: boolean;
-  /** Headless Blender for FBX animations (S5.07), when set. */
+  /** Headless Blender for FBX, OBJ and .blend models and FBX animations (S5.07, S5.08), when set. */
   blender: string | undefined;
   /** Rhubarb Lip Sync for sounds' mouth tracks (S5.07), when set. */
   rhubarb: string | undefined;

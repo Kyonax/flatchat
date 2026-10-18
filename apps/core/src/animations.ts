@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, type AnimationManifest, type AnimationUse, checkAnimationManifest } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, type AnimationManifest, type AnimationUse, checkAnimationManifest, uploadFormat } from '@flatchat/content';
 import type { Db, Sql } from './db.ts';
 import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runBlender, runConverter, runRhubarb } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
@@ -60,11 +60,6 @@ export interface AnimationsOptions {
 }
 
 /** What the first bytes say the file is (the converter decides for good). */
-function isFbx(bytes: Uint8Array): boolean {
-  const head = new TextDecoder('latin1').decode(bytes.subarray(0, 32));
-  return head.startsWith('Kaydara FBX Binary') || /^\s*;\s*FBX/.test(head);
-}
-
 export class Animations {
   private readonly o: AnimationsOptions;
   private readonly key: Buffer;
@@ -171,13 +166,15 @@ export class Animations {
           } else this.o.log?.('animation-mouth-failed', { why: run.code === null ? 'out of time' : run.stderr.split('\n').filter(Boolean).at(-1)?.slice(0, 160) ?? '' });
         }
       }
-      if (isFbx(upload)) {
+      if (uploadFormat(upload) === 'fbx') {
         if (!this.o.blender) {
           await this.refuse(id, ['FBX needs headless Blender on the core, which this one does not have: export a GLB or a BVH instead'], started);
           return;
         }
         const glb = join(dir, 'from-fbx.glb');
         const run = await runBlender(this.o.blender, join(ROOT, 'tools', 'blender', 'animation', 'fbx2glb.py'), [join(dir, 'upload'), glb], { isolated: this.isolated, timeoutMs: BLENDER_MS, home: dir });
+        // A Blender that does not start is the core's failure, not the file's.
+        if (run.code === -1) throw new Error(run.stderr);
         if (run.code !== 0) {
           await this.refuse(id, [run.code === null ? 'Blender ran out of time reading the FBX' : run.stderr.split('\n').find((l) => l.startsWith('fbx2glb:'))?.replace(/^fbx2glb: /, '') ?? 'Blender could not read the FBX'], started);
           return;

@@ -3,7 +3,11 @@
 // trust level 1 or more (or a tester) asks for a slot with the file's size and SHA-256, sends the
 // file to the slot's signed link, and the core converts it in a separate, sandboxed process
 // (tools/converter/src/item-cli.ts; see sandbox.ts) that may also read the standard bodies, for the
-// skeleton and clipping checks. A ready item's files (a fit per body, or an attachment's prop) go to
+// skeleton and clipping checks. Its formats are the avatars' (S5.08): an FBX, an OBJ or a .blend is
+// first turned into a GLB by headless Blender; a file that keeps no declaration of its own (an FBX,
+// an OBJ, a DAE) is given one with its slot (its name, slot, the regions it hides or the point it
+// is worn at), checked then, kept with the upload and handed to the converter, which uses it when
+// the file declares nothing. A ready item's files (a fit per body, or an attachment's prop) go to
 // the store and its manifest's SHA-256 names it; anyone signed in may fetch a ready item's files
 // through signed links (they see it worn in the world anyway); the source is never handed out.
 // An outfit is an account's saved set of its ready items (16 at most, the protocol's OUTFIT_MAX),
@@ -13,10 +17,10 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AttachPoint, BODY_KITS, checkItemManifest, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemManifest, outfitProblems, type Slot, type WornAdjust } from '@flatchat/content';
+import { type AttachPoint, BODY_KITS, checkItemManifest, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, readItemDeclaration, type Slot, type WornAdjust } from '@flatchat/content';
 import { OUTFIT_MAX } from '@flatchat/protocol';
 import type { Db, Sql } from './db.ts';
-import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter } from './sandbox.ts';
+import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter, throughBlender } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -67,6 +71,8 @@ export interface ItemsOptions {
   converter?: ConverterProgram;
   /** The standard bodies' folder the converter reads (default: the repository's kits/bodies/). */
   kits?: string;
+  /** Headless Blender (its executable), for FBX, OBJ and .blend; without it those are refused. */
+  blender?: string;
 }
 
 export class Items {
@@ -93,16 +99,25 @@ export class Items {
   }
 
   /** An upload slot: checked against the account's trust, its items and the size limit. */
-  async slot(account: { id: string; trust: number; tester: boolean; status: string }, req: { name: string; bytes: number; sha256: string }, now: Date): Promise<{ id: string; url: string; method: 'PUT'; expires: Date }> {
+  async slot(account: { id: string; trust: number; tester: boolean; status: string }, req: { name: string; bytes: number; sha256: string; declaration?: unknown }, now: Date): Promise<{ id: string; url: string; method: 'PUT'; expires: Date }> {
     if (account.status !== 'active') throw new ContentProblem('upload-trust', 'this account cannot upload');
     if (account.trust < 1 && !account.tester) throw new ContentProblem('upload-trust', 'uploading needs trust level 1: an account a few days old with a verified email');
     if (!Number.isInteger(req.bytes) || req.bytes < 20 || !HASH.test(req.sha256)) throw new ContentProblem('bad-request', 'the size and the SHA-256 of the file');
     if (req.bytes > ITEM_SOURCE_LIMIT) throw new ContentProblem('too-large', `an item file is ${ITEM_SOURCE_LIMIT / 1048576} MB at most`);
     const [n] = await this.o.db.query<{ n: string }>('select count(*) as n from items where owner_id = $1 and deleted_at is null', [account.id]);
     if (Number(n?.n ?? 0) >= MAX_ITEMS) throw new ContentProblem('upload-limit', `${MAX_ITEMS} items at most: delete one first`);
+    // The declaration given with the upload (S5.08), checked now: what the file cannot carry.
+    let declaration: ItemDeclaration | null = null;
+    if (req.declaration !== undefined && req.declaration !== null) {
+      try {
+        declaration = readItemDeclaration(req.declaration);
+      } catch (err) {
+        throw new ContentProblem('bad-request', err instanceof ItemFormatError ? err.problems.join('; ') : 'the declaration does not read');
+      }
+    }
     const [row] = await this.o.db.query<{ id: string }>(
-      "insert into items (owner_id, name, status, source_sha256, source_bytes, created_at) values ($1, $2, 'uploading', $3, $4, $5) returning id",
-      [account.id, cleanName(req.name, NAME_MAX), req.sha256, req.bytes, now],
+      "insert into items (owner_id, name, status, source_sha256, source_bytes, declaration, created_at) values ($1, $2, 'uploading', $3, $4, $5, $6) returning id",
+      [account.id, cleanName(req.name, NAME_MAX), req.sha256, req.bytes, declaration === null ? null : JSON.stringify(declaration), now],
     );
     const expires = Math.floor((now.getTime() + SLOT_MS) / 1000);
     const path = `/api/v1/items/${row!.id}/source`;
@@ -133,10 +148,31 @@ export class Items {
     const input = join(dir, 'upload');
     const out = join(dir, 'out');
     const started = Date.now();
+    const refuse = async (problems: string[]): Promise<void> => {
+      await this.o.db.query("update items set status = 'refused', problems = $2, converted_at = $3 where id = $1", [id, problems.join('\n').slice(0, 4000), new Date()]);
+      this.o.log?.('item-refused', { problems: problems.length, ms: Date.now() - started });
+    };
     try {
-      writeFileSync(input, this.o.store.read(source)!);
+      const upload = this.o.store.read(source)!;
+      writeFileSync(input, upload);
       mkdirSync(out);
-      const args = converterArgs(this.converter, input, out, this.o.ktx2 !== false, { reads: [this.kits], args: [this.kits] });
+      const more: string[] = [this.kits];
+      const reads: string[] = [this.kits];
+      const [row] = await this.o.db.query<{ declaration: unknown }>('select declaration from items where id = $1', [id]);
+      if (row?.declaration) {
+        const declared = join(dir, 'declaration.json');
+        writeFileSync(declared, JSON.stringify(row.declaration));
+        more.push('--declare', declared);
+        reads.push(declared);
+      }
+      // An FBX, OBJ or .blend: the GLB Blender makes of it, and what it was.
+      const blended = await throughBlender(this.o.blender, upload, input, { dir, source: { sha256: source, bytes: upload.length }, isolated: this.isolated });
+      if (blended && 'refused' in blended) {
+        await refuse([blended.refused]);
+        return;
+      }
+      if (blended) more.push(...blended.args);
+      const args = converterArgs(this.converter, blended?.input ?? input, out, this.o.ktx2 !== false, { reads, args: more });
       const run = await runConverter(args, out, { isolated: this.isolated, timeoutMs: CONVERT_MS });
       const { code, result } = run;
       if (result?.ok && code === 0) {
@@ -159,8 +195,7 @@ export class Items {
         );
         this.o.log?.('item-ready', { slot: manifest.slot, fits: fits || 'any avatar', ms: Date.now() - started });
       } else if (result && !result.ok) {
-        await this.o.db.query("update items set status = 'refused', problems = $2, converted_at = $3 where id = $1", [id, (result.problems ?? []).join('\n').slice(0, 4000), new Date()]);
-        this.o.log?.('item-refused', { problems: (result.problems ?? []).length, ms: Date.now() - started });
+        await refuse(result.problems ?? []);
       } else {
         throw new Error(converterFailure(run));
       }

@@ -123,9 +123,12 @@ export interface CoreOptions {
   store?: FileStore;
   /** Avatar and item conversion (S4.01, S5.05): KTX2 textures on (the default) or off (tests). */
   avatars?: { ktx2?: boolean };
-  /** Animation conversion (S5.07): headless Blender's executable, for FBX (without it FBX is refused),
-   *  and Rhubarb Lip Sync's, for a sound's mouth track (without it the mouth does not follow). */
-  animations?: { blender?: string; rhubarb?: string };
+  /** Headless Blender's executable (S5.07, S5.08), for FBX, OBJ and .blend avatars and items and
+   *  FBX animations; without it those are refused. */
+  blender?: string;
+  /** Animation conversion (S5.07): Rhubarb Lip Sync's executable, for a sound's mouth track
+   *  (without it the mouth does not follow). */
+  animations?: { rhubarb?: string };
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -173,9 +176,10 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   };
   const hosts = new HostRegistry();
   const store = o.store ?? localStore(join(tmpdir(), `flatchat-core-store-${process.pid}`), o.secret, publicUrl);
-  const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
-  const items = new Items({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
-  const animations = new Animations({ db: o.db, store, secret: o.secret, publicUrl, ...(o.animations?.blender ? { blender: o.animations.blender } : {}), ...(o.animations?.rhubarb ? { rhubarb: o.animations.rhubarb } : {}), ...(o.log ? { log: o.log } : {}) });
+  const blender = o.blender ? { blender: o.blender } : {};
+  const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...blender, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
+  const items = new Items({ db: o.db, store, secret: o.secret, publicUrl, ...blender, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
+  const animations = new Animations({ db: o.db, store, secret: o.secret, publicUrl, ...blender, ...(o.animations?.rhubarb ? { rhubarb: o.animations.rhubarb } : {}), ...(o.log ? { log: o.log } : {}) });
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
@@ -869,7 +873,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     try {
       const copy = await copyRefused(o.db, a.id, str(b['sha256'], 64));
       if (copy) return sendProblem(reply, problem(403, 'licence', copy));
-      const slot = await items.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
+      const slot = await items.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64), ...(b['declaration'] !== undefined ? { declaration: b['declaration'] } : {}) }, now());
       return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
     } catch (err) {
       return contentProblem(reply, err);
