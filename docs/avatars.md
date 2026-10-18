@@ -20,7 +20,7 @@ Refused, with the reason: a file Khronos's glTF-Validator (and, for a VRM, vrm-v
 - **The full avatar** (LOD0) in VRM 1.0, facing +Z: a VRM 0.x is migrated by three-vrm's rules and turned round; textures fitted to 2,048 px and 64 MB, encoded to KTX2.
 - **LOD1**: half the triangles; every vertex an expression moves is kept, so the face stays whole.
 - **LOD2**: a fifth of the triangles, with only the mouth (aa, ih, ou, ee, oh) and blink shapes.
-- **The impostor**: one mesh of 1,000 to 2,000 triangles on 20 bones (no fingers, eyes or jaw), one 512 px texture, unlit. Far avatars and big crowds draw this.
+- **The impostor**: one mesh of about 1,500 triangles on 20 bones (no fingers, eyes or jaw), one 512 px texture and a plain material (no MToon). Far avatars and big crowds draw this. Its simplification never joins what a walk pulls apart, such as the two legs, or a skirt and the thighs under it; `node tools/converter/scripts/impostor-audit.ts CONVERTED` checks a folder of converted avatars for triangles a stride stretches.
 - A thumbnail from the VRM's own, and a **manifest**: the numbers, the rank, the levels, the bones and expressions, the height and the licence terms exactly as the file stated them.
 
 Animations, cameras and lights in the file are dropped.
@@ -81,14 +81,16 @@ npm run standin -- run --target iris-xe --seconds 60 --crowd CONVERTED --convert
 
 The stand-in's headroom (1.5, OQ-24) tightens the frame lines to 22.2 ms and 66.7 ms.
 
-Measured on the development desktop on 2026-10-17 (WebGPU, NVIDIA). The set was 68 real avatars from VRoid Studio and Blender exports, converted with KTX2: 60 ranked Excellent, 2 Poor and 6 Very Poor; 5.5 s each at the median, 118 s the slowest. Each run measured 60 s:
+To look at proportions, run the client with `--crowd-proportions=1`. Everyone then stands at the ends of the sliders (80 and 125 % width, arms, legs and head, in every combination). Take a picture with `--crowd-shot=FILE.png`.
+
+Measured on the development desktop on 2026-10-17 (WebGPU, NVIDIA). The set was 68 real avatars from VRoid Studio and Blender exports, converted with KTX2 by converter 1.2.0: 60 ranked Excellent, 2 Poor and 6 Very Poor; 5.5 s each at the median, 118 s the slowest. Each run measured 60 s:
 
 | Policy | In full / LOD1 / impostors | p95 | Worst frame | Draw calls | Triangles | Memory |
 |---|---|---|---|---|---|---|
-| Low tier | 4 / 13 / 183 | 12.4 ms | 55.5 ms | 119 | 221,820 | 1,184 MB |
-| Medium tier | 8 / 21 / 171 | 14.0 ms | 53.8 ms | 119 | 245,659 | 1,211 MB |
-| High tier | 12 / 28 / 160 | 17.0 ms | 25.3 ms | 163 | 289,475 | 1,435 MB |
-| Every rank in full | 12 / 20 / 168 | 23.5 ms | 33.8 ms | 669 | 444,517 | 1,629 MB |
+| Low tier | 4 / 12 / 184 | 13.4 ms | 55.4 ms | 111 | 201,338 | 1,161 MB |
+| Medium tier | 8 / 20 / 172 | 15.8 ms | 52.0 ms | 119 | 245,672 | 1,225 MB |
+| High tier | 12 / 27 / 161 | 17.7 ms | 26.0 ms | 163 | 288,124 | 1,350 MB |
+| Every rank in full | 12 / 20 / 168 | 25.5 ms | 33.6 ms | 669 | 444,166 | 1,589 MB |
 
 The main thread's render call takes most of each frame: about 30 to 70 µs per skinned avatar drawn (three.js's WebGPU renderer, whatever the material). Spring bones are cheaper: in the every-rank run (whose six VRoid avatars have 51 to 111 spring joints each), springs on 0, 6 and 12 of the nearest took the layer's update from 2.8 to 3.6 and 5.0 ms, and p95 from 24.3 to 24.6 and 26.5 ms. The reference laptop's numbers are still to come.
 
