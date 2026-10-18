@@ -1,0 +1,6 @@
+{
+  "name": "neutral",
+  "title": "Body C, broad and compact",
+  "macros": { "gender": 0.5, "age": 0.5, "muscle": 0.55, "weight": 0.6, "proportions": 0.5, "height": 0.45, "cupsize": 0.4, "firmness": 0.5, "race": { "asian": 0.34, "caucasian": 0.33, "african": 0.33 } },
+  "underwear": ["briefs", "top"]
+}

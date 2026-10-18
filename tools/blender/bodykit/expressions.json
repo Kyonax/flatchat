@@ -1,0 +1,21 @@
+{
+  "_about": "The 18 VRM 1.0 expressions of the body kits, as weights of the face shapes MPFB loads (MakeHuman's CC0 Visemes 02 and Faceunits 01 packs by Mika Suominen). The five emotions are recipes for the owner to tune (P.03: he accepts at least 4 of 5 on each body).",
+  "happy": { "mouthSmileLeft": 0.8, "mouthSmileRight": 0.8, "cheekSquintLeft": 0.5, "cheekSquintRight": 0.5, "eyeSquintLeft": 0.3, "eyeSquintRight": 0.3 },
+  "angry": { "browDownLeft": 0.9, "browDownRight": 0.9, "eyeSquintLeft": 0.4, "eyeSquintRight": 0.4, "mouthFrownLeft": 0.5, "mouthFrownRight": 0.5, "noseSneerLeft": 0.4, "noseSneerRight": 0.4, "jawForward": 0.2 },
+  "sad": { "browInnerUp": 0.8, "mouthFrownLeft": 0.7, "mouthFrownRight": 0.7, "mouthLowerDownLeft": 0.2, "mouthLowerDownRight": 0.2, "eyeLookDownLeft": 0.2, "eyeLookDownRight": 0.2 },
+  "relaxed": { "eyeBlinkLeft": 0.35, "eyeBlinkRight": 0.35, "mouthSmileLeft": 0.3, "mouthSmileRight": 0.3, "browInnerUp": 0.1 },
+  "surprised": { "browInnerUp": 0.9, "browOuterUpLeft": 0.8, "browOuterUpRight": 0.8, "eyeWideLeft": 0.8, "eyeWideRight": 0.8, "jawOpen": 0.5 },
+  "aa": { "viseme_aa": 1.0 },
+  "ih": { "viseme_I": 1.0 },
+  "ou": { "viseme_U": 1.0 },
+  "ee": { "viseme_E": 1.0 },
+  "oh": { "viseme_O": 1.0 },
+  "blink": { "eyeBlinkLeft": 1.0, "eyeBlinkRight": 1.0 },
+  "blink_left": { "eyeBlinkLeft": 1.0 },
+  "blink_right": { "eyeBlinkRight": 1.0 },
+  "look_up": { "eyeLookUpLeft": 1.0, "eyeLookUpRight": 1.0 },
+  "look_down": { "eyeLookDownLeft": 1.0, "eyeLookDownRight": 1.0 },
+  "look_left": { "eyeLookOutLeft": 1.0, "eyeLookInRight": 1.0 },
+  "look_right": { "eyeLookInLeft": 1.0, "eyeLookOutRight": 1.0 },
+  "neutral": {}
+}

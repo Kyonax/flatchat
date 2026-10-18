@@ -1,0 +1,6 @@
+{
+  "name": "feminine",
+  "title": "Body A, feminine",
+  "macros": { "gender": 0.0, "age": 0.5, "muscle": 0.5, "weight": 0.5, "proportions": 0.6, "height": 0.45, "cupsize": 0.5, "firmness": 0.6, "race": { "asian": 0.34, "caucasian": 0.33, "african": 0.33 } },
+  "underwear": ["briefs", "top"]
+}

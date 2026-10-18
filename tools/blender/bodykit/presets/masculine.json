@@ -1,0 +1,6 @@
+{
+  "name": "masculine",
+  "title": "Body B, masculine",
+  "macros": { "gender": 1.0, "age": 0.5, "muscle": 0.55, "weight": 0.5, "proportions": 0.6, "height": 0.55, "cupsize": 0.5, "firmness": 0.5, "race": { "asian": 0.34, "caucasian": 0.33, "african": 0.33 } },
+  "underwear": ["briefs"]
+}
