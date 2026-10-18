@@ -19,6 +19,8 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | `packages/effects/src/guard.ts` | `EffectBudget`, `InstanceTrim`, `TimeWatch` |
 | `tools/converter/src/effect/convert.ts`, `item.ts` | `effectUpload` (an Effekseer file, an `.efkpkg`, a zip with one effect at any depth, or an FCFX bundle with its declaration), `convertEffect` (version, no `.efkmat`, every named file present, PNG textures, the bundle of exactly those files, the dry run, `effectFitProblems`), `convertEffectItem` (slot `effect`, no fingerprint); `item-cli.ts` branches on `uploadFormat(...) === 'effect'` before reading the bodies |
 | `apps/client/src/renderer/src/world/effects.ts`, `effects-draw.ts`, `effects-runtime.ts` | The client's effects layer (worn effects at markers, the policy, the guard, respawn), the drawing after three's frame (WebGPU depth copy and pass, WebGL2 depth quad, timestamp probes), the lazy inlined builds |
+| `apps/client/src/renderer/src/world/effects-measure.ts`, `effects-measure-worker.ts` | A world's effects measured again in the client: one inlined worker (`?worker&inline`, the WebGL build and its wasm inlined), one effect at a time, terminated and replaced past `EFFECT_LIMITS.dryRunMs` |
+| `packages/content/src/scene.ts`, `validate.ts`, `built.ts`; `tools/converter/src/world.ts` | World effects (rules/world-format.md): the marker, the validator's reading, `BuiltEffect`, the converter's dry runs and the world budget |
 | `kits/effects/samples/`, `kits/effects/starters.json` | Five of Effekseer's CC0 samples with their textures; the starter effects (aura at the hips, shield at the chest), bundled by the core at start |
 
 ## The Rules
@@ -31,6 +33,7 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | Pass three.js matrices' `elements` as they are | Effekseer reads 16 floats row by row: column-major with column vectors is row-major with row vectors |
 | Count the stand-in's draws by the bound program: model shaders (`mModel` in their source) are triangles, the rest quads | Instancing and index types do not tell them apart; Aura01 is 101 quads and a 16,940-triangle procedural shell |
 | Judge update time by the 95th percentile, never the slowest | Three suites at once pushed the slowest past 2 ms and refused the aura and the trail |
+| Unit tests that pass through the update limit use light samples (the trail, the laser, the aura), never the tornado | The harness runs every suite at once: the tornado's 95th percentile went from 0.29 ms to 2.1 ms there and refused it; the trail's is 0.06 ms |
 | Bound every untrusted dry run: `DryRunner` where threads are allowed; in the core's sandbox (no threads) the in-thread deadline between frames and the core's short deadline for the whole conversion | One broken trail made a single update take 32 s; nothing interrupts a native call but ending its thread or process |
 | Node built-ins stay out of `packages/*/src` (T17): the Node side of effects lives in the converter, tests may use Node | The shared packages run in the client's renderer too |
 | A native failure spends the module: catch `RuntimeSpent`, make a new runtime, block the file | Emscripten aborts on a broken file and every later call throws |
@@ -48,3 +51,9 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | Leave an effect's first frames out of the watches (`WARM_UP`) | Aura01 makes its procedural shell on its first update; the 16 ms stall rule stopped it at once |
 | In the end-to-end test, pick items by their row's text, never `first()` | The list is newest first: the starter aura took the tee's place |
 | The starters play at 0.12 (`kits/effects/starters.json`) | Effekseer's samples are authored roughly ten times a person's size |
+| The client measures a world's effects itself and never takes `BuiltEffect.peak` | A world comes from its host, who is not trusted; the client's own numbers decide admission |
+| In the client, judge a world effect by its peaks and by a 100 ms single update (`WORLD_HITCH_US`), not by `updateMs` | `updateMs` is for the converter's machine; a weak laptop is slower, and the live watches judge time while it plays |
+| The converter measures an effect once per path and scale, but counts its peaks once per marker against `EFFECT_LIMITS.world` | Every visitor plays every marker at once; two tornadoes (1,012 particles each) are over a world's 2,000 |
+| Where the converter is bundled (the client's main process, offline worlds), give `convertWorld` `dryRunner: { worker, wasm }`: the worker from `@flatchat/converter/dry-run-worker?nodeWorker`, the bytes read from `@flatchat/effects/runtime/wasm/effekseer-webgl-native.wasm?asset` (`apps/client/src/main/offline.ts`, types from `electron-vite/node` in `src/main/env.d.ts`) | The bundle has no `dry-run-worker.ts` beside it and no package to resolve the wasm from: the default worker URL and `import.meta.resolve` fail there |
+| A client download of a world wants its effect files too (`download.ts`) | It wanted scenes, solids, the navigation mesh and sounds only, so the world effect never had its bundle |
+| Close the converter's `DryRunner` in a `finally` | A refused effect or a failing scene throws past the loop and would leave the worker running |
