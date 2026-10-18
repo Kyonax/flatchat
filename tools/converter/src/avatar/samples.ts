@@ -368,8 +368,9 @@ export async function sampleAvatar(kind: SampleKind): Promise<Uint8Array> {
 }
 
 /** The VRM 1.0 reference avatar with a creator shader (S6.03) on its first material: a fresnel rim
- *  that glows cyan and pulses at half a hertz over the material's own colour (its fallback). */
-export async function sampleShaderAvatar(): Promise<Uint8Array> {
+ *  that glows cyan and pulses at half a hertz over the material's own colour (its fallback); or
+ *  `given`, any graph, for a test that wants one refused. */
+export async function sampleShaderAvatar(given?: unknown): Promise<Uint8Array> {
   const { ShaderExtension } = await import('./shader.ts');
   const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions');
   const { SHADER_EXTENSION } = await import('@flatchat/content');
@@ -377,7 +378,7 @@ export async function sampleShaderAvatar(): Promise<Uint8Array> {
   const io = new NodeIO().setLogger(new Logger(Logger.Verbosity.ERROR)).registerExtensions([...ALL_EXTENSIONS, VRMExtension, ShaderExtension]);
   const doc = await io.readBinary(await sampleAvatar('vrm1'));
   const material = doc.getRoot().listMaterials()[0]!;
-  const graph = {
+  const graph = given ?? {
     format: 1,
     nodes: [
       { id: 'rim', op: 'fresnel', in: { power: 2.5 } },
