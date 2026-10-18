@@ -4,6 +4,7 @@
 // the kits in kits/bodies/, refitted between them at authoring time, never at runtime: cl-004),
 // fills one fixed slot, and names the body's regions it hides. Shared by the converter, the core
 // and the client, so all three agree on what an item is and what it may weigh.
+import { ATTACH_POINTS, type AttachPoint } from './attach.ts';
 
 /** The manifest's format: the converter's output for this version of the platform. */
 export const ITEM_FORMAT = 1;
@@ -67,6 +68,8 @@ export const SLOTS = {
   gloves: { triangles: 3_000, materials: 1, textureSide: 512 },
   legwear: { triangles: 3_000, materials: 1, textureSide: 1024 },
   shoes: { triangles: 4_000, materials: 1, textureSide: 1024 },
+  /** A prop at an attachment point (S5.04): one rigid mesh, worn on any avatar, free shapes too. */
+  attachment: { triangles: 3_000, materials: 1, textureSide: 512 },
 } as const satisfies Record<string, { triangles: number; materials: number; textureSide: number }>;
 export type Slot = keyof typeof SLOTS;
 /** Slots worn instead of others: a full outfit (a dress, a jumpsuit) takes the top and the bottom. */
@@ -79,6 +82,8 @@ export interface ItemDeclaration {
   slot: Slot;
   hides: Region[];
   authors: string[];
+  /** For the attachment slot: the point it is worn at. */
+  attach?: AttachPoint;
 }
 
 export class ItemFormatError extends Error {
@@ -100,8 +105,13 @@ export function readItemDeclaration(value: unknown): ItemDeclaration {
   const hides = Array.isArray(d['hides']) ? d['hides'] : [];
   for (const h of hides) if (typeof h !== 'string' || !(h in REGIONS)) problems.push(`"${String(h)}" is not a region an item can hide (${Object.keys(REGIONS).join(', ')})`);
   const authors = Array.isArray(d['authors']) ? d['authors'].filter((a): a is string => typeof a === 'string' && a.trim().length > 0).map((a) => a.trim()) : [];
+  const attach = d['attach'];
+  if (slot === 'attachment') {
+    if (typeof attach !== 'string' || !(attach in ATTACH_POINTS)) problems.push(`an attachment names the point it is worn at: one of ${Object.keys(ATTACH_POINTS).join(', ')}`);
+    if (hides.length) problems.push('an attachment hides nothing of the body');
+  } else if (attach !== undefined) problems.push('only the attachment slot is worn at a point');
   if (problems.length) throw new ItemFormatError(problems);
-  return { name, slot: slot as Slot, hides: [...new Set(hides as Region[])].sort(), authors };
+  return { name, slot: slot as Slot, hides: [...new Set(hides as Region[])].sort(), authors, ...(slot === 'attachment' ? { attach: attach as AttachPoint } : {}) };
 }
 
 /** One body's fit as the platform keeps it. */
@@ -137,6 +147,9 @@ export interface ItemManifest {
   hides: Region[];
   fits: Partial<Record<BodyKit, ItemFit>>;
   clipping: Partial<Record<BodyKit, ItemClipping>>;
+  /** For the attachment slot: its point, and its one rigid mesh (worn on any avatar). */
+  attach?: AttachPoint;
+  prop?: ItemFit;
   warnings: string[];
 }
 
@@ -144,7 +157,11 @@ export interface ItemManifest {
 export function checkItemManifest(value: unknown): ItemManifest {
   const m = value as ItemManifest;
   if (typeof m !== 'object' || m === null || m.format !== ITEM_FORMAT || m.kind !== 'item') throw new Error('not an item manifest of this format');
-  readItemDeclaration({ name: m.name, slot: m.slot, hides: m.hides, authors: m.authors });
+  readItemDeclaration({ name: m.name, slot: m.slot, hides: m.hides, authors: m.authors, ...(m.attach ? { attach: m.attach } : {}) });
+  if (m.slot === 'attachment') {
+    if (typeof m.prop?.file !== 'string' || !/^[0-9a-f]{64}$/.test(m.prop.file)) throw new Error('an attachment has its prop');
+    return m;
+  }
   const fits = Object.entries(m.fits ?? {});
   if (fits.length === 0) throw new Error('an item fits at least one body');
   for (const [body, fit] of fits) {
@@ -156,6 +173,16 @@ export function checkItemManifest(value: unknown): ItemManifest {
 
 /** The extensions a converted fit may carry. */
 export const ITEM_EXTENSIONS: ReadonlySet<string> = new Set(['KHR_texture_basisu', 'KHR_materials_unlit', 'KHR_texture_transform', 'VRMC_materials_mtoon']);
+
+/** The client's check on an attachment's prop: glTF 2.0, everything inside, only the converter's
+ *  extensions, meshes and no skin (it is carried whole at its point). */
+export function checkItemProp(json: Record<string, unknown>): void {
+  const list = (k: string): Array<Record<string, unknown>> => (Array.isArray(json[k]) ? (json[k] as Array<Record<string, unknown>>) : []);
+  if ((json['asset'] as { version?: unknown } | undefined)?.version !== '2.0') throw new Error('not glTF 2.0');
+  if ([...list('buffers'), ...list('images')].some((x) => x['uri'] !== undefined)) throw new Error('a prop keeps every buffer and image inside it');
+  for (const e of (json['extensionsUsed'] ?? []) as unknown[]) if (typeof e !== 'string' || !ITEM_EXTENSIONS.has(e)) throw new Error(`an extension the converter does not write: ${String(e)}`);
+  if (list('meshes').length < 1 || list('skins').length > 0) throw new Error('a prop is rigid meshes, no skin');
+}
 
 /** The client's check on a fit's glTF JSON before three.js reads it: glTF 2.0, everything inside,
  *  only the converter's extensions, one skinned mesh on the kits' bones. */

@@ -71,6 +71,7 @@ export {
   type BodyKit,
   checkItemFit,
   checkItemManifest,
+  checkItemProp,
   ITEM_EXTENSIONS,
   ITEM_FORMAT,
   ITEM_SOURCE_LIMIT,
@@ -89,3 +90,4 @@ export {
   SLOTS,
 } from './item.ts';
 export { compositeSkin, LAYER_KINDS, LayerError, type LayerKind, type RgbaImage, type SkinComposite, type SkinLayer } from './layers.ts';
+export { ADJUST_LIMITS, type AttachAdjustment, attachBone, attachMatrix, type AttachPoint, ATTACH_POINTS, fitAdjustment, type Matrix4, NO_ADJUSTMENT } from './attach.ts';
