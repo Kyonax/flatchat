@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ModelFrom } from '@flatchat/content';
+import type { BodyKit, ModelFrom } from '@flatchat/content';
 import type { Material, Node } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
 import { avatarIO } from '../avatar/convert.ts';
@@ -42,6 +42,16 @@ export async function daeOf(glb: Uint8Array): Promise<string> {
   const instances: string[] = [];
   const materialIds = new Map<Material, string>();
   const joints = new Set<Node>();
+  // Ids from names, as exporters write them (assimp names a node by its id), each once; the joints'
+  // own come first, since their skins name them.
+  const ids = new Set<string>();
+  const unique = (base: string): string => {
+    let id = base || 'node';
+    for (let k = 2; ids.has(id); k++) id = `${base}_${k}`;
+    ids.add(id);
+    return id;
+  };
+  for (const skin of doc.getRoot().listSkins()) for (const j of skin.listJoints()) ids.add(sid(j.getName()));
   const symbolOf = (mat: Material | null): string => {
     if (!mat) return '';
     let symbol = materialIds.get(mat);
@@ -57,8 +67,8 @@ export async function daeOf(glb: Uint8Array): Promise<string> {
   for (const node of doc.getRoot().listNodes()) {
     const mesh = node.getMesh();
     if (!mesh) continue;
-    const g = `g${n++}`;
-    const name = sid(node.getName() || g);
+    const name = unique(sid(node.getName()) || `mesh${n++}`);
+    const g = unique(`${name}-mesh`);
     const prims = mesh.listPrimitives();
     // One vertex list for the mesh: each primitive's after the one before.
     const pos: number[] = [];
@@ -111,7 +121,7 @@ export async function daeOf(glb: Uint8Array): Promise<string> {
     );
     const bind = symbols.size ? `<bind_material><technique_common>${[...symbols].map((x) => `<instance_material symbol="${x}" target="#${x}"/>`).join('')}</technique_common></bind_material>` : '';
     if (!skin) {
-      instances.push(`<node id="${g}-node" name="${name}" type="NODE"><matrix sid="transform">${rows(node.getWorldMatrix())}</matrix><instance_geometry url="#${g}">${bind}</instance_geometry></node>`);
+      instances.push(`<node id="${name}" name="${name}" type="NODE"><matrix sid="transform">${rows(node.getWorldMatrix())}</matrix><instance_geometry url="#${g}">${bind}</instance_geometry></node>`);
       continue;
     }
     const js = skin.listJoints();
@@ -126,7 +136,7 @@ export async function daeOf(glb: Uint8Array): Promise<string> {
         `<joints><input semantic="JOINT" source="#${g}-joints"/><input semantic="INV_BIND_MATRIX" source="#${g}-binds"/></joints>` +
         `<vertex_weights count="${vcount.length}"><input semantic="JOINT" source="#${g}-joints" offset="0"/><input semantic="WEIGHT" source="#${g}-weights" offset="1"/><vcount>${vcount.join(' ')}</vcount><v>${v.join(' ')}</v></vertex_weights></skin></controller>`,
     );
-    instances.push(`<node id="${g}-node" name="${name}" type="NODE"><instance_controller url="#${g}-skin">${roots.map((r) => `<skeleton>#${sid(r.getName())}</skeleton>`).join('')}${bind}</instance_controller></node>`);
+    instances.push(`<node id="${name}" name="${name}" type="NODE"><instance_controller url="#${g}-skin">${roots.map((r) => `<skeleton>#${sid(r.getName())}</skeleton>`).join('')}${bind}</instance_controller></node>`);
   }
   // The skeletons: each root where the scene puts it, each other joint under its parent.
   const joint = (j: Node, top: boolean): string =>
@@ -156,19 +166,24 @@ export async function sampleDae(kind: 'avatar' | 'prop'): Promise<Uint8Array> {
   return new TextEncoder().encode(await daeOf(kind === 'avatar' ? await sampleAvatar('glb') : await sampleProp(SAMPLE_PROP_DECLARATION)));
 }
 
-/** The test tee as a garment made on one body, as another program exports one: its feminine fit
- *  and that body's skeleton alone. */
-export async function oneFitTee(): Promise<Uint8Array> {
+/** One body's fit of a garment and that body's skeleton alone: what another program exports of a
+ *  garment made on one body, or what someone rips of one. */
+export async function oneFit(garment: Uint8Array, body: BodyKit): Promise<Uint8Array> {
   const io = avatarIO();
-  const doc = await io.readBinary(new Uint8Array(readFileSync(join(ROOT, 'kits', 'items', 'test-tee', 'test-tee.glb'))));
+  const doc = await io.readBinary(garment);
   const drop = doc
     .getRoot()
     .listNodes()
-    .filter((n) => n.getMesh() && n.getExtras()['flatchat_fit'] !== 'feminine');
+    .filter((n) => n.getMesh() && n.getExtras()['flatchat_fit'] !== body);
   const bones = new Set(drop.flatMap((n) => n.getSkin()?.listJoints() ?? []));
   for (const n of [...drop, ...bones]) n.dispose();
   await doc.transform(prune());
   return io.writeBinary(doc);
+}
+
+/** The test tee as a garment made on one body, as another program exports one: its feminine fit. */
+export async function oneFitTee(): Promise<Uint8Array> {
+  return oneFit(new Uint8Array(readFileSync(join(ROOT, 'kits', 'items', 'test-tee', 'test-tee.glb'))), 'feminine');
 }
 
 /** The samples Blender writes, and the format each is in. */
