@@ -190,6 +190,9 @@ interface Conn {
   height: number;
   teleportAt: number;
   appearanceAt: number;
+  /** When the player last changed avatar (S4.05) and face (S4.07). */
+  wearAt: number;
+  faceAt: number;
   /** The connect token's facts. */
   claims?: Claims;
   /** Silenced by a moderator or a plugin: the world forwards none of this player's voice. */
@@ -224,6 +227,10 @@ const CHAT_MAX = 280;
 export const DEFAULT_HEIGHT_CM = Math.round(BODY.height * 100);
 export const DEFAULT_HEIGHTS = { min: 0.5, max: 3 };
 const APPEARANCE_EVERY_MS = 1000;
+/** A new avatar at most every two seconds; a face change at most eight times a second. */
+const WEAR_EVERY_MS = 2000;
+const FACE_EVERY_MS = 125;
+const NEUTRAL_FACE = { expression: 'neutral', left: 'relaxed', right: 'relaxed' } as const;
 /** Teleports and seats (S2.06). */
 export const TELEPORT = { range: 40, seatReach: 3, everyMs: 1000 };
 
@@ -407,6 +414,8 @@ export class WorldServer implements PluginWorld {
       height: DEFAULT_HEIGHT_CM,
       teleportAt: -Infinity,
       appearanceAt: -Infinity,
+      wearAt: -Infinity,
+      faceAt: -Infinity,
       forceMuted: false,
       role: 'visitor',
       voiceRange: this.voice.config.rangeM,
@@ -493,6 +502,12 @@ export class WorldServer implements PluginWorld {
         break;
       case 'appearance':
         this.appearance(conn, message.height, now);
+        break;
+      case 'wear':
+        void this.wear(conn, message.token, now);
+        break;
+      case 'face':
+        this.face(conn, message, now);
         break;
       case 'teleport':
         this.events.add(`teleport:${this.teleport(conn, message, now)}`, 0);
@@ -596,7 +611,17 @@ export class WorldServer implements PluginWorld {
     conn.portal = this.options.portals?.findIndex((b) => insideBox(b, at)) ?? -1;
     conn.height = this.fitHeight(hello.height);
     this.byEntity.set(entity, conn);
-    const player: RosterPlayer = { entity, account: opened.claims.account, name: opened.claims.name, trust: opened.claims.trust, height: conn.height, role };
+    const player: RosterPlayer = {
+      entity,
+      account: opened.claims.account,
+      name: opened.claims.name,
+      trust: opened.claims.trust,
+      height: conn.height,
+      role,
+      face: { ...NEUTRAL_FACE },
+      // The avatar the core vouches the account wears (S4.05): clients fetch it from the core by hash.
+      ...(opened.claims.avatar ? { avatar: opened.claims.avatar } : {}),
+    };
     this.roster.set(entity, player);
     this.joinedThisTick.push(player);
     this.peakPlayers = Math.max(this.peakPlayers, this.byEntity.size);
@@ -640,6 +665,46 @@ export class WorldServer implements PluginWorld {
     player.height = height;
     this.joinedThisTick.push(player);
     this.events.add('appearance', 0);
+  }
+
+  /** A new avatar during the visit (S4.05): a fresh connect token for this world, of this same
+   *  account, whose `avatar` replaces the roster's; a replayed or someone else's token is refused. */
+  private async wear(conn: Conn, token: Uint8Array, now: number): Promise<void> {
+    const key = this.options.worldKey;
+    if (!key || conn.entity === undefined || now - conn.wearAt < WEAR_EVERY_MS) return;
+    conn.wearAt = now;
+    let opened: Awaited<ReturnType<typeof openToken>>;
+    try {
+      opened = await openToken(token, { key, world: this.options.worldId, now: this.options.unixNow() });
+    } catch (err) {
+      if (!(err instanceof TokenError)) throw err;
+      this.events.add('wear:refused', 0);
+      return;
+    }
+    const nonce = toHex(opened.header.nonce);
+    if (this.seenNonces.has(nonce) || opened.claims.account !== conn.account || conn.entity === undefined) {
+      this.events.add('wear:refused', 0);
+      return;
+    }
+    this.seenNonces.set(nonce, opened.header.expiresAt);
+    const player = this.roster.get(conn.entity);
+    if (!player) return;
+    if (opened.claims.avatar) player.avatar = opened.claims.avatar;
+    else delete player.avatar;
+    this.joinedThisTick.push(player);
+    this.events.add('wear', 0);
+  }
+
+  /** The player's face and hands (S4.07), kept in the roster and announced as a change. */
+  private face(conn: Conn, m: MessageOf<'face'>, now: number): void {
+    if (conn.entity === undefined || now - conn.faceAt < FACE_EVERY_MS) return;
+    const player = this.roster.get(conn.entity);
+    if (!player) return;
+    if (player.face.expression === m.expression && player.face.left === m.left && player.face.right === m.right) return;
+    conn.faceAt = now;
+    player.face = { expression: m.expression, left: m.left, right: m.right };
+    this.joinedThisTick.push(player);
+    this.events.add('face', 0);
   }
 
   /** Puts the player on a seat or a clicked spot when the world's rules allow it, and answers
