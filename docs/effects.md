@@ -80,6 +80,21 @@ A runtime is made with the global particle and quad caps, so nothing can pass th
 - **Time.** The GPU and CPU watches above (`TimeWatch`). On WebGL the runtime times each effect on the GPU itself; `updateTimed` steps each effect alone and times it.
 - **A runtime that gives up.** A broken file can make the runtime abort. From then on every call throws `RuntimeSpent`, and its owner makes a new runtime without that file.
 
+## In the client
+
+The world view plays effects through its effects layer (`apps/client/src/renderer/src/world/effects.ts`):
+
+- **Worn effects.** An avatar's effect rides an empty marker at its attachment point, placed as a prop is, and loops while it is worn. The runtime loads with the first effect, for the renderer's backend; its WebAssembly comes inlined in a chunk of its own.
+- **Drawn last.** Effekseer's effects are made for a finished image, so they draw after three.js has written the frame to the canvas, over it (`effects-draw.ts`). The scene's own depth hides them behind what stands in front:
+  - On WebGPU, one small pass copies three's depth (multisampled when it antialiases) into a single-sampled depth texture, and the runtime records into a pass on the canvas with it.
+  - On WebGL2, one quad writes three's resolved depth into the canvas's depth buffer before the runtime draws.
+- **Opaque canvas.** The world's canvas is opaque, so an effect's alpha never shows the page through it.
+- **Who shows.** The viewer's own effects show, and the world's. So do a friend's, unless the trust shield or hiding that person covers their avatar. A stranger's show only when the viewer allows strangers' effects in the settings, which they are not by default (Q-M10). Effects can be switched off altogether.
+- **The guard.** Admission, trimming and the watches above. An effect's first five frames after it starts are left out of the watches: a procedural mesh is made or a pipeline compiled then, once.
+- **A runtime that gives up.** It is replaced, the effect that did it is blocked for the visit, and the rest play again.
+- **The starters' size.** Effekseer's samples are authored large: the starter aura and shield play at 0.12 of it.
+- **Checked end to end.** The end-to-end test takes the starter aura at home, puts it on beside the tee in a world, and checks it plays (118 particles on WebGPU, drawn with the scene's depth, nothing stopped), then takes it off.
+
 ## Fuzzing
 
 `tools/converter/test/effect-fuzz.test.ts` breaks Effekseer's samples 300 ways (bytes flipped, the file cut short, chunk sizes and counts that lie, garbage put in) and runs each through the reader and the pinned runtime. Each must be refused by the reader, refused by the dry run (the deadline included) or measured. Nothing else may happen, and a fresh runtime afterwards plays the laser as before. On 2026-10-18 the corpus ended 103 times at the reader, 112 times in the runtime, once at the deadline and 84 times measured.
