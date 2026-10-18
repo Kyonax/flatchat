@@ -71,7 +71,15 @@ node tools/bots/src/avatar-bench.ts --from MY_AVATARS --out CONVERTED \
   --client apps/client/release/linux-unpacked/flatchat --seconds 60 --present 200 --in-view 55 [--tier low|medium|high]
 ```
 
-`--tier` uses that tier's policy as it ships (low: 4 in full, 12 lower, springs on 2, nothing below Good in full; medium: 8, 20, 6, Medium; high: 12, 28, 8, Poor). Without it, the policy is 12 in full, 20 lower and springs on 6, with every rank allowed in full, which is harsher than any tier. The pass lines: frame time p95 at most 33.3 ms (30 fps), the worst frame after the warm-up at most 100 ms, the policy's full quota drawn in full, and every FlatChat process together within 2 GB. On the reference laptop's stand-in, add `--headroom 1.5` (OQ-24).
+`--tier` uses that tier's policy as it ships (low: 4 in full, 12 lower, springs on 2, nothing below Good in full; medium: 8, 20, 6, Medium; high: 12, 28, 8, Poor). Without it, the policy is 12 in full, 20 lower and springs on 6, with every rank allowed in full, which is harsher than any tier. The pass lines: frame time p95 at most 33.3 ms (30 fps), the worst frame after the warm-up at most 100 ms, the policy's full quota drawn in full, and every FlatChat process together within 2 GB.
+
+On the reference laptop's stand-in (its sudo steps are the owner's, OQ-23), the same run is:
+
+```sh
+npm run standin -- run --target iris-xe --seconds 60 --crowd CONVERTED --converted --present 200 --in-view 55 --tier medium
+```
+
+The stand-in's headroom (1.5, OQ-24) tightens the frame lines to 22.2 ms and 66.7 ms.
 
 Measured on the development desktop on 2026-10-17 (WebGPU, NVIDIA). The set was 68 real avatars from VRoid Studio and Blender exports, converted with KTX2: 60 ranked Excellent, 2 Poor and 6 Very Poor; 5.5 s each at the median, 118 s the slowest. Each run measured 60 s:
 
