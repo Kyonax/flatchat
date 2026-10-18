@@ -6,3 +6,5 @@ export { addLevelsOfDetail, type ConvertOptions, type ConvertResult, ConvertErro
 export { AVATAR_CONVERTER_VERSION, AvatarError, type AvatarResult, convertAvatar } from './avatar/convert.ts';
 export { type KitBody, kitBody, REFERENCE_POSES } from './item/clipping.ts';
 export { convertItem, ITEM_CONVERTER_VERSION, ItemError, type ItemOptions, type ItemResult } from './item/convert.ts';
+export { ANIMATION_CONVERTER_VERSION, AnimationError, animationFormat, convertAnimation } from './animation/convert.ts';
+export { sampleBvh, sampleClip } from './animation/samples.ts';

@@ -1,0 +1,28 @@
+{
+  "bvh": {
+    "vrma": "ddf5d5c063f52914e8027380785bbf15abaae24b2c87ad8e67d51582f7088369",
+    "bytes": 9592,
+    "warnings": []
+  },
+  "gltf": {
+    "vrma": "2a15b702903306b70e7defa925ec1d785a99a60e306338b2b56f73e1362d22d4",
+    "bytes": 9592,
+    "warnings": [
+      "stood up and turned to face forward (it faced back)",
+      "its rest was not a T-pose: leftUpperArm, rightUpperArm measured from VRM's T-pose"
+    ]
+  },
+  "fbx": {
+    "vrma": "abb18d3513bcfe7e140074ec9dd67ccfdbb72f60434b99f25774f23a4d672a24",
+    "bytes": 9592,
+    "warnings": [
+      "stood up and turned to face forward (it faced back)",
+      "its rest was not a T-pose: leftUpperArm, rightUpperArm measured from VRM's T-pose"
+    ]
+  },
+  "vrma": {
+    "vrma": "ddf5d5c063f52914e8027380785bbf15abaae24b2c87ad8e67d51582f7088369",
+    "bytes": 9592,
+    "warnings": []
+  }
+}
