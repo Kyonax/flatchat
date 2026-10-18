@@ -8,6 +8,7 @@ Rules for every entry:
 - Give the source link, the licence (an SPDX identifier where one exists), the date it was retrieved and what was changed.
 - Assets must be CC0 or CC BY; a CC BY asset also carries the credit line its licence asks for. Code keeps its own licence.
 - Material without an entry here does not ship.
+- Every asset, the project's own included, also has a provenance record in [kits/provenance/](kits/provenance/) (Track P's P.07). `npm run harness` (its `assets` check, `tools/harness/src/asset-check.ts`) refuses an asset without a record, a licence other than CC0, CC BY or the owner's own, another's work without a saved copy of its licence page, and a CC BY asset whose credit line is missing here.
 
 | Item | Path | Creator | Source | Licence | Retrieved | Changes |
 |---|---|---|---|---|---|---|

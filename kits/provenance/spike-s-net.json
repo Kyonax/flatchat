@@ -1,0 +1,7 @@
+{
+  "files": ["docs/spikes/s-net.png"],
+  "title": "Spike S0.07's 200 bots on the world server, seen from above",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "drawn by the bots' renderer (npm run bots -- render) from a 200-bot run on 2026-10-17"
+}

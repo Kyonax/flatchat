@@ -1,0 +1,7 @@
+{
+  "files": ["kits/worlds/plaza/scenes/plaza.glb", "kits/worlds/park/scenes/park.glb"],
+  "title": "The plaza's and the park's scenes",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "written by tools/converter/scripts/make-plaza.ts (from packages/sim's plaza) and tools/converter/scripts/make-park.ts (from the base library's parts, S2.05)"
+}

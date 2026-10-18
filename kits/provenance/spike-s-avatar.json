@@ -1,0 +1,21 @@
+{
+  "files": ["docs/spikes/s-avatar.png"],
+  "title": "Spike S0.09's crowd bench with 200 avatars present",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "a picture of the client's crowd bench (apps/client/src/renderer/src/crowd/), taken with --crowd-shot during the spike",
+  "depicts": [
+    {
+      "what": "VRoid Studio's sample avatars",
+      "creator": "the VRoid Project (pixiv)",
+      "source": "https://opengameart.org/content/vroid-studio-cc0-models",
+      "terms": "CC0 as stated there; in their own files two say CC0 and six point to VRoid Hub conditions that let anyone use, modify and redistribute them, commercially too, without credit (docs/spikes/s-avatar.md)"
+    },
+    {
+      "what": "100Avatars R1",
+      "creator": "Polygonal Mind",
+      "source": "https://github.com/toxsam/open-source-avatars",
+      "terms": "CC0-1.0"
+    }
+  ]
+}
