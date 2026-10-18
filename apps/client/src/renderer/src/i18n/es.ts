@@ -556,6 +556,22 @@ const es: Shape<typeof en> = {
       settings: { title: 'Ajustes', body: 'Gráficos, sonido, teclas e idioma están en los ajustes. Ahí se puede apagar cada efecto de mundo, superposición y efecto de pantalla, y cambiar cada tecla.' },
       trouble: { title: 'Cuando algo sale mal', body: 'Reporta a una persona o un mundo desde el menú; tus reportes y sus resultados están en la página de inicio. Un efecto, sombreador o archivo que rompe las reglas se deja por fuera, nunca el mundo entero.' },
     },
+    policies: {
+      title: 'Reglas y políticas',
+      lead: 'Cada una se abre en tu navegador, desde el servidor de FlatChat donde inicias sesión.',
+      items: {
+        rules: 'Reglas de la comunidad',
+        terms: 'Términos de uso',
+        privacy: 'Aviso de privacidad',
+        dataPolicy: 'Política de tratamiento de datos (Colombia)',
+        teens: 'Para adolescentes',
+        guardians: 'Para acudientes',
+        lawEnforcement: 'Autoridades',
+        hostAgreement: 'Alojar un mundo',
+        report: 'Reportar algo',
+        takedown: 'Retiro por derechos de autor',
+      },
+    },
     keys: {
       title: 'Teclas',
       close: 'Cerrar',

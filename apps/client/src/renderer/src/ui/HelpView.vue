@@ -2,6 +2,7 @@
 <script setup lang="ts">
 // The help page (S6.07, Q-H4): everything in short, in the player's language, and the keys as this
 // player has them; the credits are one button away.
+import { POLICY_PAGE_IDS, type PolicyPage } from '@flatchat/content';
 import { useI18n } from 'vue-i18n';
 import type { Settings } from '../../../shared/settings';
 import KeysHelp from './KeysHelp.vue';
@@ -9,7 +10,10 @@ import LogoMark from './LogoMark.vue';
 
 defineProps<{ settings: Settings }>();
 defineEmits<{ back: []; credits: [] }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+function open(id: PolicyPage): void {
+  void window.flatchat?.openPolicy(id, String(locale.value));
+}
 const SECTIONS = ['start', 'move', 'talk', 'people', 'you', 'settings', 'trouble'] as const;
 </script>
 
@@ -50,6 +54,21 @@ const SECTIONS = ['start', 'move', 'talk', 'people', 'you', 'settings', 'trouble
         <p>{{ t(`help.sections.${s}.body`) }}</p>
       </section>
       <KeysHelp :keys="settings.keys" />
+      <section data-test="policies">
+        <h2>{{ t('help.policies.title') }}</h2>
+        <p>{{ t('help.policies.lead') }}</p>
+        <div class="policies">
+          <button
+            v-for="id in POLICY_PAGE_IDS"
+            :key="id"
+            type="button"
+            :data-test="`policy-${id}`"
+            @click="open(id)"
+          >
+            {{ t(`help.policies.items.${id}`) }}
+          </button>
+        </div>
+      </section>
     </article>
   </div>
 </template>
@@ -81,5 +100,12 @@ h1 {
 section p {
   margin: 4px 0 0;
   max-width: 48rem;
+}
+
+.policies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 </style>

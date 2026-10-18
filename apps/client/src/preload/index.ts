@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('flatchat', {
   crowdShot: (): Promise<void> => ipcRenderer.invoke('flatchat:crowd-shot'),
   // The app: the account lives in the main process; the page sees its state, never its tokens.
   locale: (): Promise<string> => ipcRenderer.invoke('flatchat:locale'),
+  openPolicy: (id: string, lang: string): Promise<boolean> => ipcRenderer.invoke('flatchat:open-policy', id, lang),
   settings: (): Promise<unknown> => ipcRenderer.invoke('flatchat:settings'),
   updateSettings: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:settings-set', patch),
   authState: (): Promise<unknown> => ipcRenderer.invoke('flatchat:auth-state'),

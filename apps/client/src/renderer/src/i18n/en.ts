@@ -552,6 +552,22 @@ export default {
       settings: { title: 'Settings', body: 'Graphics, sound, keys and the language are in the settings. Every world effect, overlay and screen effect can be switched off there, and each key changed.' },
       trouble: { title: 'When something goes wrong', body: 'Report a person or a world from the menu; your reports and their outcomes are on the home page. An effect, shader or file that breaks the rules is left out, never the whole world.' },
     },
+    policies: {
+      title: 'Rules and policies',
+      lead: 'Each opens in your browser, from the FlatChat server you sign in to.',
+      items: {
+        rules: 'Community rules',
+        terms: 'Terms of use',
+        privacy: 'Privacy notice',
+        dataPolicy: 'Data processing policy (Colombia)',
+        teens: 'For teens',
+        guardians: 'For guardians',
+        lawEnforcement: 'Law enforcement',
+        hostAgreement: 'Hosting a world',
+        report: 'Report something',
+        takedown: 'Copyright takedown',
+      },
+    },
     keys: {
       title: 'Keys',
       close: 'Close',

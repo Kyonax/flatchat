@@ -149,6 +149,8 @@ interface FlatchatBridge {
   crowdReport(report: unknown): Promise<void>;
   crowdShot(): Promise<void>;
   locale(): Promise<string>;
+  /** A rule or policy page of this client's core in the system browser (S7.02). */
+  openPolicy(id: import('@flatchat/content').PolicyPage, lang: string): Promise<boolean>;
   settings(): Promise<import('../../shared/settings').Settings>;
   updateSettings(patch: unknown): Promise<import('../../shared/settings').Settings>;
   authState(): Promise<FlatchatAuthState>;

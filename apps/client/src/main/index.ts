@@ -14,7 +14,7 @@
 import { spawn } from 'node:child_process';
 import { chmodSync, copyFileSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, EFFECT_EXTENSIONS, readLicence, uploadFormat } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, EFFECT_EXTENSIONS, POLICY_PAGES, readLicence, uploadFormat } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -138,6 +138,17 @@ function startAccount(): void {
 const failure = (err: unknown): { ok: false; error: string } => ({ ok: false, error: err instanceof CoreError ? err.code : 'failed' });
 
 ipcMain.handle('flatchat:locale', () => app.getLocale());
+// The rules and policies (S7.02), on this client's own core, in the player's language: only the
+// pages in POLICY_PAGES, never an address the page hands over.
+ipcMain.handle('flatchat:open-policy', (_event, id: unknown, lang: unknown) => {
+  if (typeof id !== 'string' || !Object.hasOwn(POLICY_PAGES, id)) return false;
+  const base = coreBase(flags.core ?? (settings?.get().core || DEFAULT_CORE)) ?? coreBase(DEFAULT_CORE)!;
+  const url = new URL(POLICY_PAGES[id as keyof typeof POLICY_PAGES], base);
+  url.searchParams.set('lang', lang === 'es' ? 'es' : 'en');
+  // trap-lint: allow T16 because the URL is this client's own core with a path from POLICY_PAGES
+  void shell.openExternal(url.href);
+  return true;
+});
 // World content (S2.04): the page downloads, the main process keeps what matches its hash.
 ipcMain.handle('flatchat:content-has', (_event, hashes: unknown) => (Array.isArray(hashes) ? (cache?.has(hashes.slice(0, 4096)) ?? []) : []));
 ipcMain.handle('flatchat:content-get', (_event, hash: unknown) => cache?.get(hash));
