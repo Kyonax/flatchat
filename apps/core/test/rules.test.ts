@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { cleanDisplayName, cleanEmail, passwordProblem } from '../src/accounts.ts';
 import { ageOn, ageRule, isMinor } from '../src/age.ts';
 import { LIMITS, RateLimiter } from '../src/limits.ts';
-import { escapeHtml, html, privacyPage, raw, signinPage, signupPage } from '../src/pages.ts';
+import { documentPage, escapeHtml, html, raw, signinPage, signupPage } from '../src/pages.ts';
 import { challengeOf, hashPassword, openWorldKey, sealingKey, sealWorldKey, TEST_COST, verifyPassword } from '../src/secrets.ts';
 import { pickLang, STRINGS } from '../src/strings.ts';
 import { cleanAddress, cleanWorldName } from '../src/worlds.ts';
@@ -144,7 +144,7 @@ describe('the pages', () => {
   });
 
   it('carry no script and post only to the core', () => {
-    for (const p of [signinPage('es', 'r'), signupPage('es', 'i'), privacyPage('en', 'Op', 'privacy@example.org')]) {
+    for (const p of [signinPage('es', 'r'), signupPage('es', 'i'), documentPage('en', 'privacy', { operator: 'Op', contact: 'privacy@example.org', address: 'A street', phone: '+57 1' })]) {
       expect(p).not.toMatch(/<script|\son\w+=/i);
       for (const action of p.matchAll(/action="([^"]*)"/g)) expect(action[1]).toMatch(/^\/(signin|signup)\?lang=(en|es)$/);
     }

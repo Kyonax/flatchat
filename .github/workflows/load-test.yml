@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: MPL-2.0
+# S7.04's soak, on demand: bots in one world on a GitHub runner for as long as asked (200 for 30
+# minutes by default, voice on), the server's tick, the bandwidths and every disconnect measured by
+# tools/bots/src/run.ts, which fails when a pass line does (any bot lost, the tick's p99 past 15 ms,
+# a client's download past its limit). The measurements are kept as an artifact for 90 days. The
+# run with real players on the owner's host is his; this is the part a runner can show.
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      bots:
+        description: Bots in the world
+        default: '200'
+      minutes:
+        description: Minutes
+        default: '30'
+      transport:
+        description: udp or rtc
+        default: udp
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Bots in one world
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .tool-versions
+          cache: npm
+      - run: npm ci
+      # The run goes into a rootless network namespace to count every datagram on the wire.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The soak
+        env:
+          BOTS: ${{ inputs.bots }}
+          MINUTES: ${{ inputs.minutes }}
+          TRANSPORT: ${{ inputs.transport }}
+        run: |
+          [[ "$BOTS" =~ ^[0-9]{1,3}$ && "$MINUTES" =~ ^[0-9]{1,3}$ && "$TRANSPORT" =~ ^(udp|rtc)$ ]] || { echo "bots and minutes are numbers, transport udp or rtc"; exit 2; }
+          node tools/bots/src/run.ts run --transport "$TRANSPORT" --bots "$BOTS" --minutes "$MINUTES" --out load-test
+      - name: The report
+        if: always()
+        run: cat load-test/report.md || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: load-test
+          path: load-test/
+          retention-days: 90

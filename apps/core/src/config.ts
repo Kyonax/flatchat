@@ -8,6 +8,8 @@
 //   FLATCHAT_CORE_URL       where people reach the core, e.g. https://core.example.org (default http://127.0.0.1:8787)
 //   FLATCHAT_CORE_OPERATOR  who runs it, for the privacy notice
 //   FLATCHAT_CORE_CONTACT   how to reach them about privacy (an email address or a page)
+//   FLATCHAT_CORE_ADDRESS   their postal address, and FLATCHAT_CORE_PHONE a phone number, for the
+//                           rules and policies (S7.02: Colombia's data policy must name both)
 //   FLATCHAT_CORE_TUNNEL    1 behind a Cloudflare Tunnel (the client's address from the forwarded header)
 //   FLATCHAT_CORE_STUN      STUN URLs, comma-separated (default stun:stun.cloudflare.com:3478; "none" for none)
 //   FLATCHAT_CORE_TURN_URLS and FLATCHAT_CORE_TURN_SECRET   coturn with use-auth-secret ("the relay we run")
@@ -31,6 +33,8 @@ export interface CoreEnv {
   publicUrl: string;
   operator: string;
   contact: string;
+  address: string;
+  phone: string;
   behindTunnel: boolean;
   ice: IceConfig;
   trust: TrustRule[];
@@ -74,6 +78,8 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     publicUrl,
     operator: env['FLATCHAT_CORE_OPERATOR'] ?? 'The operator of this FlatChat core',
     contact: env['FLATCHAT_CORE_CONTACT'] ?? 'the contact address published by the operator',
+    address: env['FLATCHAT_CORE_ADDRESS'] ?? '[the operator’s address, to be published]',
+    phone: env['FLATCHAT_CORE_PHONE'] ?? '[a phone number, to be published]',
     behindTunnel: env['FLATCHAT_CORE_TUNNEL'] === '1',
     ice: {
       stun: env['FLATCHAT_CORE_STUN'] === 'none' ? [] : env['FLATCHAT_CORE_STUN'] ? list(env['FLATCHAT_CORE_STUN']) : DEFAULT_STUN,

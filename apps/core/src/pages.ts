@@ -4,7 +4,9 @@
 // (S5.09). Plain HTML forms with no script.
 // Every value goes through `html`, which escapes it; only `raw()` marks trusted markup, and only
 // this file builds any. The page's policy forbids scripts, frames and outside resources.
+import { POLICY_PAGES } from '@flatchat/content';
 import { COUNTRY_CODES } from './countries.ts';
+import { DOCUMENT_IDS, DOCUMENTS, DOCUMENTS_VERSION, type DocumentId } from './documents.ts';
 import { type Lang, STRINGS, type Strings } from './strings.ts';
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -40,24 +42,25 @@ export function html(parts: TemplateStringsArray, ...values: unknown[]): Raw {
 // media-src: the admin page plays a report's voice clip from this server (S3.02).
 export const PAGE_POLICY = "default-src 'none'; style-src 'self'; img-src 'self'; media-src 'self'; form-action 'self' http://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'";
 
-export const CSS = `:root{color-scheme:light dark;--bg:#f5f5f2;--fg:#17171a;--muted:#5d5d66;--line:#d4d4d8;--accent:#c9a20a;--error:#b3261e;--card:#fff}
-@media (prefers-color-scheme:dark){:root{--bg:#121214;--fg:#ececee;--muted:#a1a1aa;--line:#2e2e33;--accent:#f9cd26;--error:#f2b8b5;--card:#1b1b1e}}
+export const CSS = `:root{color-scheme:light dark;--bg:#f5f5f2;--fg:#17171a;--muted:#5d5d66;--line:#d4d4d8;--accent:#7b2fb0;--on-accent:#fff;--error:#b3261e;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--fg:#ececee;--muted:#a1a1aa;--line:#2e2e33;--accent:#d780fc;--on-accent:#121214;--error:#f2b8b5;--card:#0c0c0e}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:28rem;margin:6vh auto;padding:0 16px}h1{font-size:1.5rem;margin:0 0 .5rem}p{margin:.5rem 0 1rem}.muted{color:var(--muted);font-size:.9rem}
 form{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:16px}label{display:block;font-weight:600;margin:.75rem 0 .25rem}
 input,select,textarea{width:100%;font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:2px;background:var(--bg);color:var(--fg)}
 .row{display:flex;gap:8px}.row>*{flex:1}.check{display:flex;gap:8px;align-items:flex-start;font-weight:400}.check input{width:auto;margin-top:.3rem}
-button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:#121214;cursor:pointer}
+button{margin-top:1rem;width:100%;font:inherit;font-weight:600;padding:.6rem;border:0;border-radius:2px;background:var(--accent);color:var(--on-accent);cursor:pointer}
 .error{color:var(--error);font-weight:600}a{color:inherit}.brand{font-weight:700;letter-spacing:.02em;margin-bottom:1.5rem}
 main.wide{max-width:72rem}table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}table.list th,table.list td{text-align:left;padding:8px;border-top:1px solid var(--line);vertical-align:top}
-table.list form,form.inline{background:none;border:0;padding:0;display:inline}form.inline button{width:auto;margin:0 0 0 6px;padding:.2rem .6rem}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}pre.draft{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);padding:8px;font-size:.85rem}`;
+table.list form,form.inline{background:none;border:0;padding:0;display:inline}form.inline button{width:auto;margin:0 0 0 6px;padding:.2rem .6rem}table.list button{width:auto;margin:0 4px 0 0;padding:.3rem .7rem}button.secondary{background:var(--line);color:var(--fg)}pre.draft{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);padding:8px;font-size:.85rem}
+main.doc{max-width:44rem}main.doc h2{font-size:1.1rem;margin:1.5rem 0 .25rem}.draft-note{border:1px solid var(--accent);padding:8px 12px;font-size:.9rem}.lead{font-size:1.05rem}nav.docs{margin-top:2rem;border-top:1px solid var(--line)}nav.docs a{display:inline-block;margin:0 16px 8px 0}`;
 
-function page(lang: Lang, title: string, body: Raw): string {
+function page(lang: Lang, title: string, body: Raw, kind?: 'doc'): string {
   const s = STRINGS[lang];
   return html`<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>${title} · ${s.htmlTitle}</title><link rel="stylesheet" href="/static/core.css"></head>
-<body><main><div class="brand">FlatChat</div>${body}</main></body></html>`.html;
+<body><main${kind === 'doc' ? raw(' class="doc"') : raw('')}><div class="brand">FlatChat</div>${body}</main></body></html>`.html;
 }
 
 export function messagePage(lang: Lang, title: string, message: string, error = false): string {
@@ -129,10 +132,21 @@ ${v.error ? html`<p class="error" role="alert">${v.error}</p>` : ''}
   );
 }
 
-export function privacyPage(lang: Lang, operator: string, contact: string): string {
+/** A rule or policy (S7.02): its title, summary and sections with the operator's details filled
+ *  in, marked as a draft until the lawyer's review (OQ-19), the other language and every other
+ *  document one link away. */
+export function documentPage(lang: Lang, id: DocumentId, fill: Readonly<Record<'operator' | 'contact' | 'address' | 'phone', string>>): string {
   const s: Strings = STRINGS[lang];
-  const paragraphs = s.privacy.map((p) => p.replace('{operator}', operator).replace('{contact}', contact));
-  return page(lang, s.privacyTitle, html`<h1>${s.privacyTitle}</h1>${paragraphs.map((p) => html`<p>${p}</p>`)}`);
+  const values: Record<string, string> = { ...fill, effective: DOCUMENTS_VERSION };
+  const f = (t: string): string => t.replace(/\{(operator|contact|address|phone|effective)\}/g, (_m, k: string) => values[k] ?? '');
+  const d = DOCUMENTS[lang][id];
+  const other: Lang = lang === 'en' ? 'es' : 'en';
+  return page(
+    lang,
+    f(d.title),
+    html`<p class="draft-note">${s.documentDraft}</p><h1>${f(d.title)}</h1><p class="muted"><a href="${POLICY_PAGES[id]}?lang=${other}">${s.otherLanguage}</a></p><p class="lead">${f(d.summary)}</p>${d.sections.map((x) => html`<h2>${f(x.heading)}</h2>${x.paragraphs.map((p) => html`<p>${f(p)}</p>`)}`)}<nav class="docs"><h2>${s.documentsAll}</h2>${DOCUMENT_IDS.map((x) => html`<a href="${POLICY_PAGES[x]}?lang=${lang}">${f(DOCUMENTS[lang][x].title)}</a>`)}</nav>`,
+    'doc',
+  );
 }
 
 const day = (d: Date): string => d.toISOString().slice(0, 10);

@@ -47,6 +47,8 @@ const app = await buildCore({
   publicUrl: env.publicUrl,
   operator: env.operator,
   contact: env.contact,
+  address: env.address,
+  phone: env.phone,
   behindTunnel: env.behindTunnel,
   ice: env.ice,
   trust: env.trust,

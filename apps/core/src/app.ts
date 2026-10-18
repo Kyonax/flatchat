@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import websocket from '@fastify/websocket';
-import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT, POLICY_PAGES } from '@flatchat/content';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
@@ -58,7 +58,8 @@ import {
 import { befriend, blocksOf, friendsOf, MAX_BLOCKS, setBlock, unfriend } from './social.ts';
 import { isMinor } from './age.ts';
 import { guardianAskPage, guardianInvitePage, guardianPage, guardianSigninPage } from './pages.ts';
-import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage, takedownPage, takedownStatusPage } from './pages.ts';
+import { agreementPage, CSS, documentPage, messagePage, PAGE_POLICY, reportPage, signinPage, signupPage, type SignupValues, standingPage, takedownPage, takedownStatusPage } from './pages.ts';
+import { DOCUMENT_IDS } from './documents.ts';
 import { struckAccounts } from './copies.ts';
 import { decideTakedown, fileTakedown, removeContent, takedownProblem, takedownQueue, takedownStatus } from './takedowns.ts';
 import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
@@ -102,9 +103,11 @@ export interface CoreOptions {
   secret: Uint8Array;
   /** Where people reach the core, for the links it hands out (https in production). */
   publicUrl: string;
-  /** Who runs this core and how to reach them, for the privacy notice. */
+  /** Who runs this core and how to reach them, for the rules and policies (S7.02). */
   operator: string;
   contact: string;
+  address?: string;
+  phone?: string;
   cost?: PasswordCost;
   policy?: AgePolicy;
   now?: () => Date;
@@ -293,10 +296,14 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
 
   app.get('/static/core.css', async (_req, reply) => reply.type('text/css; charset=utf-8').header('cache-control', 'public, max-age=3600').send(CSS));
 
-  app.get('/privacy', async (req, reply) => {
-    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
-    return htmlPage(reply, privacyPage(lang, o.operator, o.contact));
-  });
+  // The rules and policies (S7.02; drafts until the lawyer's review, OQ-19), each in both languages,
+  // at the paths the client links to (POLICY_PAGES).
+  for (const id of DOCUMENT_IDS) {
+    app.get(POLICY_PAGES[id], async (req, reply) => {
+      const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+      return htmlPage(reply, documentPage(lang, id, { operator: o.operator, contact: o.contact, address: o.address ?? '[the operator’s address, to be published]', phone: o.phone ?? '[a phone number, to be published]' }));
+    });
+  }
 
   // The public report form (S3.02, OQ-12): for people without an account.
   app.get('/report', async (req, reply) => {
