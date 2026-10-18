@@ -59,12 +59,19 @@ An avatar takes the worst rank of any of its numbers (the manifest names which).
 | Spring joints | 16 | 64 | 128 | 256 | more |
 | Colliders | 4 | 8 | 16 | 32 | more |
 | Collision checks | 32 | 128 | 256 | 512 | more |
+| Creator shaders' cost (S6.03) | 50 | 150 | 300 | 600 | refused over 800 |
 
-Every viewer chooses the lowest rank they draw in full; the rest show at a lighter level (S4.09).
+Every viewer chooses the lowest rank they draw in full; the rest show at a lighter level (S4.09). A material may carry a creator shader, a node graph with the material's own look as its fallback ([shaders](shaders.md)): the full avatar draws it for its wearer and their friends, and for strangers only when a viewer allows it.
 
 ## In the world
 
 Everyone sees the avatar you wear: the world learns it from your connect token (the core vouches you own it), and each client fetches it from FlatChat by its hash and keeps it in its cache. The nearest few are drawn in full, the next ones lighter (LOD1, LOD2), everyone else as their impostor; an avatar below your minimum rank is never drawn in full. Everyone moves with the platform's default clips (Track P's P.05; [docs/animations.md](animations.md#the-default-clips)), retargeted onto each body: idle, walk, jog and sprint at a pace that keeps the feet planted for that avatar's legs, a jump and a fall, sitting down and getting up, each change blended. A body turns on the spot without stepping. Your voice moves your mouth; keys 1 to 5 make your face happy, angry, sad, relaxed or surprised (press again for neutral) and R changes your hands' pose. Spring bones (hair, clothes) move on the nearest six. Your height (0.3 to 5 m, fitted into each world's range) scales your avatar; four sliders change its proportions, 80 to 125 % each: shoulders and hips, arms, legs (longer legs stand taller), head. They move the avatar's joints and stretch its arms and legs along their bones, so everyone sees the same shape and a sleeve keeps to the arm under it. On the home screen you can also wear one of the three standard bodies with no upload, the ones clothes are made for (`docs/items.md`); press O in a world for your outfits. You can share an avatar in the free gallery under its licence, never looser than the terms its file states (`docs/items.md`, The free gallery).
+
+## How avatars look
+
+An avatar keeps the materials its file has (S6.04, Q-E4): FlatChat writes no material of its own. VRM's toon shading, MToon, is drawn by three-vrm's MToon port as three.js node materials (`MToonNodeMaterial`), so it runs on WebGPU and on the WebGL2 fallback alike; any other material is one of three.js's built-in node materials (PBR as `MeshStandardNodeMaterial`). A material may also carry a creator shader ([shaders](shaders.md)), drawn over its own look for those who see it.
+
+The look check makes sure an avatar looks here as it looks in a VRM viewer. `node tools/bots/src/look-check.ts CLIENT` converts the reference avatars (VRM 1.0 and VRM 0.x in MToon, a plain GLB in PBR), then the client's look mode draws each twice under the same camera and lights: as a world draws it (the converted level through the world's own loader), and as three-vrm's own viewer draws the uploaded file (its classic MToon on three's WebGL renderer). The pictures must match within 4 % of their pixels (a pixel differs when a colour channel is off by more than 24 of 255). CI runs it on every push.
 
 ## Your screen, your choice
 

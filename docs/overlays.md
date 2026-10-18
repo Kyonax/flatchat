@@ -66,7 +66,7 @@ And none of them in safe mode. Another player's shows at most 0.2 of the screen'
 - every overlay goes, the viewer's own included;
 - everyone else's effects stop, and the world's.
 
-A notice at the top of the screen says so. Shift+Esc again brings everything back as the viewer had it.
+A notice at the top of the screen says so. Shift+Esc again brings everything back as the viewer had it. When the mouse is captured, the key also frees it (the browser does that on Esc, Shift or not); it does not open the menu as Esc alone does.
 
 ## In the client
 
