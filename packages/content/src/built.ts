@@ -4,6 +4,7 @@
 // files, each named by its SHA-256 (the visual GLB, the collision file, the navigation mesh, the
 // sounds). Clients download it from strangers' servers, so `parseBuiltWorld` checks every field.
 import { plainText, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
+import { readLook, type WorldLook } from './look.ts';
 import { OVERLAY_LIMITS, type OverlayLook, readOverlayLook } from './overlay.ts';
 import { isPart, MAX_PARTS } from './parts.ts';
 
@@ -154,7 +155,15 @@ function manifestOf(v: unknown, at: string): WorldManifest {
     avatars: { minHeight: num(av['minHeight'], `${at}.avatars.minHeight`, 0.1, 20), maxHeight: num(av['maxHeight'], `${at}.avatars.maxHeight`, 0.1, 20) },
     voice: { range: num(voice['range'], `${at}.voice.range`, 1, 100) },
     scenes: list(v['scenes'], `${at}.scenes`, LIMIT.scenes, (s, a) => (isObj(s) ? { id: text(s['id'], `${a}.id`, 32), file: text(s['file'], `${a}.file`, 256) } : fail(a, 'an object'))),
+    ...(v['look'] !== undefined ? { look: lookOf(v['look'], `${at}.look`) } : {}),
   };
+}
+
+/** A built world's look, read again (a host is not trusted): the first problem refuses it. */
+function lookOf(v: unknown, at: string): WorldLook {
+  const { look, problems } = readLook(v, at);
+  if (problems.length) fail(problems[0]!.at, problems[0]!.message);
+  return look;
 }
 
 /** Checks a world.json from anywhere; returns it, or the first thing wrong with it. */

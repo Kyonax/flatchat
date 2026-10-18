@@ -2,6 +2,7 @@
 // A world's world.toml (docs/world-format.md): parsed, checked field by field, and turned into a
 // manifest. Every problem names its file and field; an unknown key is a warning, never used.
 import { parse, TomlError } from 'smol-toml';
+import { LOOK_TABLE_KEYS, readLook, type WorldLook } from './look.ts';
 import { OVERLAY_LIMITS, type OverlayLook, readOverlayLook } from './overlay.ts';
 
 export const WORLD_FORMAT = 1;
@@ -39,6 +40,8 @@ export interface WorldManifest {
   scenes: SceneEntry[];
   /** Its screen overlays, when it has any (S6.02): on for every visitor until they switch them off. */
   overlays?: WorldOverlayEntry[];
+  /** Its look, when it has a [look] table (S6.05): sky, fog, light and screen effects. */
+  look?: WorldLook;
 }
 
 /** Plain text: no control, format or direction characters. */
@@ -54,7 +57,7 @@ export function safePath(path: string): boolean {
 }
 
 const KNOWN: Record<string, readonly string[]> = {
-  '': ['format', 'name', 'description', 'capacity', 'persistence', 'movement', 'avatars', 'voice', 'scenes', 'overlays'],
+  '': ['format', 'name', 'description', 'capacity', 'persistence', 'movement', 'avatars', 'voice', 'scenes', 'overlays', 'look'],
   capacity: ['recommended', 'maximum'],
   persistence: ['mode'],
   movement: ['flying'],
@@ -135,6 +138,20 @@ export function parseManifest(text: string, file = 'world.toml'): { manifest?: W
     scenes.push({ id, file: f });
   });
 
+  // The world's look (S6.05): its sky, fog and light, and its screen effects.
+  let look: WorldLook | undefined;
+  if (doc['look'] !== undefined) {
+    const rawLook = doc['look'];
+    for (const [path, keys] of Object.entries(LOOK_TABLE_KEYS)) {
+      const t = path === 'look' ? rawLook : isTable(rawLook) ? rawLook[path.slice(5)] : undefined;
+      if (!isTable(t)) continue;
+      for (const key of Object.keys(t)) if (!keys.includes(key)) add('field-unknown', `${path}.${key}`, `unknown key ${key}: this version ignores it`, 'warning');
+    }
+    const read = readLook(rawLook);
+    for (const p of read.problems) add('field', p.at, p.message);
+    look = read.look;
+  }
+
   // Screen overlays (S6.02): each a PNG in the folder at a screen point.
   const overlays: WorldOverlayEntry[] = [];
   const rawOverlays = doc['overlays'] === undefined ? [] : Array.isArray(doc['overlays']) ? (doc['overlays'] as unknown[]) : (add('field', 'overlays', 'overlays are [[overlays]] entries'), []);
@@ -162,6 +179,7 @@ export function parseManifest(text: string, file = 'world.toml'): { manifest?: W
       voice: { range },
       scenes,
       ...(overlays.length ? { overlays } : {}),
+      ...(look ? { look } : {}),
     },
     problems,
   };

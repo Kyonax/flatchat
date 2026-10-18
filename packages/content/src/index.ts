@@ -127,6 +127,7 @@ export {
   writeBundle,
 } from './effect.ts';
 export { checkEffectBundle, type EffectCheck } from './effect-check.ts';
+export { DEFAULT_LOOK, LOOK_KEYS, LOOK_TABLE_KEYS, type LookFilters, readLook, type WorldLook } from './look.ts';
 export {
   type CheckedGraph,
   checkShaderGraph,
