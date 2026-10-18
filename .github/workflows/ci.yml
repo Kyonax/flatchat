@@ -51,6 +51,12 @@ jobs:
       # a minor and its guardian, a report and its decision, the abuse path's drill).
       - name: Stage 3 acceptance, with real accounts
         run: node tools/bots/src/accept-stage3.ts
+      # S4.12: Stage 4's acceptance lines a machine without a screen can show: avatars written as
+      # three creation tools write them, and a free shape, uploaded, converted in the sandbox with
+      # KTX2, ranked and worn; every bot's roster names every worn avatar; every level reaches a
+      # viewer intact through signed links. The client drawing one is the Linux client job's e2e.
+      - name: Stage 4 acceptance, avatars
+        run: node tools/bots/src/accept-stage4.ts
 
   host-tool:
     name: Host tool
