@@ -77,3 +77,21 @@ Upload an item from the client's home screen (Upload an item, a `.glb`), the way
 To wear clothes, wear a standard body: any account can take one of the three on the home screen (Wear the feminine, masculine or neutral body), with no upload. An avatar uploaded from a kit's own `.vrm` file, unchanged, counts as that body too. An edited copy is a new avatar, and the kit's items don't fit it. Attachments go on any avatar.
 
 An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop to an attachment point, and a `full` item with no top or bottom beside it. In a world, press O for the outfits menu: your saved outfits, your items to put on and take off (an item you put on takes the place of one it conflicts with), and Save what you wear. When you put an outfit on, everyone in the world sees the change, and the next world you join gets it too. Clothes show on the nearest players, as far as their avatars are drawn in full or lighter (LOD1, LOD2); farther away, as impostors, players show without them. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
+
+## The free gallery
+
+Anyone can share an avatar or an item in FlatChat's free gallery, and anyone can take what is there: taking one adds your own copy to your avatars or items, worn and saved in outfits like your own. New players start from the standard bodies and the gallery, so nobody arrives with nothing to wear.
+
+Publishing (Publish, beside one of your ready avatars or items) needs trust level 2 and your word that you made it or may share it, and that it keeps to the content rules (no sexual content or nudity). You state its licence, VRM 1.0's terms, every one of them:
+
+| Field | What it says |
+|---|---|
+| Who may wear it | Everyone: the gallery holds only what everyone may wear |
+| Credit | Whether the makers must be named where it shows |
+| Copies by others | Whether others may upload a copy of it as theirs |
+| Changes | Not allowed; allowed but not to share; allowed and to share |
+| Commercial use | Personal and non-profit; personal with profit; anyone, companies too |
+| Also allowed | Very violent scenes, sexual scenes, political or religious use, antisocial or hateful use (each no unless you allow it) |
+| Licence | A link to the licence's text (VRM's by default), and another if you like |
+
+An avatar's file states its own terms (VRoid Studio and the VRM add-ons write them): you can make them stricter, never looser. The gallery shows each entry with its makers and its licence. Take an entry out of the gallery whenever you like (deleting it does too): copies already taken stay with whoever took them. An exact copy of someone else's entry cannot be uploaded unless its licence allows copies; changed copies are caught later (fingerprints).
