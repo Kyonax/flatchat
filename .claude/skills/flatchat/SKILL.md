@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.59.0"
+  version: "1.60.0"
   verified: "2026-10-18"
 ---
 
@@ -98,7 +98,7 @@ Reference these guidelines when:
 | Adding a trap to the linter or a check to the harness | `rules/harness-and-trap-linter.md` + `rules/offline-testing.md` |
 | A failing or changed CI workflow; reading a red run | `rules/ci-github-actions.md` |
 | Installing, upgrading or pinning tools; install-time warnings | `rules/toolchain-versions.md` |
-| Packaging for Linux or Windows; checking a Windows build | `rules/packaging-windows-linux.md` |
+| Packaging for Linux or Windows; checking a Windows build; the installer and the self-update (signed feed, release scripts) | `rules/packaging-windows-linux.md` |
 | Measuring against the laptop floor; nvidia-smi clock locks; stand-in profiles | `rules/weak-laptop-stand-in.md` + `rules/rendering-three-webgpu.md` |
 
 A trap-linter finding names its rule; read that rule.
@@ -144,5 +144,5 @@ A trap-linter finding names its rule; read that rule.
 | `offline-testing` | Pure modules, scene-graph and recorder tests, inline sources, process tests, test conventions. |
 | `harness-and-trap-linter` | The harness's checks and options, the skill check, the linter's inputs and its traps, allow comments, adding traps and checks. |
 | `ci-github-actions` | The three jobs, AppArmor and SwiftShader steps, time limits, runner renderers, reading red runs, green/red proof (T14, T15). |
-| `packaging-windows-linux` | electron-builder settings, Linux folder and Windows zip from Linux, checking a Windows build without a GPU or desktop. |
+| `packaging-windows-linux` | electron-builder settings, Linux folder and Windows zip from Linux, the per-user installer, the self-update (an Ed25519-signed feed, size and hash checks, AppImage in place, the silent installer), the release scripts, checking a Windows build without a GPU or desktop. |
 | `weak-laptop-stand-in` | Imitating Iris Xe or 680M: clock locks, CPU and memory caps, profile derivation and format, commands, verdicts, tuning. |

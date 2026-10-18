@@ -20,7 +20,7 @@ This rule governs turning the built client into something a person can run, on L
 | `linux.target` | `dir` | An unpacked folder: `release/linux-unpacked/flatchat` |
 | `linux.executableName` | `flatchat` | Lowercase executable on Linux |
 | `linux.category` | `Game` | Desktop-entry category for later packages |
-| `win.target` | `zip` | A zip in `release/`, plus `release/win-unpacked/FlatChat.exe` |
+| `win.target` | `zip`, `nsis` | The portable zip and `release/win-unpacked/FlatChat.exe`; the per-user installer (S7.01, `nsis.oneClick`, `perMachine: false`, `FlatChat-<version>-windows-x64-setup.exe`), built on CI's Windows runner, which the self-update runs silently (`/S --force-run`) |
 | `win.signAndEditExecutable` | `false` | Editing the executable's resources (icon, version info) and signing need Wine on Linux; this stays off until release builds |
 
 | Command | Result |
@@ -29,6 +29,19 @@ This rule governs turning the built client into something a person can run, on L
 | `npm run dist:win -w @flatchat/client` | `electron-vite build`, then the Windows zip, built on Linux without Wine |
 
 The first build per platform downloads that platform's Electron zip. Building a Windows installer (NSIS, MSI) or signing needs Wine or Docker on Linux; until release builds exist, Windows artefacts come from the zip target here or from CI's `windows-2025` job.
+
+## The Self-Update (S7.01)
+
+| Part | Where |
+|---|---|
+| The feed | `apps/client/src/shared/update.ts`: `flatchat-update.json` (format 1, version, released, `packages` per `linux-x64`/`win32-x64`: https url, sha256, bytes) and `flatchat-update.json.sig` (Ed25519, base64); `readUpdateManifest`, `isNewer` (three numbers only) |
+| The check | `apps/client/src/main/update.ts`: `verifyFeed` (the raw 32-byte key in an SPKI prefix), `checkForUpdate` (size-limited reads, signature before parsing, download with size and SHA-256, a wrong package deleted), `applyPlan` (AppImage in place, the installer under `%LOCALAPPDATA%\Programs`, else manual) |
+| The key and address | `apps/client/src/main/update-key.ts`: `UPDATE_FEED` (kyonax.com/flatchat/updates/), `UPDATE_PUBLIC_KEY` (the owner's; empty = no updates, OQ-34) |
+| In the app | `main/index.ts`: `startUpdates` (packaged, key, `settings.updates`; 20 s after start), `flatchat:update` / `update-state` / `update-apply`; the home screen's banner (`data-test=update-ready`) |
+| Release scripts | `apps/client/scripts/update-keygen.ts` (the owner, once), `update-feed.ts` (writes and signs the feed) |
+| Tests | `test/update.test.ts`; CI Linux: `tools/bots/src/update-check.ts` with `--update-check --update-feed --update-key` (a loopback feed only); CI Windows: the installer in and out silently |
+
+Never accept `--update-key` with a feed that is not on this machine: a key on the command line is for tests. Read the signature before parsing the feed; never keep a package whose hash or size differs from the signed feed's.
 
 ## Checking a Windows Build
 
