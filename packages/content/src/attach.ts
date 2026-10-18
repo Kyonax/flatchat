@@ -44,6 +44,40 @@ export const NO_ADJUSTMENT: AttachAdjustment = { offset: [0, 0, 0], rotation: [0
 /** How far a player may move, turn and resize a prop from its point. */
 export const ADJUST_LIMITS = { offset: 0.1, rotation: Math.PI / 4, scale: [0.8, 1.25] as const };
 
+/** A worn prop's adjustment as the protocol (version 9) and the core carry it: whole centimetres,
+ *  whole degrees (X, Y, Z) and a size in percent. */
+export interface WornAdjust {
+  x: number;
+  y: number;
+  z: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  scale: number;
+}
+/** ADJUST_LIMITS in those units: 10 cm, 45 degrees, 80 to 125 percent. */
+export const WORN_LIMITS = {
+  offsetCm: Math.round(ADJUST_LIMITS.offset * 100),
+  rotationDeg: Math.round((ADJUST_LIMITS.rotation * 180) / Math.PI),
+  scalePercent: [Math.round(ADJUST_LIMITS.scale[0] * 100), Math.round(ADJUST_LIMITS.scale[1] * 100)] as const,
+};
+
+/** A worn adjustment rounded and clamped to WORN_LIMITS (the world fits every one it is sent). */
+export function fitWornAdjust(a: WornAdjust): WornAdjust {
+  const c = (v: number, lim: number): number => (Number.isFinite(v) ? Math.min(lim, Math.max(-lim, Math.round(v))) : 0);
+  const [lo, hi] = WORN_LIMITS.scalePercent;
+  const scale = Number.isFinite(a.scale) ? Math.min(hi, Math.max(lo, Math.round(a.scale))) : 100;
+  return { x: c(a.x, WORN_LIMITS.offsetCm), y: c(a.y, WORN_LIMITS.offsetCm), z: c(a.z, WORN_LIMITS.offsetCm), rx: c(a.rx, WORN_LIMITS.rotationDeg), ry: c(a.ry, WORN_LIMITS.rotationDeg), rz: c(a.rz, WORN_LIMITS.rotationDeg), scale };
+}
+
+/** A worn adjustment as attachMatrix takes it: metres, radians and a size. */
+export function wornAdjustment(a: WornAdjust | undefined): AttachAdjustment {
+  if (!a) return NO_ADJUSTMENT;
+  const f = fitWornAdjust(a);
+  const rad = Math.PI / 180;
+  return { offset: [f.x / 100, f.y / 100, f.z / 100], rotation: [f.rx * rad, f.ry * rad, f.rz * rad], scale: f.scale / 100 };
+}
+
 /** An adjustment within the limits (anything else from the network is clamped, never trusted). */
 export function fitAdjustment(a: Partial<AttachAdjustment> | undefined): AttachAdjustment {
   const clamp = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);

@@ -75,6 +75,25 @@ export type Slot = keyof typeof SLOTS;
 /** Slots worn instead of others: a full outfit (a dress, a jumpsuit) takes the top and the bottom. */
 export const SLOT_REPLACES: Partial<Record<Slot, readonly Slot[]>> = { full: ['top', 'bottom'] };
 
+/** What stops a set of items being worn together (S5.05): one item to a slot, one prop to an
+ *  attachment point, and a full outfit with no top or bottom beside it (SLOT_REPLACES). The client
+ *  keeps an outfit within these when a toggle puts an item on (it takes the place of the one it
+ *  conflicts with); the core refuses a saved outfit that breaks them. Empty when they can be worn. */
+export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: AttachPoint | undefined }>): string[] {
+  const problems: string[] = [];
+  const taken = new Map<string, number>();
+  for (const w of worn) {
+    const key = w.slot === 'attachment' ? `attachment at ${w.attach ?? '?'}` : w.slot;
+    taken.set(key, (taken.get(key) ?? 0) + 1);
+  }
+  for (const [key, n] of taken) if (n > 1) problems.push(`${n} items in one ${key.startsWith('attachment') ? key : `${key} slot`}`);
+  for (const [slot, replaced] of Object.entries(SLOT_REPLACES)) {
+    if (!taken.has(slot)) continue;
+    for (const r of replaced) if (taken.has(r)) problems.push(`a ${slot} item takes the ${r} slot too`);
+  }
+  return problems;
+}
+
 /** What a creator's file declares: `extras.flatchat_item` on its scene (a Blender scene's custom
  *  property) or on the file itself. */
 export interface ItemDeclaration {

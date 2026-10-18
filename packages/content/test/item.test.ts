@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // The item rules every program shares (S5.02): the kits' 53 bones and the regions they fill, the
 // slots and their caps, a creator's declaration read or refused with every reason at once, and a
-// fit's JSON checked before three.js sees it.
+// fit's JSON checked before three.js sees it; and which items can be worn together (S5.05).
 import { describe, expect, it } from 'vitest';
-import { checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, readItemDeclaration, REGIONS, regionOfBone, SLOT_REPLACES, SLOTS } from '../src/index.ts';
+import { checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, outfitProblems, readItemDeclaration, REGIONS, regionOfBone, SLOT_REPLACES, SLOTS } from '../src/index.ts';
 
 describe('items', () => {
   it('name the kits\' 53 bones and give every bone but the root one region', () => {
@@ -44,5 +44,14 @@ describe('items', () => {
     expect(() => checkItemFit(fit('pelvis'))).not.toThrow();
     expect(() => checkItemFit(fit('tail_01'))).toThrow(/a joint the kits do not have/);
     expect(() => checkItemFit({ ...fit('pelvis'), extensionsUsed: ['KHR_materials_clearcoat'] })).toThrow(/an extension the converter does not write/);
+  });
+});
+
+describe('outfits (S5.05)', () => {
+  it('take one item to a slot, one prop to a point, and a full outfit alone', () => {
+    expect(outfitProblems([{ slot: 'top' }, { slot: 'bottom' }, { slot: 'attachment', attach: 'hip_l' }, { slot: 'attachment', attach: 'hip_r' }, { slot: 'hat' }])).toEqual([]);
+    expect(outfitProblems([{ slot: 'top' }, { slot: 'top' }])).toEqual(['2 items in one top slot']);
+    expect(outfitProblems([{ slot: 'attachment', attach: 'back' }, { slot: 'attachment', attach: 'back' }])).toEqual(['2 items in one attachment at back']);
+    expect(outfitProblems([{ slot: 'full' }, { slot: 'bottom' }])).toEqual(['a full item takes the bottom slot too']);
   });
 });

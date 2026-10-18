@@ -81,6 +81,7 @@ export {
   ItemFormatError,
   type ItemManifest,
   KIT_BONES,
+  outfitProblems,
   readItemDeclaration,
   type Region,
   REGIONS,
@@ -90,4 +91,4 @@ export {
   SLOTS,
 } from './item.ts';
 export { compositeSkin, LAYER_KINDS, LayerError, type LayerKind, type RgbaImage, type SkinComposite, type SkinLayer } from './layers.ts';
-export { ADJUST_LIMITS, type AttachAdjustment, attachBone, attachMatrix, type AttachPoint, ATTACH_POINTS, fitAdjustment, type Matrix4, NO_ADJUSTMENT } from './attach.ts';
+export { ADJUST_LIMITS, type AttachAdjustment, attachBone, attachMatrix, type AttachPoint, ATTACH_POINTS, fitAdjustment, fitWornAdjust, type Matrix4, NO_ADJUSTMENT, type WornAdjust, wornAdjustment, WORN_LIMITS } from './attach.ts';
