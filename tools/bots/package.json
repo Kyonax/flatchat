@@ -10,6 +10,7 @@
     "node": ">=24"
   },
   "dependencies": {
+    "@flatchat/converter": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "*",
     "@flatchat/world-server": "*"

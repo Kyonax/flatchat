@@ -16,10 +16,11 @@
 //
 // One JSON line: { event: 'e2e', ok, steps, server } ; exit 0 when every step passed.
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { sampleAvatar } from '@flatchat/converter/samples';
 import { _electron as electron } from 'playwright-core';
 import { children, freePort, run, start, startTurn, stop, waitFor } from './procs.ts';
 
@@ -61,6 +62,9 @@ try {
     FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'),
     FLATCHAT_CORE_URL: coreUrl,
     FLATCHAT_CORE_STUN: 'none',
+    // Avatars (S4.05): the store in the test's folder, textures left as PNG (seconds, not minutes).
+    FLATCHAT_CORE_STORE: join(dir, 'store'),
+    FLATCHAT_CORE_KTX2: 'off',
     ...(values.relay ? { FLATCHAT_CORE_TURN_URLS: `turn:127.0.0.1:${turnPort}?transport=udp`, FLATCHAT_CORE_TURN_SECRET: turnSecret } : {}),
   };
   const core = await start([process.execPath, join(CORE, 'src', 'main.ts'), '--port', String(corePort), '--stop-on-stdin'], coreEnv, 'ready');
@@ -73,6 +77,10 @@ try {
   });
   steps['signup'] = signup.status;
   if (signup.status !== 201) throw new Error(`sign-up answered ${signup.status}`);
+  // A tester may upload an avatar (S4.01); the reference VRM 1.0 avatar stands in for one of theirs.
+  await admin('account', EMAIL, '--tester', 'on');
+  const avatarFile = join(dir, 'sample.vrm');
+  writeFileSync(avatarFile, await sampleAvatar('vrm1'));
 
   // 2. Two plazas whose portals lead to each other, registered and approved, taking their offers
   //    through the core.
@@ -108,7 +116,7 @@ try {
   const app = await electron.launch({
     executablePath: client,
     args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
-    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config') },
+    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile },
     timeout: 60_000,
   });
   try {
@@ -142,6 +150,12 @@ try {
     // The client: signed in, the world browser (S2.09), join.
     const joinPlaza = page.locator(`[data-test=public] [data-world="${plaza.id}"] [data-test=join]`);
     await joinPlaza.waitFor({ timeout: 20_000 });
+    // An avatar (S4.01): uploaded from the home screen, converted by the core, worn.
+    await page.locator('[data-test=upload-avatar]').click({ timeout: 10_000 });
+    await page.locator('[data-test=avatar][data-status=ready]').waitFor({ timeout: 90_000 });
+    await page.locator('[data-test=wear-avatar]').click({ timeout: 10_000 });
+    await page.locator('[data-test=wear-avatar]').waitFor({ state: 'detached', timeout: 10_000 });
+    steps['avatar'] = 'worn';
     await snap('0-home');
     if (values.relay) {
       // Relay only, and no relay yet: the join cannot reach the world.
@@ -156,6 +170,13 @@ try {
     steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
     await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
+    // The worn avatar drawn in the world (S4.05): this player's own, in full (the view starts in
+    // third person, so '1-joined' shows it from behind).
+    steps['avatarDrawn'] = await page
+      .locator('[data-test=avatar-counts][data-lod0="1"]')
+      .waitFor({ state: 'attached', timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
     // The fountain's sound plays (S2.14): one emitter, from the downloaded world.
     steps['sounds'] = await page.locator('[data-test=sounds]').getAttribute('data-playing', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
@@ -246,6 +267,8 @@ try {
     (garden2['join']?.messages ?? 0) === 1 &&
     steps['sounds'] === '1' &&
     steps['people'] === 'owner' &&
+    steps['avatar'] === 'worn' &&
+    steps['avatarDrawn'] === true &&
     /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
     (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
