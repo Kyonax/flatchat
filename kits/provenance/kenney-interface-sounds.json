@@ -1,0 +1,15 @@
+{
+  "files": [
+    "kits/sounds/ui/*.ogg"
+  ],
+  "title": "The default interface sounds (Track P's P.06): click_001, confirmation_001 and pluck_001 from Kenney's Interface Sounds 1.0",
+  "creator": "Kenney (Kenney Vleugels, www.kenney.nl)",
+  "licence": "CC0-1.0",
+  "source": "https://opengameart.org/content/interface-sounds",
+  "retrieved": "2026-10-18",
+  "licencePage": {
+    "url": "https://opengameart.org/content/interface-sounds",
+    "archived": "kits/provenance/archive/kenney-interface-sounds-License.txt"
+  },
+  "changes": "Renamed click.ogg, chime.ogg and blip.ogg; the bytes unchanged (tools/converter/scripts/default-sounds.ts, the pack pinned by its SHA-256 in kits/sounds/sounds.json)"
+}

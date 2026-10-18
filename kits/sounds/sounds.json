@@ -1,0 +1,136 @@
+{
+ "made": "node tools/converter/scripts/default-sounds.ts",
+ "packs": {
+  "rpg": {
+   "what": "Kenney's 50 RPG sound effects (RPG sounds)",
+   "page": "https://opengameart.org/content/50-rpg-sound-effects",
+   "url": "https://opengameart.org/sites/default/files/RPGsounds_Kenney.zip",
+   "sha256": "3ae398ad63e293f9c450bda22d5d81c3af69c74df66fc1400f33c012c0bbc231"
+  },
+  "interface": {
+   "what": "Kenney's Interface Sounds 1.0",
+   "page": "https://opengameart.org/content/interface-sounds",
+   "url": "https://opengameart.org/sites/default/files/kenney_interfaceSounds.zip",
+   "sha256": "f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232"
+  }
+ },
+ "sounds": [
+  {
+   "name": "click",
+   "kind": "ui",
+   "file": "ui/click.ogg",
+   "from": "interface",
+   "entry": "Audio/click_001.ogg",
+   "sha256": "ccfb7fa0cccdd9faec0eb16033c732b1e308d139d80f799161495d58f7adcdb9",
+   "bytes": 4876
+  },
+  {
+   "name": "chime",
+   "kind": "ui",
+   "file": "ui/chime.ogg",
+   "from": "interface",
+   "entry": "Audio/confirmation_001.ogg",
+   "sha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a",
+   "bytes": 8968
+  },
+  {
+   "name": "blip",
+   "kind": "ui",
+   "file": "ui/blip.ogg",
+   "from": "interface",
+   "entry": "Audio/pluck_001.ogg",
+   "sha256": "be97ec4893a02d6eccfb678daa76c83e34cb2583b834ec2593d2641def739fa4",
+   "bytes": 6317
+  },
+  {
+   "name": "footstep0",
+   "kind": "footstep",
+   "file": "footsteps/footstep0.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep00.ogg",
+   "sha256": "6fe61ef1fc3bcf0e253bf2eb64759db6cb69e2fe452f4d88cc597ecf78a3d601",
+   "bytes": 9475
+  },
+  {
+   "name": "footstep1",
+   "kind": "footstep",
+   "file": "footsteps/footstep1.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep01.ogg",
+   "sha256": "313472dba31fd0c855376069fa368bb5a198c27251cc8398ef464578b7047a4c",
+   "bytes": 9900
+  },
+  {
+   "name": "footstep2",
+   "kind": "footstep",
+   "file": "footsteps/footstep2.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep02.ogg",
+   "sha256": "2d9575b7dead6e1217ca113991fc5229e9b6d998ea0726ebbb277e7398ab888f",
+   "bytes": 9528
+  },
+  {
+   "name": "footstep3",
+   "kind": "footstep",
+   "file": "footsteps/footstep3.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep03.ogg",
+   "sha256": "a86756b9af9f370455ab47844239bb07fd1bee7a113068c91f0fcd9b72703fae",
+   "bytes": 10559
+  },
+  {
+   "name": "footstep4",
+   "kind": "footstep",
+   "file": "footsteps/footstep4.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep04.ogg",
+   "sha256": "fd264d72a7cd622b82abde202f4ed09fa7de95d34c36473ee938ce66cdf39830",
+   "bytes": 11303
+  },
+  {
+   "name": "footstep5",
+   "kind": "footstep",
+   "file": "footsteps/footstep5.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep05.ogg",
+   "sha256": "817957e1f95d97fd36870064c41673895575cde17bccb245f50364c86ed10198",
+   "bytes": 10288
+  },
+  {
+   "name": "footstep6",
+   "kind": "footstep",
+   "file": "footsteps/footstep6.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep06.ogg",
+   "sha256": "6cabfe7ae95d227a84066c6e17014ac31cc7c89b14ef51d7877e98352d4a64fb",
+   "bytes": 9885
+  },
+  {
+   "name": "footstep7",
+   "kind": "footstep",
+   "file": "footsteps/footstep7.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep07.ogg",
+   "sha256": "42924cdbf998d5b3db180a339fd74afc94c570d594a536687e337ef1bdfdb346",
+   "bytes": 10264
+  },
+  {
+   "name": "footstep8",
+   "kind": "footstep",
+   "file": "footsteps/footstep8.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep08.ogg",
+   "sha256": "668f14dc1254d0d0f33025e9c7dbcdf2c2f00462ed0e07fb8f099c1d711c1337",
+   "bytes": 9242
+  },
+  {
+   "name": "footstep9",
+   "kind": "footstep",
+   "file": "footsteps/footstep9.ogg",
+   "from": "rpg",
+   "entry": "OGG/footstep09.ogg",
+   "sha256": "9324ebb9b2c5bcd078dcb523c6518d38a9f34081069d511602c2efb14ce06ce2",
+   "bytes": 9356
+  }
+ ]
+}

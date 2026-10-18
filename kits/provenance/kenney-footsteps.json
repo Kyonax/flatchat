@@ -1,0 +1,15 @@
+{
+  "files": [
+    "kits/sounds/footsteps/*.ogg"
+  ],
+  "title": "The default footsteps (Track P's P.06): footstep00 to footstep09 from Kenney's 50 RPG sound effects",
+  "creator": "Kenney (Kenney Vleugels, www.kenney.nl)",
+  "licence": "CC0-1.0",
+  "source": "https://opengameart.org/content/50-rpg-sound-effects",
+  "retrieved": "2026-10-18",
+  "licencePage": {
+    "url": "https://opengameart.org/content/50-rpg-sound-effects",
+    "archived": "kits/provenance/archive/kenney-rpg-sounds-license.txt"
+  },
+  "changes": "Renamed footstep0.ogg to footstep9.ogg; the bytes unchanged (tools/converter/scripts/default-sounds.ts, the pack pinned by its SHA-256 in kits/sounds/sounds.json)"
+}

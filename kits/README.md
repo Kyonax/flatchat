@@ -3,7 +3,7 @@
 The three body kits and the sources of the base library: free to use anywhere, with credit.
 
 - Licence: CC BY 4.0 ([LICENSE](LICENSE)); third-party parts keep theirs, listed in [CREDITS.md](../CREDITS.md)
-- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)), the starter wardrobe in [items/](items/) (Track P's P.08), and the default clips in [animations/](animations/) (Track P's P.05). The base library's sources come later.
+- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)), the starter wardrobe in [items/](items/) (Track P's P.08), the default clips in [animations/](animations/) (Track P's P.05), and the default sounds in [sounds/](sounds/) (Track P's P.06). The base library's sources come later.
 
 ## The three bodies
 
@@ -44,6 +44,14 @@ node tools/converter/scripts/default-animations.ts
 
 ```sh
 node tools/converter/scripts/make-wardrobe.ts
+```
+
+## The default sounds
+
+[sounds/](sounds/) holds what the client plays for footsteps (ten, one never twice running, placed where each player walks) and for its interface (a button's click, a chime when someone arrives, a blip for a chat line). They are Kenney's CC0 recordings from two packs, 50 RPG sound effects and Interface Sounds, copied byte for byte. [sounds/sounds.json](sounds/sounds.json) lists each sound and where it came from. To fetch them again (each pack pinned by its SHA-256):
+
+```sh
+node tools/converter/scripts/default-sounds.ts
 ```
 
 - Provenance: [provenance/](provenance/) holds one record for each asset in the whole repository, with saved copies of others' licence pages in `provenance/archive/`. The fields are listed at the top of `tools/harness/src/asset-check.ts`, and `npm run harness` checks every record.
