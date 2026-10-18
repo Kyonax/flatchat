@@ -178,7 +178,7 @@ describe('the converter alone', () => {
 });
 
 describe('the converter programs', () => {
-  const run = (script: string, args: string[], reads: string[], out: string): { status: number | null; stderr: string; result?: { ok: boolean; manifest?: Record<string, unknown>; problems?: string[] } } => {
+  const run = (script: string, args: string[], reads: string[], out: string): { status: number | null; stderr: string; result?: { ok: boolean; manifest?: Record<string, unknown>; problems?: string[]; fingerprint?: { shapes: number[][]; textures: string[] } } } => {
     const r = spawnSync(process.execPath, ['--permission', `--allow-fs-read=${ROOT}`, ...reads.map((x) => `--allow-fs-read=${x}`), `--allow-fs-write=${out}`, '--import', join(HERE, '..', 'src', 'sandbox.ts'), join(HERE, '..', 'src', script), ...args], { encoding: 'utf8', timeout: 120_000 });
     return { status: r.status, stderr: r.stderr, ...(existsSync(join(out, 'result.json')) ? { result: JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')) as never } : {}) };
   };
@@ -191,6 +191,8 @@ describe('the converter programs', () => {
       const a = run('avatar-cli.ts', [join(dir, 'in.dae'), join(dir, 'a'), '--no-ktx2'], [join(dir, 'in.dae')], join(dir, 'a'));
       expect(a.status, a.stderr).toBe(0);
       expect(a.result?.manifest?.['source']).toMatchObject({ from: 'dae', sha256: sha(daeAvatar) });
+      // Its fingerprint goes beside the manifest, for the core (S5.09).
+      expect(a.result?.fingerprint?.shapes).toHaveLength(1);
 
       writeFileSync(join(dir, 'in.glb'), fixture('prop-obj.glb'));
       writeFileSync(join(dir, 'declare.json'), JSON.stringify(SAMPLE_PROP_DECLARATION));

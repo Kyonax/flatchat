@@ -23,6 +23,7 @@ import {
   type AvatarSourceKind,
   type AvatarStats,
   checkAvatarLevel,
+  type Fingerprint,
   type Gltf,
   LEVEL_EXTENSIONS,
   type Level,
@@ -35,6 +36,7 @@ import { dedup, prune } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { PNG } from 'pngjs';
+import { fingerprintOf } from '../fingerprint.ts';
 import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { decodeImage, fitTextures, halve } from '../textures.ts';
 import { completeFreeShape, facesPlusZ, mapByNames, REQUIRED_BONES, restBox, turnAround, turnVrmAround } from './humanoid.ts';
@@ -67,6 +69,8 @@ export interface AvatarResult {
   id: string;
   /** Every file by its SHA-256: the levels and the thumbnail. */
   files: Map<string, Uint8Array>;
+  /** Its shape and textures as uploaded (S5.09): for the core, never in the manifest. */
+  fingerprint: Fingerprint;
 }
 
 /** Validator errors the converter repairs instead of refusing the file: on 68 real avatars from
@@ -441,6 +445,8 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
   const root = doc.getRoot();
   const data = root.getExtension<VRMData>(VRMC_VRM) ?? plainVrm(doc, json);
   repairAccessors(doc);
+  // The upload's own shape and textures, before anything is simplified or re-encoded (S5.09).
+  const fingerprint = fingerprintOf(doc, [root.listNodes().filter((n) => n.getMesh())]);
   if (kind === 'vrm1') sourceMeta = { ...((data.getDocument().vrm['meta'] ?? {}) as SourceMeta) };
 
   if (!restBox(doc)) throw new AvatarError(['the model has no mesh to show']);
@@ -542,5 +548,5 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
   };
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
   o.log?.('avatar-converted', { kind, rank, triangles: stats.triangles, levels: Object.fromEntries(Object.entries(levels).map(([k, v]) => [k, v.triangles])) });
-  return { manifest, manifestBytes, id: sha256(manifestBytes), files };
+  return { manifest, manifestBytes, id: sha256(manifestBytes), files, fingerprint };
 }

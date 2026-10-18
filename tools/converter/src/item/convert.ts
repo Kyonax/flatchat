@@ -10,8 +10,9 @@
 import { createHash } from 'node:crypto';
 import type { Document, Node } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
-import { BODY_KITS, type BodyKit, checkItemFit, checkItemProp, fileDeclaration, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, MODEL_FORMAT_NAMES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
+import { BODY_KITS, type BodyKit, checkItemFit, checkItemProp, fileDeclaration, type Fingerprint, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, MODEL_FORMAT_NAMES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
 import { avatarIO, validateGltf } from '../avatar/convert.ts';
+import { fingerprintOf } from '../fingerprint.ts';
 import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { fitTextures } from '../textures.ts';
 import { CLIP_TOLERANCE, clippingOf, type KitBody, skeletonOffset } from './clipping.ts';
@@ -31,6 +32,8 @@ export interface ItemResult {
   manifestBytes: Uint8Array;
   id: string;
   files: Map<string, Uint8Array>;
+  /** Its shape (each fit, or the prop) and textures as uploaded (S5.09): for the core. */
+  fingerprint: Fingerprint;
 }
 
 export interface ItemOptions {
@@ -130,7 +133,9 @@ export async function convertItem(upload: Uint8Array, o: ItemOptions = {}): Prom
 
   const io = avatarIO();
   if (declared.slot === 'attachment') return convertProp(bytes, declared, warnings, warn, ktx2, source);
-  const { fits, problems } = fitNodes(await io.readBinary(bytes));
+  const uploaded = await io.readBinary(bytes);
+  const { fits, problems } = fitNodes(uploaded);
+  const fingerprint = fingerprintOf(uploaded, [...fits.values()].map((n) => [n]));
   for (const [body, node] of fits) {
     const triangles = countTriangles(node);
     const slots = node.getMesh()!.listPrimitives().length;
@@ -202,7 +207,7 @@ export async function convertItem(upload: Uint8Array, o: ItemOptions = {}): Prom
     warnings,
   };
   const manifestBytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
-  return { manifest, manifestBytes, id: sha256(manifestBytes), files };
+  return { manifest, manifestBytes, id: sha256(manifestBytes), files, fingerprint };
 }
 
 /** An attachment (S5.04): its rigid meshes as one prop, its origin the point it is worn at. */
@@ -210,6 +215,7 @@ async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warning
   const cap = SLOTS.attachment;
   const io = avatarIO();
   const doc = await io.readBinary(bytes);
+  const fingerprint = fingerprintOf(doc, [doc.getRoot().listNodes().filter((n) => n.getMesh())]);
   const root = doc.getRoot();
   const problems: string[] = [];
   if (root.listSkins().length > 0) problems.push('an attachment is carried whole at its point: rigid meshes, no skin');
@@ -255,5 +261,5 @@ async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warning
     warnings,
   };
   const manifestBytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
-  return { manifest, manifestBytes, id: sha256(manifestBytes), files: new Map([[hash, file]]) };
+  return { manifest, manifestBytes, id: sha256(manifestBytes), files: new Map([[hash, file]]), fingerprint };
 }

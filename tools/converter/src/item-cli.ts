@@ -10,7 +10,7 @@
 //
 // KITS is kits/bodies/: each body's VRM, checked against kits.json's SHA-256 before it is used.
 // Writes OUTDIR/<sha256> for each fit (or the prop), OUTDIR/manifest.json, and last
-// OUTDIR/result.json: { ok: true, id, manifest } or { ok: false, problems }. Exit 0 when converted,
+// OUTDIR/result.json: { ok: true, id, manifest, fingerprint } or { ok: false, problems }. Exit 0 when converted,
 // 1 when refused, 2 on a usage error. Nothing else is promised on stdout (the KTX2 encoder talks).
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -64,7 +64,7 @@ try {
   const r = await convertItem(new Uint8Array(readFileSync(input)), { ktx2: parsed.values['no-ktx2'] !== true, kits, ...(source ? { source } : {}), ...(declaration !== undefined ? { declaration } : {}) });
   for (const [hash, bytes] of r.files) write(hash, bytes);
   write('manifest.json', r.manifestBytes);
-  write('result.json', JSON.stringify({ ok: true, id: r.id, manifest: r.manifest }));
+  write('result.json', JSON.stringify({ ok: true, id: r.id, manifest: r.manifest, fingerprint: r.fingerprint }));
   process.exit(0);
 } catch (err) {
   const problems = err instanceof ItemError ? err.problems : [`the converter failed: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}`];
