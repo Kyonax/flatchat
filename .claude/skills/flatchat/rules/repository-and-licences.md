@@ -18,6 +18,7 @@ This rule governs where code lives in the repository and which licence covers it
 | `packages/sim` | Movement rules shared by client prediction and server checks | `Apache-2.0` | not yet |
 | `packages/content` | World and avatar manifests, ranks and budgets, the world validator | `Apache-2.0` | not yet |
 | `packages/plugin-sdk` | The world-plugin host interface | `Apache-2.0` | not yet |
+| `packages/effects` | The pinned Effekseer runtime (in its `third_party/`, MIT), its bindings, the guard layer and the dry run | `Apache-2.0` | `@flatchat/effects` |
 | `tools/converter` | Turns uploaded models into the platform's format | `MPL-2.0` | not yet |
 | `tools/host-tool` | The host download: world server, converter, capacity advisor | `MPL-2.0` | not yet |
 | `tools/bots` | Headless protocol clients for load tests | `MPL-2.0` | not yet |
