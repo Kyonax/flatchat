@@ -12,6 +12,8 @@
 //                                      with a spawn group `quiet` inside it and `near-quiet` 7 m outside)
 //        [--overlay]                  (S6.02: the second world gets a screen overlay, the starter heart,
 //                                      at the top of every visitor's screen)
+//        [--look]                     (S6.05: the second world gets a [look]: a dusk sky and fog, bloom,
+//                                      and screen filters)
 //        [--effect]                   (S6.01: the second world gets an effect, Effekseer's CC0 tornado
 //                                      sample from kits/effects/samples, 6 m in front of its arrivals
 //                                      and 3 m to the right, beside the avatar in the camera's view)
@@ -30,7 +32,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false }, overlay: { type: 'boolean', default: false } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false }, overlay: { type: 'boolean', default: false }, look: { type: 'boolean', default: false } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
@@ -163,6 +165,9 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
     mkdirSync(join(dir, 'overlays'), { recursive: true });
     cpSync(join(ROOT, 'kits', 'overlays', 'heart-badge.png'), join(dir, 'overlays', 'heart.png'));
     more = '\n[[overlays]]\nimage = "overlays/heart.png"\nhud = "top"\nsize = 0.1\nopacity = 0.8\nmotion = "pulse"\n';
+  }
+  if (values.look && label === 'b') {
+    more += '\n[look]\nsky = "#2b2d42"\nfog = { colour = "#2b2d42", near = 25, far = 90 }\nsun = { colour = "#ffb38a", intensity = 1.4, direction = [-0.7, 0.35, -0.3] }\nbloom = { strength = 0.9, threshold = 0.75 }\nfilters = { vignette = 0.35, grain = 0.15, saturation = 1.1 }\n';
   }
   writeFileSync(join(dir, 'world.toml'), `${toml.trimEnd()}\n\n[[scenes]]\nid = "travel"\nfile = "scenes/travel.glb"\n${more}`);
   const built = await convertWorld(readFolder(dir), { ktx2: false });
