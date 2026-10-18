@@ -64,6 +64,14 @@ jobs:
       # of one ripped fit is caught at upload as a copy. The quick menu is the Linux client's e2e.
       - name: Stage 5 acceptance, bodies, clothes and takedowns
         run: node tools/bots/src/accept-stage5.ts
+      # S6.09: Stage 6's acceptance lines: an avatar's effect converts after its dry run and a trail
+      # too busy for an avatar is refused; a PNG overlay converts and one too large is refused; an
+      # avatar's creator shader is kept and counted into the rank, a looping one refused; a world with
+      # effects, an overlay, a look and a reverb zone converts, every client can read it, it is served
+      # and its hall carries voice as anywhere, and a host's broken look or room is refused. What only
+      # a screen shows is the Linux client's e2e, at the high preset and at the low one.
+      - name: Stage 6 acceptance, effects, overlays, shaders and a world's look and sound
+        run: node tools/bots/src/accept-stage6.ts
 
   host-tool:
     name: Host tool
