@@ -100,6 +100,8 @@ Eight items made for the three standard bodies (Track P's P.08), in [kits/items/
 
 The plan's "clipping fixed by hand" is done this way for every garment, so no minutes went into it by hand.
 
+Any account takes them on the home screen, under Starter wardrobe (Take), with no upload and no trust level, as it takes a standard body. Each becomes one of the account's items, worn and put in outfits like any other. The core converts each once per start and reuses it for everyone (`POST /api/v1/items/starter`). A starter item is never taken for a copy, and it can't be published to the gallery: it's everyone's already.
+
 Each item is checked on each body in the seven reference poses as made and at both ends of the proportion sliders, 21 poses in all; no skin comes through any of them (P.08's Verify). [kits/items/wardrobe.json](../kits/items/wardrobe.json) records what each one measured, and which of MakeHuman's garments were left out and why:
 
 - **Logos:** MakeHuman's logo is on its tees, and CC0 does not waive trademark. It was painted out of the white one.
