@@ -95,7 +95,7 @@ The profile belongs to the machine, not the repository. The script reads `--prof
 | `npm run standin -- status` | The card's current clocks, maximums and the applications-clocks reason (read-only) | No |
 | `npm run standin -- reset` | The two reset lines alone | sudo |
 
-Options: `--profile FILE`, `--seconds N` (5–3600, default 60), `--client PATH` (default `apps/client/release/linux-unpacked/flatchat`, built by `npm run dist:linux -w @flatchat/client`), `--out DIR` (default `out/standin`), `--gpu-index N` (default 0), `--no-query` (skip `nvidia-smi` in a plan, for machines without the card).
+Options: `--profile FILE`, `--seconds N` (5–3600, default 60), `--client PATH` (default `apps/client/release/linux-unpacked/flatchat`, built by `npm run dist:linux -w @flatchat/client`), `--out DIR` (default `out/standin`), `--gpu-index N` (default 0), `--no-query` (skip `nvidia-smi` in a plan, for machines without the card), `--crowd DIR [--full N] [--lod N] [--present N]` (spike S0.09's crowd bench on DIR's avatars, its pass lines tightened by the target's headroom), and with it `--converted [--in-view N] [--tier low|medium|high]` (S4.12: DIR holds converted avatars, drawn by the world's own avatar layer with that tier's policy; rule `avatars-and-crowds`).
 
 Preflight (refuses to run on any failure, with the card untouched): not root; Linux; `nvidia-smi`, `sudo`, `systemd-run` and `taskset` present; the card's name matches the profile; the clock pair is supported; the user manager delegates `cpu` and `memory`; the client build exists and is executable.
 
