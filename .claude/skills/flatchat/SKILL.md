@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.44.0"
+  version: "1.45.0"
   verified: "2026-10-18"
 ---
 
@@ -74,7 +74,7 @@ Reference these guidelines when:
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
 | Avatar uploads: the converter (VRM 0.x/1.0, GLB), VRM inside glTF-Transform, levels, impostors, ranks, the manifest, the sandboxed CLI | `rules/avatar-converter.md` + `rules/security-untrusted-input.md` |
 | The three standard bodies: making or changing the body kits, headless Blender with MPFB and the VRM add-on, `kits/bodies/` | `rules/body-kits.md` + `rules/avatar-converter.md` |
-| Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check, outfits and what can be worn together | `rules/items.md` + `rules/body-kits.md` |
+| Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check, outfits and what can be worn together; the starter wardrobe and making garments from MakeHuman's | `rules/items.md` + `rules/body-kits.md` |
 | Item uploads, saved outfits, the standard bodies as avatars (`POST /api/v1/avatars/kit`), the converters' sandbox | `rules/core-service.md` + `rules/items.md` + `rules/security-untrusted-input.md` |
 | Wearing outfits in the client: the standard-body buttons, the items panel, the quick menu (O), fits on a body's bones, hidden regions, props at points | `rules/client-app.md` + `rules/items.md` + `rules/avatars-and-crowds.md` |
 | The free gallery: licence fields (VRM 1.0's terms), publishing, browsing, taking, withdrawing, copies refused at upload, the gallery and publish panels | `rules/gallery.md` + `rules/core-service.md` + `rules/client-app.md` |
@@ -120,7 +120,7 @@ A trap-linter finding names its rule; read that rule.
 | `model-formats` | FBX, OBJ and .blend through headless Blender on the core, DAE through assimp in the converter (welded, defaults dropped), formats by first bytes, the manifests' `source.from`, declarations at upload and fits by mesh name, the Blender fixtures (deterministic bytes) and the stand-in Blender in the core's tests. |
 | `fingerprints-and-takedowns` | Every upload's fingerprint (a MinHash of triangle tokens per part, perceptual texture hashes) in result.json; copies of what was taken down (a strike) or of closed gallery entries caught after conversion, with what the kits explain set aside; the takedown form, the admin review, removal everywhere by manifest. |
 | `gallery` | The free gallery: licence fields required and never looser than an avatar's file, publishing at trust level 2, taken copies as ordinary rows, withdrawing, exact copies refused unless the licence allows them, fixed SQL with nullable filters. |
-| `items` | Items for the three bodies: one fit per body by bone names, fixed slots with caps, 16 hide-mask regions cut where garments end, `convertItem`, the bind-pose skeleton check and the no-clipping check in seven reference poses, the test tee. |
+| `items` | Items for the three bodies: one fit per body by bone names, fixed slots with caps, 16 hide-mask regions cut where garments end, `convertItem`, the bind-pose skeleton check and the ray-based no-clipping check in seven reference poses (and at the sliders' ends), the test tee, the starter wardrobe (P.08: MakeHuman's garments fitted, weighted from the skin, pushed, checked in 21 poses). |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
 | `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
