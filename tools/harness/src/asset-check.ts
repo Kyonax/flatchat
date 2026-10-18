@@ -31,9 +31,10 @@ import { parseArgs } from 'node:util';
 
 export const PROVENANCE_DIR = 'kits/provenance';
 export const LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'LicenseRef-Owner'] as const;
-/** What counts as an asset: models, animations, images, textures, sounds, fonts and video. */
+/** What counts as an asset: models, animations, effects, images, textures, sounds, fonts and video. */
 export const ASSET_EXTENSIONS = new Set([
   'glb', 'gltf', 'vrm', 'vrma', 'bin', 'blend', 'fbx', 'obj', 'mtl', 'dae', 'bvh', 'usd', 'usda', 'usdz',
+  'efkefc', 'efk', 'efkpkg', 'efkproj', 'efkmodel', 'efkmat', 'efkcurve',
   'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico', 'icns', 'ktx2', 'basis', 'dds', 'hdr', 'exr', 'tga',
   'ogg', 'oga', 'wav', 'mp3', 'flac', 'opus', 'm4a',
   'ttf', 'otf', 'woff', 'woff2',
