@@ -17,7 +17,8 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | `packages/effects/src/stub-gl.ts`, `measure.ts` | A WebGL2 context that draws nothing and counts; the measurement (web APIs only) |
 | `tools/converter/src/effect/dry-run.ts`, `dry-run-worker.ts`, `samples.ts` | The dry run's Node side: the WebGL build read through `@flatchat/effects/runtime/*`, `dryRun` (this thread), `DryRunner` (a worker thread with a deadline); the samples bundled |
 | `packages/effects/src/guard.ts` | `EffectBudget`, `InstanceTrim`, `TimeWatch` |
-| `kits/effects/samples/` | Five of Effekseer's CC0 samples with their textures, for the tests |
+| `tools/converter/src/effect/convert.ts`, `item.ts` | `effectUpload` (an Effekseer file, an `.efkpkg`, a zip with one effect at any depth, or an FCFX bundle with its declaration), `convertEffect` (version, no `.efkmat`, every named file present, PNG textures, the bundle of exactly those files, the dry run, `effectFitProblems`), `convertEffectItem` (slot `effect`, no fingerprint); `item-cli.ts` branches on `uploadFormat(...) === 'effect'` before reading the bodies |
+| `kits/effects/samples/`, `kits/effects/starters.json` | Five of Effekseer's CC0 samples with their textures; the starter effects (aura at the hips, shield at the chest), bundled by the core at start |
 
 ## The Rules
 
@@ -36,3 +37,7 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | Effect files are assets: `.efkefc`, `.efk`, `.efkpkg`, `.efkproj`, `.efkmodel`, `.efkmat`, `.efkcurve` need a provenance record (CC0, CC BY or the owner's own) | P.07's gate; Effekseer's repository samples are MIT and may not ship, the editor release's Sample folder is CC0 |
 | Do not run Effekseer's prebuilt editor here | Running the downloaded binary was refused (2026-10-18); its CC0 samples ship as `.efkefc` already, so nothing needs converting |
 | Third-party folders are outside lint (`**/third_party/` in `eslint.config.mjs`) and the layout's SPDX check | The runtime's glue is generated code |
+| An effect is an item in the slot `effect` at a point (`POINT_SLOTS`), never a model slot: forms list `MODEL_SLOTS` | Its rules are the dry run's, not a mesh's caps |
+| Bundle exactly the files the effect names (a sound only for a world); keep the bundle without the upload's declaration | What a client loads is what was checked, and nothing more |
+| No fingerprint for effects | Their textures are generic dots and streaks: a texture match would strike the innocent |
+| Pack every workspace the converter needs with the host tool, `third_party` included (`tools/host-tool/scripts/pack.ts`) | CI's host-tool job failed on 2026-10-18 when `@flatchat/effects` was fetched from the registry |
