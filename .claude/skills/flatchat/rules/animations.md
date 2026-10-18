@@ -41,6 +41,22 @@ Every emote and dance becomes VRMA on VRM 1.0's normalized humanoid (S5.07, ad-0
 
 The core takes uploads since part b (rule `core-service`: `src/animations.ts`, `runBlender`; `-Y` disables auto-run, `-y` would enable it). Protocol version 10 carries emotes since part c (rule `protocol-and-codecs`).
 
+## The Default Clips (Track P's P.05)
+
+| File | Job |
+|---|---|
+| `tools/converter/src/animation/defaults.ts` | `CLIP_SOURCES` (Mesh2Motion's two human GLBs at commit 653a969, Quaternius's standard zip on OpenGameArt, each pinned by its SHA-256); `DEFAULT_CLIPS` (13: idle, walk from Mesh2Motion; jog, sprint, fall, dance from Quaternius; jumps, land, sitting from Mesh2Motion; greeting from its add-on set; no turn exists in either); `clipReport`, `SLIDE_MAX` 2 cm, `SEAM_MAX_DEG` 1°, `LEG_EXTREMES` 0.8 and 1.25 |
+| `…/checks.ts` | `readClip` (a VRMA read back), `bodyOf` (a kit's normalized humanoid: rests, humanoid parents, offsets), `pose` (forward kinematics as three-vrm plays VRMA, the legs slider applied as the client's avatar layer does: the knees and ankles moved out, the body lifted by the legs' growth, the hips' travel scaled by hips height), `channelProblems`, `loopSeam`, `handClearance`, `footSlide` |
+| `tools/converter/scripts/default-animations.ts` | Fetches (or reads `--downloads`, default `~/.cache/flatchat/animations`), checks the SHA-256s, converts each clip by name (`convertAnimation(…, { clip })`), runs the checks on the three kits and writes `kits/animations/*.vrma` and `clips.json`, or writes nothing and says what failed; it saves the libraries' licences to `kits/provenance/archive/`. Its output is the same bytes each run |
+| `tools/converter/test/default-animations.test.ts` | CI: the files match `clips.json`, each passes `checkAnimationFile`, every check passes again on the three kits and measures what `clips.json` recorded |
+
+| Rule | Why |
+|---|---|
+| Take a library's clip by name (`clip`), never the longest | `oneClip` drops the other animations and duplicate channel targets first: Mesh2Motion's library fails the glTF Validator on clips nobody asked for |
+| A planted foot: flat in a walk (ball within 2 cm of its ground, ankle within 3 cm, three frames or more); on the ball in a run; a ground is the tenth-percentile height | A walk's heel-off roll turns about the toe tips (no bone marks them); a run's heel never lands; one frame's dip must not move the ground. Measured with these rules: Mesh2Motion's walk 1.7 cm, Quaternius's jog 1.9 cm and sprint 1.6 cm at worst; Mesh2Motion's jog 2.7 cm and sprint 6 cm (so the runs are Quaternius's) |
+| Pose the legs slider as the client does (thighs and shins only) | Scaling the feet too reports slides no avatar shows |
+| A name's side may be a prefix or a suffix: `humanBoneOf` tries each and keeps the one that names a bone | Unreal's `lowerarm_r` starts with an l, so taking the prefix first read it as a left "owerarmr" and dropped both forearms |
+
 ## In the Client (Part d)
 
 | Part | Where |

@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.43.0"
+  version: "1.44.0"
   verified: "2026-10-18"
 ---
 
@@ -78,7 +78,7 @@ Reference these guidelines when:
 | Item uploads, saved outfits, the standard bodies as avatars (`POST /api/v1/avatars/kit`), the converters' sandbox | `rules/core-service.md` + `rules/items.md` + `rules/security-untrusted-input.md` |
 | Wearing outfits in the client: the standard-body buttons, the items panel, the quick menu (O), fits on a body's bones, hidden regions, props at points | `rules/client-app.md` + `rules/items.md` + `rules/avatars-and-crowds.md` |
 | The free gallery: licence fields (VRM 1.0's terms), publishing, browsing, taking, withdrawing, copies refused at upload, the gallery and publish panels | `rules/gallery.md` + `rules/core-service.md` + `rules/client-app.md` |
-| Emotes and dances: VRMA, the retargeter (T-pose, A-pose straightening, facing, units), BVH, GLB clips, FBX through headless Blender, the animation golden files | `rules/animations.md` + `rules/avatar-converter.md` |
+| Emotes and dances: VRMA, the retargeter (T-pose, A-pose straightening, facing, units), BVH, GLB clips, FBX through headless Blender, the animation golden files; the default clips (Track P's P.05) and their checks | `rules/animations.md` + `rules/avatar-converter.md` |
 | Avatars and items as FBX, OBJ, DAE or .blend: format detection, headless Blender on the core (to-glb.py), DAE through assimp, the format fixtures, declarations given at upload, the client's declaration form | `rules/model-formats.md` + `rules/avatar-converter.md` + `rules/items.md` |
 | Fingerprints (shapes, texture hashes), copies caught at upload, the takedown form and its status page, the admin page's takedown queue, removal everywhere, strikes and bans | `rules/fingerprints-and-takedowns.md` + `rules/core-service.md` + `rules/gallery.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
