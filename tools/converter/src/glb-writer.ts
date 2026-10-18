@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-// A small GLB writer for worlds made in code (the plaza, test worlds): meshes of triangles with
-// flat colours, nodes with any extensions (glTF-Transform would drop the OMI and FlatChat ones),
-// and document-level extensions.
+// A small GLB writer for worlds made in code (the plaza, test worlds, plans built from SVG): meshes
+// of triangles with flat colours, or textured, with vertex colours (baked light) and an emissive
+// glow; nodes with any extensions (glTF-Transform would drop the OMI and FlatChat ones), and
+// document-level extensions. What a mesh leaves out is left out of the file, so the plain worlds'
+// files stay as they were.
 
 export interface MeshSpec {
   positions: number[];
@@ -10,6 +12,22 @@ export interface MeshSpec {
   /** Linear RGBA. */
   colour: [number, number, number, number];
   name: string;
+  /** Texture coordinates, two a vertex, for `texture`. */
+  uvs?: number[];
+  /** Vertex colours, linear RGB, three a vertex: they multiply the colour (light baked in). */
+  colours?: number[];
+  /** An image of `writeGlb`'s `images`, repeated. */
+  texture?: number;
+  /** Linear RGB light of its own, and the image that carries it. */
+  emissive?: [number, number, number];
+  emissiveTexture?: number;
+}
+
+/** An image the meshes use, inside the file. */
+export interface ImageSpec {
+  name: string;
+  bytes: Uint8Array;
+  mimeType: 'image/png' | 'image/jpeg';
 }
 
 export interface NodeSpec {
@@ -20,7 +38,7 @@ export interface NodeSpec {
   extensions?: Record<string, unknown>;
 }
 
-export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[], extensions: Record<string, unknown> = {}, extensionsUsed: string[] = []): Uint8Array {
+export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[], extensions: Record<string, unknown> = {}, extensionsUsed: string[] = [], images: readonly ImageSpec[] = []): Uint8Array {
   const chunks: Uint8Array[] = [];
   let offset = 0;
   const bufferViews: Array<Record<string, unknown>> = [];
@@ -32,7 +50,8 @@ export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[]
       offset += pad;
     }
     chunks.push(bytes);
-    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length, target });
+    // An image's view names no target.
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length, ...(target ? { target } : {}) });
     offset += bytes.length;
     return bufferViews.length - 1;
   };
@@ -48,10 +67,20 @@ export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[]
     const p = accessors.length - 1;
     accessors.push({ bufferView: view(new Uint8Array(new Float32Array(m.normals).buffer), 34962), componentType: 5126, count: m.normals.length / 3, type: 'VEC3' });
     const n = accessors.length - 1;
+    const attributes: Record<string, number> = { POSITION: p, NORMAL: n };
+    if (m.uvs) {
+      accessors.push({ bufferView: view(new Uint8Array(new Float32Array(m.uvs).buffer), 34962), componentType: 5126, count: m.uvs.length / 2, type: 'VEC2' });
+      attributes['TEXCOORD_0'] = accessors.length - 1;
+    }
+    if (m.colours) {
+      accessors.push({ bufferView: view(new Uint8Array(new Float32Array(m.colours).buffer), 34962), componentType: 5126, count: m.colours.length / 3, type: 'VEC3' });
+      attributes['COLOR_0'] = accessors.length - 1;
+    }
     accessors.push({ bufferView: view(new Uint8Array(new Uint32Array(m.indices).buffer), 34963), componentType: 5125, count: m.indices.length, type: 'SCALAR' });
     const i = accessors.length - 1;
-    return { name: m.name, primitives: [{ attributes: { POSITION: p, NORMAL: n }, indices: i, material: meshes.indexOf(m) }] };
+    return { name: m.name, primitives: [{ attributes, indices: i, material: meshes.indexOf(m) }] };
   });
+  const imageViews = images.map((img) => view(img.bytes, 0));
   const bin = new Uint8Array(Math.ceil(offset / 4) * 4);
   let o = 0;
   for (const c of chunks) {
@@ -69,7 +98,19 @@ export function writeGlb(meshes: readonly MeshSpec[], nodes: readonly NodeSpec[]
     ...(meshes.length
       ? {
           meshes: gltfMeshes,
-          materials: meshes.map((m) => ({ name: m.name, pbrMetallicRoughness: { baseColorFactor: m.colour, metallicFactor: 0, roughnessFactor: 0.9 } })),
+          materials: meshes.map((m) => ({
+            name: m.name,
+            pbrMetallicRoughness: { baseColorFactor: m.colour, metallicFactor: 0, roughnessFactor: 0.9, ...(m.texture !== undefined ? { baseColorTexture: { index: m.texture } } : {}) },
+            ...(m.emissive ? { emissiveFactor: m.emissive } : {}),
+            ...(m.emissiveTexture !== undefined ? { emissiveTexture: { index: m.emissiveTexture } } : {}),
+          })),
+          ...(images.length
+            ? {
+                images: images.map((img, k) => ({ name: img.name, mimeType: img.mimeType, bufferView: imageViews[k] })),
+                samplers: [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }],
+                textures: images.map((_, k) => ({ sampler: 0, source: k })),
+              }
+            : {}),
           accessors,
           bufferViews,
           buffers: [{ byteLength: bin.length }],
