@@ -96,6 +96,7 @@ export {
   SLOTS,
 } from './item.ts';
 export { compositeSkin, LAYER_KINDS, LayerError, type LayerKind, type RgbaImage, type SkinComposite, type SkinLayer } from './layers.ts';
+export { PROPORTION_ENDS, PROPORTION_JOINTS, PROPORTION_SEGMENTS, PROPORTIONS_AS_MADE, type ProportionShares, stretchAlong, WIDTH_FALLBACK } from './proportions.ts';
 export { ADJUST_LIMITS, type AttachAdjustment, attachBone, attachMatrix, type AttachPoint, ATTACH_POINTS, fitAdjustment, fitWornAdjust, type Matrix4, NO_ADJUSTMENT, type WornAdjust, wornAdjustment, WORN_LIMITS } from './attach.ts';
 export { AVATAR_PERMISSIONS, COMMERCIAL_USAGES, CREDIT_NOTATIONS, galleryProblems, type Licence, LicenceError, licenceOfFile, looserThan, MODIFICATIONS, readLicence, STRICT_LICENCE, USAGE_FLAGS } from './licence.ts';
 export { ANIMATION_AUDIO_LIMIT, ANIMATION_AUDIO_TYPES, ANIMATION_EXTENSIONS, ANIMATION_FORMAT, type AnimationAudioType, RHUBARB_SHAPES, type Viseme, VISEMES, ANIMATION_FPS, ANIMATION_MAX_SECONDS, ANIMATION_SOURCE_LIMIT, ANIMATION_SOURCES, ANIMATION_USES, type AnimationManifest, type AnimationSource, type AnimationUse, checkAnimationFile, checkAnimationManifest, VRMC_VRM_ANIMATION } from './animation.ts';
