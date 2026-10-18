@@ -602,4 +602,6 @@ def main():
     print("bodykit: done")
 
 
-main()
+# Run by Blender (--python), not when the wardrobe's fitting imports these steps (tools/blender/wardrobe/).
+if __name__ == "__main__":
+    main()
