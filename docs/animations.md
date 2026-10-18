@@ -24,6 +24,10 @@ The skeleton needs the bones VRM requires: hips, spine, head, both upper arms, l
 
 Scale doesn't matter: centimetres, inches or metres all work, because each client scales the hips' travel to the avatar.
 
+## Where it is converted
+
+FlatChat converts every animation on its own servers, in a sandbox. FBX needs Blender there; a server without it refuses FBX and says so, so export a GLB or a BVH instead. Your animations are listed with their status, use (an emote plays once, a dance loops), length, whether they loop, and any warnings or reasons for a refusal.
+
 ## Making a good one
 
 - Rest the skeleton in a T-pose, or close to it. An A-pose is straightened, but a pose far from either is measured from its own rest.
