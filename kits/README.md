@@ -50,6 +50,12 @@ node tools/converter/scripts/default-animations.ts
 node tools/converter/scripts/build-plan.ts kits/worlds/docking-bay/plan.svg
 ```
 
+- the hangout (S7.03), the owner's first world for his community: the docking bay built again from the same plan, its deck turned into a lounge of base library parts (two rows of benches facing the bay window, three tables with benches, lamps, a small stage, two planters), the hangar as a hall's echo (a reverb zone, S6.06) with a low hum through it, and a station's look (S6.05: a black sky, starlight through the window, bloom on the neon). About 18,000 triangles and 31 draw calls a frame where the deck's arrivals stand. To make it again:
+
+```sh
+node tools/converter/scripts/make-hangout.ts
+```
+
 ## The starter wardrobe
 
 [items/](items/) holds eight items fitted on the three bodies: five full outfits (white tee and jeans, striped shirt and jeans, jacket and jeans, dark suit, overalls), brown shoes, black boots and a grey fedora. They are MakeHuman's CC0 garments (the MakeHuman team), fitted by MPFB in Blender, then made into items by the converter: the skin's weights, a small push where skin came through, one texture each, and MakeHuman's logo painted out of the white tee. On each body no skin comes through any of them in the seven reference poses, as made and at both ends of the proportion sliders. [items/wardrobe.json](items/wardrobe.json) lists each one, what it hides and what it measured, and the garments left out and why. [items/fingerprints.json](items/fingerprints.json) holds their fingerprints, so a starter item is never taken for a copy. To make them again:

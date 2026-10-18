@@ -1,0 +1,11 @@
+{
+  "files": [
+    "kits/worlds/hangout/scenes/bay.glb",
+    "kits/worlds/hangout/scenes/lounge.glb",
+    "kits/worlds/hangout/scenes/hum.wav"
+  ],
+  "title": "The owner's hangout (S7.03): the docking bay built from its plan, a lounge of base library parts, a hall's hum",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "written by node tools/converter/scripts/make-hangout.ts: the bay from kits/worlds/docking-bay/plan.svg through the plan builder, the lounge as base library markers, the hum from a seeded generator"
+}

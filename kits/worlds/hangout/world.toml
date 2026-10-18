@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# The owner's hangout (S7.03), written by tools/converter/scripts/make-hangout.ts: the docking bay
+# from its SVG plan, with a lounge of base library parts, a hall's echo and a hum.
+format = 1
+name = "The Hangout"
+description = "A docking bay on a station's rim, its deck turned lounge: benches facing the stars, tables, a small stage."
+
+[capacity]
+recommended = 40
+maximum = 60
+
+[persistence]
+mode = "reset"
+
+[movement]
+flying = false
+
+[voice]
+range = 25
+
+[look]
+sky = "#05060a"
+fog = false
+sun = { colour = "#d8e6ff", intensity = 1.4, direction = [0.2, 0.6, -1] }
+ambient = { sky = "#7d8fb8", ground = "#3a3f4c", intensity = 1.5 }
+bloom = { strength = 0.8, threshold = 0.75, radius = 0.45 }
+filters = { vignette = 0.3, grain = 0.08, saturation = 1.08, contrast = 1.05 }
+
+[[scenes]]
+id = "bay"
+file = "scenes/bay.glb"
+
+[[scenes]]
+id = "lounge"
+file = "scenes/lounge.glb"
