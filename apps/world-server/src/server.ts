@@ -32,7 +32,7 @@
 // built-in ones, a chat line starting with `/` is a command for them (never shown to everyone),
 // and they hear joins, leaves, zones entered and left, and every tick.
 import { performance } from 'node:perf_hooks';
-import { type BuiltPortal, type BuiltZone, insideBox } from '@flatchat/content';
+import { ADJUST_LIMITS, type BuiltPortal, type BuiltZone, insideBox } from '@flatchat/content';
 import {
   type Channel,
   checkVersion,
@@ -194,6 +194,7 @@ interface Conn {
   /** When the player last changed avatar (S4.05) and face (S4.07). */
   wearAt: number;
   faceAt: number;
+  outfitAt: number;
   /** The connect token's facts. */
   claims?: Claims;
   /** Silenced by a moderator or a plugin: the world forwards none of this player's voice. */
@@ -238,6 +239,29 @@ export function fitProportions(p: Proportions | undefined): Proportions {
   const fit = (v: number | undefined): number => Math.round(Math.min(PROPORTIONS.max, Math.max(PROPORTIONS.min, v ?? 100)));
   return { width: fit(p?.width), arms: fit(p?.arms), legs: fit(p?.legs), head: fit(p?.head) };
 }
+/** What a player wears (S5.05): at most one change a second. */
+const OUTFIT_EVERY_MS = 1000;
+type Worn = MessageOf<'outfit'>['items'][number];
+/** An outfit as the world keeps it (S5.05): each item once, in the order worn, and each prop's
+ *  adjustment within the platform's limits (packages/content's ADJUST_LIMITS: 10 cm, 45°, 0.8 to
+ *  1.25), whatever the client sent. */
+export function fitOutfit(items: readonly Worn[]): Worn[] {
+  const cm = Math.round(ADJUST_LIMITS.offset * 100);
+  const deg = Math.round((ADJUST_LIMITS.rotation * 180) / Math.PI);
+  const [lo, hi] = ADJUST_LIMITS.scale.map((s) => Math.round(s * 100)) as [number, number];
+  const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, Math.round(v)));
+  const seen = new Set<string>();
+  const out: Worn[] = [];
+  for (const w of items) {
+    const key = Array.from(w.item, (b) => b.toString(16).padStart(2, '0')).join('');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const a = w.adjust;
+    out.push(a ? { item: w.item, adjust: { x: clamp(a.x, -cm, cm), y: clamp(a.y, -cm, cm), z: clamp(a.z, -cm, cm), rx: clamp(a.rx, -deg, deg), ry: clamp(a.ry, -deg, deg), rz: clamp(a.rz, -deg, deg), scale: clamp(a.scale, lo, hi) } } : { item: w.item });
+  }
+  return out;
+}
+const sameOutfit = (a: readonly Worn[], b: readonly Worn[]): boolean => JSON.stringify(a.map((w) => [Array.from(w.item), w.adjust ?? null])) === JSON.stringify(b.map((w) => [Array.from(w.item), w.adjust ?? null]));
 /** Teleports and seats (S2.06). */
 export const TELEPORT = { range: 40, seatReach: 3, everyMs: 1000 };
 
@@ -423,6 +447,7 @@ export class WorldServer implements PluginWorld {
       appearanceAt: -Infinity,
       wearAt: -Infinity,
       faceAt: -Infinity,
+      outfitAt: -Infinity,
       forceMuted: false,
       role: 'visitor',
       voiceRange: this.voice.config.rangeM,
@@ -515,6 +540,9 @@ export class WorldServer implements PluginWorld {
         break;
       case 'face':
         this.face(conn, message, now);
+        break;
+      case 'outfit':
+        this.outfit(conn, message.items, now);
         break;
       case 'teleport':
         this.events.add(`teleport:${this.teleport(conn, message, now)}`, 0);
@@ -627,6 +655,7 @@ export class WorldServer implements PluginWorld {
       role,
       face: { ...NEUTRAL_FACE },
       proportions: fitProportions(hello.proportions),
+      outfit: [],
       // The avatar the core vouches the account wears (S4.05): clients fetch it from the core by hash.
       ...(opened.claims.avatar ? { avatar: opened.claims.avatar } : {}),
     };
@@ -717,6 +746,19 @@ export class WorldServer implements PluginWorld {
     player.face = { expression: m.expression, left: m.left, right: m.right };
     this.joinedThisTick.push(player);
     this.events.add('face', 0);
+  }
+
+  /** What the player wears (S5.05), fitted, kept in the roster and announced as a change. */
+  private outfit(conn: Conn, items: readonly Worn[], now: number): void {
+    if (conn.entity === undefined || now - conn.outfitAt < OUTFIT_EVERY_MS) return;
+    const player = this.roster.get(conn.entity);
+    if (!player) return;
+    const fitted = fitOutfit(items);
+    if (sameOutfit(player.outfit, fitted)) return;
+    conn.outfitAt = now;
+    player.outfit = fitted;
+    this.joinedThisTick.push(player);
+    this.events.add('outfit', 0);
   }
 
   /** Puts the player on a seat or a clicked spot when the world's rules allow it, and answers

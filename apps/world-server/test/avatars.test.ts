@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { decodeMessage, encodeMessage, type Message, type MessageOf, messageDef, newWorldKey, PROTOCOL_VERSION, SCHEMA_FINGERPRINT, sealToken } from '@flatchat/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { connectUdp, UdpServer } from '../src/net/udp.ts';
-import { DEFAULT_SERVER, fitProportions, WorldServer } from '../src/server.ts';
+import { DEFAULT_SERVER, fitOutfit, fitProportions, WorldServer } from '../src/server.ts';
 
 const KEY = newWorldKey();
 const WORLD = randomUUID();
@@ -116,4 +116,32 @@ describe('avatars, faces and proportions in the roster', () => {
     await until('the proportions', () => b.player(a.entity)?.proportions.head === 120);
     expect(b.player(a.entity)!.proportions).toEqual({ width: 90, arms: 110, legs: 95, head: 120 });
   });
+
+  it('fits an outfit: each item once, every adjustment within the limits', () => {
+    const a = new Uint8Array(32).fill(1);
+    const b = new Uint8Array(32).fill(2);
+    expect(fitOutfit([{ item: a }, { item: b, adjust: { x: 50, y: -50, z: 3, rx: 90, ry: -90, rz: 10, scale: 200 } }, { item: a }])).toEqual([
+      { item: a },
+      { item: b, adjust: { x: 10, y: -10, z: 3, rx: 45, ry: -45, rz: 10, scale: 125 } },
+    ]);
+  });
+
+  it('announces an outfit to everyone, and takes at most one change a second (S5.05)', async () => {
+    const udp = await start();
+    const a = await enter(udp, randomUUID());
+    const b = await enter(udp, randomUUID());
+    await until('b sees a', () => b.player(a.entity) !== undefined);
+    expect(b.player(a.entity)!.outfit).toEqual([]);
+    a.send({ type: 'outfit', items: [{ item: AVATAR_A }, { item: AVATAR_B, adjust: { x: 0, y: 2, z: 0, rx: 0, ry: 0, rz: 0, scale: 100 } }] });
+    await until('the outfit', () => b.player(a.entity)!.outfit.length === 2);
+    expect(b.player(a.entity)!.outfit[1]!.adjust).toEqual({ x: 0, y: 2, z: 0, rx: 0, ry: 0, rz: 0, scale: 100 });
+    // A second change straight away is dropped; after the pace it lands.
+    a.send({ type: 'outfit', items: [] });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(b.player(a.entity)!.outfit).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 900));
+    a.send({ type: 'outfit', items: [] });
+    await until('the outfit off', () => b.player(a.entity)!.outfit.length === 0);
+  });
 });
+
