@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RANK_LIMITS, rankOf, type AvatarStats } from '@flatchat/content';
-import { type Document, NodeIO } from '@gltf-transform/core';
+import { Document, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AvatarError, type AvatarResult, convertAvatar } from '../src/avatar/convert.ts';
@@ -189,11 +189,10 @@ describe('a malformed corpus', () => {
       ),
     ).toMatch(/head|leftHand|HUMANOID|required/);
     expect(await refused(await edit((j) => ((j['accessors'] as Array<Record<string, unknown>>)[0]!['count'] = 1e9)))).toMatch(/ACCESSOR|count|vertices/);
-    // A GLB whose bones carry no names a rig would use: no humanoid to map.
-    const glb = await sampleAvatar('glb');
-    const doc = await new NodeIO().readBinary(glb);
-    doc.getRoot().listNodes().forEach((n, i) => n.setName(`bone${i}`));
-    expect(await refused(await new NodeIO().writeBinary(doc))).toMatch(/no humanoid skeleton was found/);
+    // A model with nothing to show.
+    const empty = new Document();
+    empty.createScene('Scene').addChild(empty.createNode('Nothing'));
+    expect(await refused(await new NodeIO().writeBinary(empty))).toMatch(/no mesh to show/);
   }, 60_000);
 });
 
@@ -207,3 +206,32 @@ describe('the rank table', () => {
     expect(rankOf({ ...base, triangles: 70_000, textureBytes: 150 * 1024 * 1024 })).toEqual({ rank: 'poor', limitedBy: ['textureBytes'] });
   });
 });
+
+describe('free shapes (S4.11)', () => {
+  it('give a robot with no skeleton a complete humanoid of empty bones, and convert it whole', async () => {
+    const r = await convertAvatar(await sampleAvatar('free'), { ktx2: false });
+    expect(r.manifest.shape).toBe('free');
+    expect(r.manifest.warnings.join(' ')).toMatch(/a free shape: no humanoid skeleton.*bones made: hips, spine, head/);
+    for (const l of ['lod0', 'lod1', 'lod2', 'impostor'] as const) {
+      const report = await vrmValidator.validateBytes(r.files.get(r.manifest.levels[l].file)!, { maxIssues: 0 });
+      expect(report.issues.messages.filter((m) => m.severity === 0).map((m) => m.code), l).toEqual([]);
+    }
+    const { vrm, doc } = await read(r.files.get(r.manifest.levels.lod0.file)!);
+    expect([...vrm.humanBones().keys()].sort()).toEqual(expect.arrayContaining(['hips', 'head', 'leftHand', 'rightFoot']));
+    // The whole robot hangs from the hips, where it stood.
+    const hips = vrm.humanBones().get('hips')!;
+    const body = doc.getRoot().listNodes().find((n) => n.getName() === 'Body')!;
+    expect(body.getParentNode()).toBe(hips);
+    expect(r.manifest.height).toBeCloseTo(1.28, 1);
+  });
+
+  it('keep a GLB’s bones that do map, and make only the missing ones', async () => {
+    const doc = await new NodeIO().readBinary(await sampleAvatar('glb'));
+    for (const n of doc.getRoot().listNodes()) if (/Arm|Hand/.test(n.getName())) n.setName(n.getName().replace(/Arm|Hand/, 'Fin'));
+    const r = await convertAvatar(await new NodeIO().writeBinary(doc), { ktx2: false });
+    expect(r.manifest.shape).toBe('free');
+    expect(r.manifest.warnings.join(' ')).toMatch(/no leftUpperArm.*bones made: leftUpperArm/);
+    expect(r.manifest.warnings.join(' ')).not.toMatch(/bones made: hips/);
+  });
+});
+

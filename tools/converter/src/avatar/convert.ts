@@ -34,12 +34,12 @@ import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { PNG } from 'pngjs';
 import { decodeImage, fitTextures, halve } from '../textures.ts';
-import { facesPlusZ, mapByNames, REQUIRED_BONES, turnAround, turnVrmAround } from './humanoid.ts';
+import { completeFreeShape, facesPlusZ, mapByNames, REQUIRED_BONES, restBox, turnAround, turnVrmAround } from './humanoid.ts';
 import { makeImpostor, makeLod1, makeLod2 } from './lod.ts';
 import { type Json, type JsonObject, VRMC_VRM, VRMData, type VRMDocument, VRMExtension } from './vrm.ts';
 import { migrateVrm0, type SourceMeta } from './vrm0.ts';
 
-export const AVATAR_CONVERTER_VERSION = '1.0.0';
+export const AVATAR_CONVERTER_VERSION = '1.1.0';
 
 export class AvatarError extends Error {
   readonly problems: string[];
@@ -399,16 +399,17 @@ export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): P
   repairAccessors(doc);
   if (kind === 'vrm1') sourceMeta = { ...((data.getDocument().vrm['meta'] ?? {}) as SourceMeta) };
 
-  const bones = data.humanBones();
-  const missing = REQUIRED_BONES.filter((b) => !bones.has(b));
-  if (missing.length > 0) {
-    throw new AvatarError([
-      kind === 'glb'
-        ? `no humanoid skeleton was found by the bones' names (missing: ${missing.join(', ')}): export it as VRM, or name the bones as Mixamo or Unity do`
-        : `the humanoid lacks required bones: ${missing.join(', ')}`,
-    ]);
+  if (!restBox(doc)) throw new AvatarError(['the model has no mesh to show']);
+  // A body the humanoid does not fit is a free shape (S4.11): its missing bones are made.
+  const missing = REQUIRED_BONES.filter((b) => !data.humanBones().has(b));
+  const shape: 'humanoid' | 'free' = missing.length > 0 ? 'free' : 'humanoid';
+  if (shape === 'free') {
+    const made = completeFreeShape(doc, data, missing);
+    const none = missing.length === REQUIRED_BONES.length;
+    warn(`a free shape: ${none ? 'no humanoid skeleton' : `no ${missing.join(', ')}`} was found, so the shared motions move it as a whole${none ? '' : ' and by the bones it has'} (bones made: ${made.join(', ')})`);
   }
-  if (kind === 'vrm0' || !facesPlusZ(bones)) {
+  const bones = data.humanBones();
+  if (kind === 'vrm0' || (shape === 'humanoid' && !facesPlusZ(bones))) {
     if (kind !== 'vrm0') warn('the avatar faced away (-Z): it was turned round');
     turnAround(doc);
     turnVrmAround(data);
@@ -482,6 +483,7 @@ export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): P
     levels,
     ...(thumbnail ? { thumbnail: sha256(thumbnail) } : {}),
     bones: [...lod0.data.humanBones().keys()].sort(),
+    shape,
     expressions,
     height: heightOf(lod0.doc),
     springs: stats.springs,

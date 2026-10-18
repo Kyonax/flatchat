@@ -3,7 +3,7 @@
 // three ways the converter takes, standing in for three creation tools: VRM 1.0 (as VRoid Studio
 // 1.x writes it: facing +Z), VRM 0.x (as UniVRM 0.x and Blender's VRM exporter write it: facing
 // -Z, blend shapes on meshes, MToon in materialProperties) and a plain GLB with Mixamo's bone
-// names and Ready Player Me's shape names. Each body part is a box divided into a grid, so the
+// names and Ready Player Me's shape names; and a free shape, a robot with no skeleton (S4.11). Each body part is a box divided into a grid, so the
 // levels of detail have something to take away; the head carries the mouth and blink shapes, a
 // three-bone hair chain swings on spring bones around a head collider, and a 64 px checker is the
 // texture. Nothing here comes from outside the repository.
@@ -11,7 +11,7 @@ import { Document, Format, GLB_BUFFER, type Material, type Mesh, type Node, Node
 import { PNG } from 'pngjs';
 import { VRMExtension } from './vrm.ts';
 
-export type SampleKind = 'vrm1' | 'vrm0' | 'glb';
+export type SampleKind = 'vrm1' | 'vrm0' | 'glb' | 'free';
 type V3 = [number, number, number];
 
 interface BoneDef {
@@ -257,8 +257,35 @@ async function glb(doc: Document, patch?: (json: Record<string, unknown>) => voi
   return out;
 }
 
+/** A free shape (S4.11): a little robot of four rigid boxes (a body, a head, two wheels), no
+ *  skeleton at all, as a prop or a creature might come. */
+async function robot(): Promise<Uint8Array> {
+  const doc = new Document();
+  const buffer = doc.createBuffer();
+  const scene = doc.createScene('Scene');
+  const material = doc.createMaterial('Metal').setBaseColorFactor([0.6, 0.65, 0.75, 1]).setMetallicFactor(0.2).setRoughnessFactor(0.6);
+  const part = (name: string, a: V3, b: V3, half: number): void => {
+    const g = geometry();
+    box(g, a, b, half, 0, 4);
+    const prim = doc
+      .createPrimitive()
+      .setMaterial(material)
+      .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(new Float32Array(g.positions)).setBuffer(buffer))
+      .setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(new Float32Array(g.normals)).setBuffer(buffer))
+      .setAttribute('TEXCOORD_0', doc.createAccessor().setType('VEC2').setArray(new Float32Array(g.uvs)).setBuffer(buffer))
+      .setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint16Array(g.indices)).setBuffer(buffer));
+    scene.addChild(doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(prim)));
+  };
+  part('Body', [0, 0.35, 0], [0, 0.85, 0], 0.22);
+  part('Head', [0, 0.95, 0], [0, 1.15, 0], 0.13);
+  part('WheelLeft', [0.25, 0.15, 0], [0.25, 0.15, 0], 0.13);
+  part('WheelRight', [-0.25, 0.15, 0], [-0.25, 0.15, 0], 0.13);
+  return new NodeIO().writeBinary(doc);
+}
+
 /** A reference avatar's file. */
 export async function sampleAvatar(kind: SampleKind): Promise<Uint8Array> {
+  if (kind === 'free') return robot();
   const b = build(kind, kind === 'vrm0');
   const index = (n: Node): number => b.doc.getRoot().listNodes().indexOf(n);
   const bodyIndex = index(b.bodyNode);

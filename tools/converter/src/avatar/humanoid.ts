@@ -285,6 +285,96 @@ export function turnVrmAround(data: VRMData): void {
   data.setDocument(doc);
 }
 
+// ------------------------------------------------------------------------- free shapes (S4.11)
+
+/** Where each missing required bone goes, from its parent, as shares of the model's height. */
+const STAND_INS: Record<string, { parent: string[]; at: [number, number, number] }> = {
+  spine: { parent: ['hips'], at: [0, 0.08, 0] },
+  head: { parent: ['neck', 'upperChest', 'chest', 'spine'], at: [0, 0.3, 0] },
+  leftUpperArm: { parent: ['leftShoulder', 'upperChest', 'chest', 'spine'], at: [0.12, 0.2, 0] },
+  leftLowerArm: { parent: ['leftUpperArm'], at: [0.14, 0, 0] },
+  leftHand: { parent: ['leftLowerArm'], at: [0.13, 0, 0] },
+  rightUpperArm: { parent: ['rightShoulder', 'upperChest', 'chest', 'spine'], at: [-0.12, 0.2, 0] },
+  rightLowerArm: { parent: ['rightUpperArm'], at: [-0.14, 0, 0] },
+  rightHand: { parent: ['rightLowerArm'], at: [-0.13, 0, 0] },
+  leftUpperLeg: { parent: ['hips'], at: [0.06, -0.03, 0] },
+  leftLowerLeg: { parent: ['leftUpperLeg'], at: [0, -0.23, 0] },
+  leftFoot: { parent: ['leftLowerLeg'], at: [0, -0.23, 0] },
+  rightUpperLeg: { parent: ['hips'], at: [-0.06, -0.03, 0] },
+  rightLowerLeg: { parent: ['rightUpperLeg'], at: [0, -0.23, 0] },
+  rightFoot: { parent: ['rightLowerLeg'], at: [0, -0.23, 0] },
+};
+
+/** The model's box at rest, in world space (skinned meshes in their bind space). */
+export function restBox(doc: Document): { min: [number, number, number]; max: [number, number, number] } | undefined {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  const v: number[] = [];
+  for (const node of doc.getRoot().listNodes()) {
+    const mesh = node.getMesh();
+    if (!mesh) continue;
+    const m = node.getSkin() ? null : worldMatrixOf(node);
+    for (const prim of mesh.listPrimitives()) {
+      const pos = prim.getAttribute('POSITION');
+      if (!pos) continue;
+      for (let i = 0; i < pos.getCount(); i++) {
+        pos.getElement(i, v);
+        const p = m ? [m[0]! * v[0]! + m[4]! * v[1]! + m[8]! * v[2]! + m[12]!, m[1]! * v[0]! + m[5]! * v[1]! + m[9]! * v[2]! + m[13]!, m[2]! * v[0]! + m[6]! * v[1]! + m[10]! * v[2]! + m[14]!] : [v[0]!, v[1]!, v[2]!];
+        for (let k = 0; k < 3; k++) {
+          min[k] = Math.min(min[k]!, p[k]!);
+          max[k] = Math.max(max[k]!, p[k]!);
+        }
+      }
+    }
+  }
+  return Number.isFinite(min[0]) ? { min, max } : undefined;
+}
+
+/** A free shape (S4.11): a robot, a creature or a prop on the shared skeleton. Without hips, a
+ *  hips node is made at the model's middle and the whole model hangs from it (so it walks, turns
+ *  and bobs as one); every other missing required bone becomes an empty node where a body would
+ *  have it, so three-vrm finds a complete humanoid and the shared motions move what the model has.
+ *  Answers the bones it made. */
+export function completeFreeShape(doc: Document, data: VRMData, missing: readonly string[]): string[] {
+  const box = restBox(doc);
+  if (!box) throw new Error('the model has no mesh to show');
+  const height = Math.max(0.3, box.max[1] - box.min[1]);
+  const vdoc = data.getDocument();
+  const humanoid = (vdoc.vrm['humanoid'] ??= { humanBones: {} }) as JsonObject;
+  const humanBones = (humanoid['humanBones'] ??= {}) as JsonObject;
+  const made: string[] = [];
+  const nodeOf = (name: string): Node | undefined => {
+    const slot = ((humanBones[name] as JsonObject | undefined)?.['node'] as { $node?: number } | undefined)?.$node;
+    return slot === undefined ? undefined : data.node(slot);
+  };
+  const scene = doc.getRoot().listScenes()[0] ?? doc.createScene('Scene');
+  if (missing.includes('hips')) {
+    const at: [number, number, number] = [(box.min[0] + box.max[0]) / 2, box.min[1] + height * 0.5, (box.min[2] + box.max[2]) / 2];
+    const hips = doc.createNode('FreeShapeHips').setTranslation(at);
+    // Everything the scene held hangs from the hips now, where it was.
+    for (const child of scene.listChildren()) {
+      scene.removeChild(child);
+      const t = child.getTranslation();
+      child.setTranslation([t[0] - at[0], t[1] - at[1], t[2] - at[2]]);
+      hips.addChild(child);
+    }
+    scene.addChild(hips);
+    humanBones['hips'] = { node: { $node: data.addNode(hips) } };
+    made.push('hips');
+  }
+  for (const name of REQUIRED_BONES) {
+    if (name === 'hips' || nodeOf(name)) continue;
+    const plan = STAND_INS[name]!;
+    const parent = plan.parent.map(nodeOf).find((n): n is Node => !!n) ?? nodeOf('hips')!;
+    const node = doc.createNode(`FreeShape_${name}`).setTranslation([plan.at[0] * height, plan.at[1] * height, plan.at[2] * height]);
+    parent.addChild(node);
+    humanBones[name] = { node: { $node: data.addNode(node) } };
+    made.push(name);
+  }
+  data.setDocument(vdoc);
+  return made;
+}
+
 /** Every node a VRM document references must survive the converter's clean-up. */
 export function protectedNodes(data: VRMData | null): Set<Node> {
   return new Set(data ? data.listNodes() : []);
