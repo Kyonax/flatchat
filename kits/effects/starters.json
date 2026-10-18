@@ -1,0 +1,21 @@
+{
+  "about": "The starter effects (S6.01): any account takes one with no upload, as it takes a starter item. Each is one of Effekseer's CC0 samples in samples/, worn at the point named; the core bundles it with its files and this declaration when it starts (apps/core/src/items.ts, readEffectStarters).",
+  "starters": [
+    {
+      "id": "aura",
+      "name": "Aura",
+      "effect": "samples/00_Version16/Aura01.efkefc",
+      "attach": "hips",
+      "scale": 1,
+      "authors": ["the Effekseer project and its contributors"]
+    },
+    {
+      "id": "shield",
+      "name": "Shield",
+      "effect": "samples/00_Version16/Barrior03.efkefc",
+      "attach": "chest",
+      "scale": 1,
+      "authors": ["the Effekseer project and its contributors"]
+    }
+  ]
+}
