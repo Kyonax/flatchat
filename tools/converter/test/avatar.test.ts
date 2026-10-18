@@ -12,9 +12,9 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RANK_LIMITS, rankOf, type AvatarStats } from '@flatchat/content';
+import { checkAvatarLevel, RANK_LIMITS, rankOf, readGltf, type AvatarStats } from '@flatchat/content';
 import { Document, NodeIO } from '@gltf-transform/core';
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { ALL_EXTENSIONS, KHRMaterialsClearcoat, KHRMaterialsEmissiveStrength } from '@gltf-transform/extensions';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AvatarError, type AvatarResult, convertAvatar } from '../src/avatar/convert.ts';
 import { sampleAvatar, type SampleKind } from '../src/avatar/samples.ts';
@@ -120,6 +120,29 @@ describe('the reference avatars', () => {
       expect(r.triangles, kind).toBeGreaterThan(0);
       expect(r.stretched, kind).toBe(0);
     }
+  });
+
+  it('drop what the client would refuse: a clearcoat material converts into levels the client accepts (S5.01)', async () => {
+    const io = new NodeIO().registerExtensions([...ALL_EXTENSIONS, VRMExtension]);
+    const doc = await io.readBinary(sources.get('vrm1')!);
+    const clearcoat = doc.createExtension(KHRMaterialsClearcoat);
+    for (const m of doc.getRoot().listMaterials()) m.setExtension('KHR_materials_clearcoat', clearcoat.createClearcoat().setClearcoatFactor(1));
+    const r = await convertAvatar(await io.writeBinary(doc), { ktx2: false });
+    expect(r.manifest.warnings).toContainEqual(expect.stringContaining('KHR_materials_clearcoat'));
+    for (const level of ['lod0', 'lod1', 'lod2', 'impostor'] as const) {
+      const json = readGltf(r.files.get(r.manifest.levels[level].file)!, `${level}.glb`).json as unknown as Record<string, unknown>;
+      expect(() => checkAvatarLevel(json), level).not.toThrow();
+    }
+  });
+
+  it('fold an emissive strength into the colour before leaving it out: Blender\'s white emission at strength 0 stays dark', async () => {
+    const io = new NodeIO().registerExtensions([...ALL_EXTENSIONS, VRMExtension]);
+    const doc = await io.readBinary(sources.get('vrm1')!);
+    const strength = doc.createExtension(KHRMaterialsEmissiveStrength);
+    for (const m of doc.getRoot().listMaterials()) m.setEmissiveFactor([1, 1, 1]).setExtension('KHR_materials_emissive_strength', strength.createEmissiveStrength().setEmissiveStrength(0));
+    const r = await convertAvatar(await io.writeBinary(doc), { ktx2: false });
+    const { doc: lod0 } = await read(r.files.get(r.manifest.levels.lod0.file)!);
+    for (const m of lod0.getRoot().listMaterials()) expect(m.getEmissiveFactor()).toEqual([0, 0, 0]);
   });
 
   it('give the same avatar for the same file', async () => {

@@ -22,13 +22,15 @@ import {
   type AvatarManifest,
   type AvatarSourceKind,
   type AvatarStats,
+  checkAvatarLevel,
   type Gltf,
+  LEVEL_EXTENSIONS,
   type Level,
   rankOf,
   readGltf,
 } from '@flatchat/content';
 import { type Document, GLB_BUFFER, type JSONDocument, Logger, NodeIO, type Texture } from '@gltf-transform/core';
-import { ALL_EXTENSIONS, KHRLightsPunctual } from '@gltf-transform/extensions';
+import { ALL_EXTENSIONS, type EmissiveStrength, KHRLightsPunctual } from '@gltf-transform/extensions';
 import { dedup, prune } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
@@ -39,7 +41,7 @@ import { makeImpostor, makeLod1, makeLod2 } from './lod.ts';
 import { type Json, type JsonObject, VRMC_VRM, VRMData, type VRMDocument, VRMExtension } from './vrm.ts';
 import { migrateVrm0, type SourceMeta } from './vrm0.ts';
 
-export const AVATAR_CONVERTER_VERSION = '1.2.0';
+export const AVATAR_CONVERTER_VERSION = '1.3.0';
 
 export class AvatarError extends Error {
   readonly problems: string[];
@@ -199,6 +201,30 @@ function kindOf(json: Gltf): AvatarSourceKind {
   if (ext['VRMC_vrm']) return 'vrm1';
   if (ext['VRM']) return 'vrm0';
   return 'glb';
+}
+
+/** Only what the client draws: any other extension (Blender writes KHR_materials_clearcoat,
+ *  _specular, _ior and _emissive_strength) goes, or the client would refuse every level (S5.01).
+ *  An emissive strength is folded into the emissive colour first: Blender writes a white emission
+ *  at strength 0, which without its strength would light the whole avatar white. */
+export function dropForeignExtensions(doc: Document, warn: (w: string) => void = () => undefined): void {
+  for (const material of doc.getRoot().listMaterials()) {
+    const strength = material.getExtension<EmissiveStrength>('KHR_materials_emissive_strength');
+    if (!strength) continue;
+    const s = strength.getEmissiveStrength();
+    if (s > 1) warn(`an emissive strength of ${s} is cut to 1: the platform's avatars glow at most that much`);
+    material.setEmissiveFactor(material.getEmissiveFactor().map((c) => Math.min(1, c * s)) as [number, number, number]);
+  }
+  for (const e of doc.getRoot().listExtensionsUsed()) {
+    if (LEVEL_EXTENSIONS.has(e.extensionName)) continue;
+    warn(`the ${e.extensionName} extension is left out: the platform's avatars do not carry it`);
+    e.dispose();
+  }
+}
+
+/** glTF Transform's reader and writer with VRM 1.0 and every extension the converter knows. */
+export function avatarIO(): NodeIO {
+  return io();
 }
 
 /** A converted level read back, with its VRM data (tests and audits). */
@@ -430,6 +456,7 @@ export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): P
   }
   for (const c of root.listCameras()) c.dispose();
   for (const e of root.listExtensionsUsed()) if (e.extensionName === KHRLightsPunctual.EXTENSION_NAME) e.dispose();
+  dropForeignExtensions(doc, warn);
   const thumbnail = takeThumbnail(data);
   await doc.transform(dedup({ keepUniqueNames: true }), prune({ keepLeaves: true, keepAttributes: true, keepExtras: true }));
 
@@ -449,6 +476,12 @@ export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): P
     await l.doc.transform(prune({ keepLeaves: true, keepAttributes: true, keepExtras: true }));
     const textureBytes = await fitTextures([l.doc], LEVEL_TEXTURES[level], ktx2, warn);
     const out = await io().writeBinary(l.doc);
+    // The client's own check on every level made: a level it would refuse is the converter's fault.
+    try {
+      checkAvatarLevel(readGltf(out, `${level}.glb`).json as unknown as Record<string, unknown>);
+    } catch (err) {
+      throw new Error(`the converter made a ${level} the client refuses: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    }
     levels[level] = levelOf(l.doc, out, textureBytes);
     files.set(levels[level].file, out);
     return { ...l, textureBytes };
