@@ -37,6 +37,13 @@ range = 25                       # metres at which a voice has faded to nothing 
 id = "main"
 file = "scenes/main.glb"
 
+[look]                           # optional (S6.05): the sky, fog and light, and screen effects
+sky = "#2b2d42"
+fog = { colour = "#2b2d42", near = 25, far = 90 }   # fog = false for none
+sun = { colour = "#ffb38a", intensity = 1.4, direction = [-0.7, 0.35, -0.3] }
+bloom = { strength = 0.9, threshold = 0.75 }        # neon glow
+filters = { vignette = 0.35, grain = 0.15, saturation = 1.1 }
+
 [[overlays]]                     # optional, at most four (S6.02)
 image = "overlays/frame.png"     # a PNG in the folder, 1024 px a side at most
 hud = "centre"                   # its screen point
@@ -54,6 +61,7 @@ motion = "none"                  # none, pulse, bob or spin
 | `avatars` | 0.1 to 20 m, `min_height` below `max_height` |
 | `voice.range` | 1 to 100 m |
 | `scenes` | At least one; ids are lowercase letters, digits and dashes, unique; files are relative paths inside the folder (no `..`, no absolute paths), ending in `.glb` or `.gltf`. The first scene is where players arrive |
+| `look` | The world's look ([world looks](world-looks.md)): `sky`, `fog` (or `false`), `sun`, `ambient`, and the screen effects `bloom`, `shafts`, `reflections` and `filters`, each on only when given; every visitor may switch each screen effect off. Left out, a world keeps the look every world had before |
 | `overlays` | Screen overlays every visitor sees until they switch worlds' overlays off (S6.02, [overlays](overlays.md)): at most four; `image` a PNG in the folder, 1024 px a side at most; `hud` one of the nine screen points (`centre` by default); `size` 0.03 to 1 (0.15 by default); `opacity` 0.1 to 0.8 (0.8 by default); `motion` `none`, `pulse`, `bob` or `spin` |
 
 Unknown keys are reported as warnings (a newer tool may know them), never silently used.
