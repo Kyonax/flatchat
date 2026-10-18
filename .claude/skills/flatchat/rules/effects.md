@@ -18,6 +18,7 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | `tools/converter/src/effect/dry-run.ts`, `dry-run-worker.ts`, `samples.ts` | The dry run's Node side: the WebGL build read through `@flatchat/effects/runtime/*`, `dryRun` (this thread), `DryRunner` (a worker thread with a deadline); the samples bundled |
 | `packages/effects/src/guard.ts` | `EffectBudget`, `InstanceTrim`, `TimeWatch` |
 | `tools/converter/src/effect/convert.ts`, `item.ts` | `effectUpload` (an Effekseer file, an `.efkpkg`, a zip with one effect at any depth, or an FCFX bundle with its declaration), `convertEffect` (version, no `.efkmat`, every named file present, PNG textures, the bundle of exactly those files, the dry run, `effectFitProblems`), `convertEffectItem` (slot `effect`, no fingerprint); `item-cli.ts` branches on `uploadFormat(...) === 'effect'` before reading the bodies |
+| `apps/client/src/renderer/src/world/effects.ts`, `effects-draw.ts`, `effects-runtime.ts` | The client's effects layer (worn effects at markers, the policy, the guard, respawn), the drawing after three's frame (WebGPU depth copy and pass, WebGL2 depth quad, timestamp probes), the lazy inlined builds |
 | `kits/effects/samples/`, `kits/effects/starters.json` | Five of Effekseer's CC0 samples with their textures; the starter effects (aura at the hips, shield at the chest), bundled by the core at start |
 
 ## The Rules
@@ -41,3 +42,9 @@ Stage 6's S6.01 (DR-12): every effect plays in one pinned Effekseer runtime, beh
 | Bundle exactly the files the effect names (a sound only for a world); keep the bundle without the upload's declaration | What a client loads is what was checked, and nothing more |
 | No fingerprint for effects | Their textures are generic dots and streaks: a texture match would strike the innocent |
 | Pack every workspace the converter needs with the host tool, `third_party` included (`tools/host-tool/scripts/pack.ts`) | CI's host-tool job failed on 2026-10-18 when `@flatchat/effects` was fetched from the registry |
+| Hand the runtime its WebAssembly through `instantiateWasm` (compiled once per build), never `wasmBinary` | Emscripten 6 reads no `wasmBinary` unless built to: the glue silently read the file beside it, which the move to `wasm/` exposed |
+| Keep the `.wasm` in `third_party/effekseer/wasm/`, away from the glue | The glue's `new URL(…, import.meta.url)` made Vite copy it a second time (3.6 MB) |
+| Draw effects after three's frame, over the canvas, with three's depth copied single-sampled; the world's renderer is `alpha: false` | Effekseer's sRGB blends want the finished image; its pipelines are single-sampled; effect alpha would show the page through |
+| Leave an effect's first frames out of the watches (`WARM_UP`) | Aura01 makes its procedural shell on its first update; the 16 ms stall rule stopped it at once |
+| In the end-to-end test, pick items by their row's text, never `first()` | The list is newest first: the starter aura took the tee's place |
+| The starters play at 0.12 (`kits/effects/starters.json`) | Effekseer's samples are authored roughly ten times a person's size |
