@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AttachPoint, BODY_KITS, checkItemManifest, type EffectFit, effectFiles, type Fingerprint, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, POINT_SLOTS, readEffectFile, readItemDeclaration, type Slot, uploadFormat, type WornAdjust, writeBundle } from '@flatchat/content';
+import { type AttachPoint, BODY_KITS, type HudPoint, checkItemManifest, type EffectFit, effectFiles, type Fingerprint, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, POINT_SLOTS, readEffectFile, readItemDeclaration, type Slot, uploadFormat, type WornAdjust, writeBundle } from '@flatchat/content';
 import { OUTFIT_MAX } from '@flatchat/protocol';
 import type { Db, Sql } from './db.ts';
 import { copyOf, readFingerprint, readKitFingerprints, strike } from './copies.ts';
@@ -65,6 +65,9 @@ export interface StarterFile {
   sha256: string;
   bytes: number;
   source?: Uint8Array;
+  /** What the file cannot say itself (a starter overlay's PNG): given to the converter as an
+   *  upload's declaration is. */
+  declaration?: ItemDeclaration;
 }
 
 /** The starter wardrobe in a folder (kits/items/), by id; none when it has no wardrobe.json. */
@@ -101,6 +104,24 @@ export function readEffectStarters(dir: string): Map<string, StarterFile> {
   return out;
 }
 
+/** The starter overlays (S6.02, kits/overlays/starters.json), by id: each a PNG, with the look
+ *  and the audience a PNG cannot carry kept as its declaration; none when the folder has no
+ *  starters.json. */
+export function readOverlayStarters(dir: string): Map<string, StarterFile> {
+  const out = new Map<string, StarterFile>();
+  const file = join(dir, 'starters.json');
+  if (!existsSync(file)) return out;
+  const listed = JSON.parse(readFileSync(file, 'utf8')) as { starters?: Array<Record<string, unknown>> };
+  for (const s of listed.starters ?? []) {
+    if (typeof s['id'] !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s['id']) || typeof s['image'] !== 'string' || typeof s['name'] !== 'string') continue;
+    const path = join(dir, s['image']);
+    const bytes = new Uint8Array(readFileSync(path));
+    const declaration = readItemDeclaration({ name: s['name'], slot: 'overlay', hud: s['hud'], size: s['size'], opacity: s['opacity'], motion: s['motion'], audience: s['audience'], authors: s['authors'] });
+    out.set(s['id'], { id: s['id'], name: s['name'], file: path, sha256: sha256(bytes), bytes: bytes.length, declaration });
+  }
+  return out;
+}
+
 /** A worn item as an outfit keeps it and the protocol carries it. */
 export interface OutfitItem {
   item: string;
@@ -130,6 +151,8 @@ export interface ItemsOptions {
   wardrobe?: string;
   /** The starter effects' folder (default: the repository's kits/effects/). */
   effects?: string;
+  /** The starter overlays' folder (default: the repository's kits/overlays/). */
+  overlays?: string;
   /** Headless Blender (its executable), for FBX, OBJ and .blend; without it those are refused. */
   blender?: string;
 }
@@ -162,7 +185,7 @@ export class Items {
     };
     this.kits = o.kits ?? join(ROOT, 'kits', 'bodies');
     const wardrobe = o.wardrobe ?? join(ROOT, 'kits', 'items');
-    this.starters = new Map([...readStarters(wardrobe), ...readEffectStarters(o.effects ?? join(ROOT, 'kits', 'effects'))]);
+    this.starters = new Map([...readStarters(wardrobe), ...readEffectStarters(o.effects ?? join(ROOT, 'kits', 'effects')), ...readOverlayStarters(o.overlays ?? join(ROOT, 'kits', 'overlays'))]);
     this.kitPrints = [...readKitFingerprints(this.kits), ...readKitFingerprints(wardrobe)];
   }
 
@@ -194,8 +217,8 @@ export class Items {
     if (bytes.length !== s.bytes || sha256(bytes) !== s.sha256) throw new Error(`the starter item ${id} is not the one wardrobe.json names`);
     this.o.store.put(bytes);
     const [row] = await this.o.db.query<{ id: string }>(
-      "insert into items (owner_id, name, status, source_sha256, source_bytes, starter, created_at) values ($1, $2, 'converting', $3, $4, $5, $6) returning id",
-      [account.id, cleanName(s.name, NAME_MAX), s.sha256, s.bytes, id, now],
+      "insert into items (owner_id, name, status, source_sha256, source_bytes, starter, created_at, declaration) values ($1, $2, 'converting', $3, $4, $5, $6, $7) returning id",
+      [account.id, cleanName(s.name, NAME_MAX), s.sha256, s.bytes, id, now, s.declaration ? JSON.stringify(s.declaration) : null],
     );
     this.pending += 1;
     this.queue = this.queue.then(() => this.convert(row!.id, s.sha256)).finally(() => (this.pending -= 1));
@@ -297,7 +320,7 @@ export class Items {
           return;
         }
         // Every file the manifest names, checked against its name, into the store.
-        const names = new Set([...Object.values(manifest.fits).map((f) => f!.file), ...(manifest.prop ? [manifest.prop.file] : []), ...(manifest.effect ? [manifest.effect.file] : [])]);
+        const names = new Set([...Object.values(manifest.fits).map((f) => f!.file), ...(manifest.prop ? [manifest.prop.file] : []), ...(manifest.effect ? [manifest.effect.file] : []), ...(manifest.overlay ? [manifest.overlay.file] : [])]);
         for (const name of readdirSync(out)) {
           if (!HASH.test(name)) continue;
           const bytes = new Uint8Array(readFileSync(join(out, name)));
@@ -368,6 +391,7 @@ export class Items {
     }
     if (manifest.prop) links['prop'] = this.o.store.link(manifest.prop.file, now);
     if (manifest.effect) links['effect'] = this.o.store.link(manifest.effect.file, now);
+    if (manifest.overlay) links['overlay'] = this.o.store.link(manifest.overlay.file, now);
     return { manifest, links };
   }
 
@@ -426,11 +450,17 @@ export class Items {
     const slots = new Map(rows.map((r) => [r.manifest_sha256, r.slot]));
     const missing = items.filter((i) => !slots.has(i.item)).length;
     if (missing > 0) throw new ContentProblem('not-found', `${missing} of the outfit's items are not among this account's ready items`);
-    const worn: Array<{ slot: Slot; attach?: AttachPoint; effect?: EffectFit }> = [];
+    const worn: Array<{ slot: Slot; attach?: AttachPoint; hud?: HudPoint; effect?: EffectFit }> = [];
     for (const i of items) {
       const slot = slots.get(i.item)!;
       const atPoint = POINT_SLOTS.includes(slot);
       if (!atPoint && i.adjust) throw new ContentProblem('bad-request', 'only an attachment or an effect takes an adjustment');
+      if (slot === 'overlay') {
+        // An overlay's screen point, from its manifest: one overlay to a point (S6.02).
+        const hud = this.manifestOf(i.item)?.overlay?.hud;
+        worn.push({ slot, ...(hud ? { hud } : {}) });
+        continue;
+      }
       if (!atPoint) {
         worn.push({ slot });
         continue;
