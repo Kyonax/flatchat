@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.28.0"
+  version: "1.29.0"
   verified: "2026-10-17"
 ---
 
@@ -73,6 +73,7 @@ Reference these guidelines when:
 | Movement: the character controller, the server's move checks, the plaza and maps | `rules/movement-sim.md` + `rules/world-networking.md` |
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
 | Avatar uploads: the converter (VRM 0.x/1.0, GLB), VRM inside glTF-Transform, levels, impostors, ranks, the manifest, the sandboxed CLI | `rules/avatar-converter.md` + `rules/security-untrusted-input.md` |
+| The three standard bodies: making or changing the body kits, headless Blender with MPFB and the VRM add-on, `kits/bodies/` | `rules/body-kits.md` + `rules/avatar-converter.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
 | World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
 | Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
@@ -107,6 +108,7 @@ A trap-linter finding names its rule; read that rule.
 | `reports-and-safety` | Reports (S3.02): the clip recorder and the one place that takes it (T20), evidence, the report form, the core's reports, the public form, the triage queue's order, under-age reports, keeping and purging evidence; friends, blocks, minors and the guardian link; the abuse path (S3.12): takedown, sealed preservation (T21), the authorities' drafts, the 48-hour clock, the drill. |
 | `world-format` | `packages/content`: world.toml's fields, the OMI and FLATCHAT_world markers at world transforms, safe paths, limits, `validateWorld`. |
 | `avatar-converter` | Avatar uploads into four VRM 1.0 levels, a thumbnail and a ranked manifest: validators and the four repairs, VRM 0.x migration by three-vrm's rules, plain rigs by bone names, the turn to +Z, LOD1/LOD2 with merged materials, the impostor, the rank table, the reference avatars and golden file, the sandboxed CLI. |
+| `body-kits` | The three standard bodies made headless from MakeHuman's CC0 assets (MPFB 2.0.18, the VRM Add-on 4.10.2, Blender 5.2 LTS): presets, expression recipes, the underwear layer, MToon, the pinned setup, two agreeing runs, the checks in CI. |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |
 | `core-service` | The core (Fastify, PostgreSQL): files, running it, invitations and the age rule, browser sign-in with PKCE and a loopback redirect, sessions, worlds and keys, connect tokens, security rules (T18, T19), tests on a throwaway cluster. |
 | `protocol-and-codecs` | The shared protocol package in Node and the renderer, the codecs' exact encoding, version 0's messages, changing the protocol (version, golden files, docs), tokens and the handshake (T17). |
