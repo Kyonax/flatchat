@@ -44,7 +44,7 @@ DR-09 named WebCodecs. Its `AudioDecoder` cannot rebuild a lost frame from the n
 |---|---|
 | Sending | Source → capture worklet (its silent output goes to the destination, which keeps it in the rendered graph) → mouth shapes → a voice gate (level ≥ 2 of 15 opens it, 200 ms of hangover) → Opus → `send`. `seq` goes up every 20 ms slot, sent or not; the first frame after a shut gate has `start` |
 | Muting | `chain.muted = true` keeps the gate shut, so the first frame after unmuting has `start`; never drop frames after the chain made them (the listener would wait for them). `chain.micLevel` is the last frame's loudness, sent or not, for a microphone meter |
-| Hearing | Up to 16 speakers, each with a decoder from a pool made at start (decoders are created asynchronously, so none is made while frames arrive), a playout worklet, a low-pass filter, a gain and an HRTF `PannerNode` |
+| Hearing | Up to 16 speakers, each with a decoder from a pool made at start (decoders are created asynchronously, so none is made while frames arrive), a playout worklet, a low-pass filter, a gain and an HRTF `PannerNode`, the panner also sent to the chain's own reverb (S6.06, rule `audio`); a speaker behind a wall (`occlude`) plays at `OCCLUDED_GAIN` with its cutoff at most `OCCLUDED_HZ` |
 | Distance | `voiceGain`: full to 1 m, then `(1 − x)²` to silence at 25 m; `voiceCutoffHz`: 18 kHz near to 2.5 kHz at 25 m. The panner's own distance model is off (`rolloffFactor: 0`), so the curve is one function, tested |
 | Decoder output | Copied (`Float32Array.from`) before it is transferred to a worklet: it may sit in WebAssembly memory |
 | Forgetting | A speaker unheard for 3 s gives its decoder back to the pool |

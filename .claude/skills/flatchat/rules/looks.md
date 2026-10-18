@@ -15,7 +15,7 @@ Stage 6's S6.05 (Q-E6, T-14): a world's sky, fog and light, and its screen effec
 | `packages/content/src/manifest.ts`, `built.ts` | `[look]` into `WorldManifest.look` (only when given, so older worlds stay byte for byte); `manifestOf` reads a built world's look again (`lookOf`: a host is not trusted) |
 | `apps/client/src/renderer/src/world/look.ts` | `applyLook` (background, fog, the hemisphere and the sun of `buildWorldScene`), `lookEffects` (the world's ask AND the viewer's switches; none in safe mode), `LookPipeline` (`THREE.RenderPipeline`: scene pass [+MRT normal and metalrough], SSR, godrays, bloom, filters; `depth()` for the Effekseer layer) |
 | `apps/client/src/renderer/src/world/session.ts` | `updateLook` each frame (rebuilt only when its key changes), the pipeline's `render()` in place of `renderer.render`, `effects.frame(camera, dt, pipeline.depth())`, `state.look` (`[data-test=look]`) |
-| `apps/client/src/renderer/src/crowd/look-bench.ts` | `--bench=S --bench-look=1`: none, each effect, all; a warm-up of 20 frames and 1 s, then frames back to back, each waited for on the GPU (`gpuDone`), the page let breathe by a message (`breathe`) |
+| `apps/client/src/renderer/src/crowd/look-bench.ts` | `--bench=S --bench-look=1`: none, each effect, all; a warm-up of 20 frames and 1 s (3 s at most), then frames back to back, each waited for on the GPU (`gpuDone`; `unwaited` counts fences not seen done in 2 s), the page let breathe by a message (`breathe`); bench windows run with `backgroundThrottling: false`, and the main process allows six runs of the seconds plus 3 s each |
 
 ## The Rules
 
