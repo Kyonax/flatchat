@@ -39,7 +39,7 @@ const PASSWORD = 'an end-to-end password';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { shot: { type: 'string' }, shots: { type: 'string' }, relay: { type: 'boolean', default: false }, keep: { type: 'boolean', default: false } },
+  options: { shot: { type: 'string' }, shots: { type: 'string' }, relay: { type: 'boolean', default: false }, keep: { type: 'boolean', default: false }, quality: { type: 'string' } },
 });
 const client = positionals[0];
 if (!client) {
@@ -133,7 +133,7 @@ try {
   // 3. The client, with its own empty profile; the system browser is replaced by this test.
   const app = await electron.launch({
     executablePath: client,
-    args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : []), ...headless()],
+    args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(values.quality ? [`--quality=${values.quality}`] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : []), ...headless()],
     env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile, FLATCHAT_E2E_ITEM: TEE, FLATCHAT_E2E_ANIMATION: danceFile, FLATCHAT_E2E_AUDIO: songFile },
     timeout: 60_000,
   });
@@ -424,7 +424,26 @@ try {
       .catch(() => 0);
     await snap('2b-keys');
     await page.keyboard.press('F1');
-    await page.locator('[data-test=keys-help]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    // F1 again closes it, and the menu has not opened behind it (freeing the mouse is not Esc).
+    steps['keysHelpClosed'] = await page
+      .locator('[data-test=keys-help]')
+      .waitFor({ state: 'detached', timeout: 5_000 })
+      .then(async () => (await page.locator('[data-test=resume]').count()) === 0)
+      .catch(() => false);
+    // The stats panel (S6.08): F3 shows what this frame drew and the preset in force (--quality's on
+    // the low run), F3 hides it.
+    await page.keyboard.press('F3');
+    steps['stats'] = await page
+      .locator('[data-test=stats]:not([data-draws="0"])')
+      .waitFor({ timeout: 10_000 })
+      .then(async () => ({ draws: Number(await page.locator('[data-test=stats]').getAttribute('data-draws')), preset: await page.locator('[data-test=stats]').getAttribute('data-preset') }))
+      .catch(async () => {
+        const panel = page.locator('[data-test=stats]');
+        return { draws: Number((await panel.getAttribute('data-draws', { timeout: 1000 }).catch(() => null)) ?? -1), preset: (await panel.getAttribute('data-preset', { timeout: 1000 }).catch(() => null)) ?? 'no panel' };
+      });
+    await snap('2b-stats');
+    await page.keyboard.press('F3');
+    await page.locator('[data-test=stats]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
     // A report from inside the world (S3.02): the menu, the form, the receipt.
     await page.keyboard.press('Escape');
     const reportWorld = page.locator('[data-test=report-world]');
@@ -478,8 +497,10 @@ try {
       .catch(async () => `bloom ${await page.locator('[data-test=look]').getAttribute('data-bloom').catch(() => '?')}, filters ${await page.locator('[data-test=look]').getAttribute('data-filters').catch(() => '?')}`);
     // The garden's test room for 3D audio (S6.06): a hall around the arrivals, a sound behind a wall
     // (muffled) and one in the open (not).
+    // On the low preset the room's echo is off (S6.08): no room, the wall still muffles.
+    const room = values.quality === 'low' ? '' : 'hall';
     steps['worldAudio'] = await page
-      .locator('[data-test=audio][data-room="hall"][data-audible="2"][data-occluded="1"]')
+      .locator(`[data-test=audio][data-room="${room}"][data-audible="2"][data-occluded="1"]`)
       .waitFor({ state: 'attached', timeout: 20_000 })
       .then(() => true)
       .catch(async () => {
@@ -595,6 +616,9 @@ try {
     Number(steps['helpPage']) > 20 &&
     Number(steps['creditsPage']) >= 10 &&
     Number(steps['keysHelp']) > 20 &&
+    steps['keysHelpClosed'] === true &&
+    (steps['stats'] as { draws: number }).draws > 0 &&
+    (!values.quality || (steps['stats'] as { preset: string }).preset === values.quality) &&
     typeof steps['gpuReset'] === 'object' &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).recoveredMs < 15_000 &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).resets === 1 &&
