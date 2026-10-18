@@ -66,4 +66,8 @@ node tools/converter/scripts/make-wardrobe.ts
 node tools/converter/scripts/default-sounds.ts
 ```
 
+## The effects
+
+[effects/samples/](effects/samples/) holds five of Effekseer's sample effects with the textures they use: Aura01, Barrior03 and ForceFieldTornado, Laser01 and Simple_Track1. They are CC0 (the Effekseer project and its contributors), copied byte for byte from the Sample folder of Effekseer 1.80.7's release, its folders kept so each finds its textures. The effects' tests play them in the pinned runtime: a laser that ends, an aura that fits an avatar's budget, a trail too busy for one, a tornado that loops ([docs/effects.md](../docs/effects.md)).
+
 - Provenance: [provenance/](provenance/) holds one record for each asset in the whole repository, with saved copies of others' licence pages in `provenance/archive/`. The fields are listed at the top of `tools/harness/src/asset-check.ts`, and `npm run harness` checks every record.

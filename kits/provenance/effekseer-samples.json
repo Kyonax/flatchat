@@ -1,0 +1,15 @@
+{
+  "files": [
+    "kits/effects/samples/**"
+  ],
+  "title": "Effekseer's sample effects (S6.01): Aura01, Barrior03 and ForceFieldTornado from 00_Version16, Laser01 and Simple_Track1 from 00_Basic, with the textures they use",
+  "creator": "The Effekseer project and its contributors",
+  "licence": "CC0-1.0",
+  "source": "https://github.com/effekseer/Effekseer/releases/tag/1807",
+  "retrieved": "2026-10-18",
+  "licencePage": {
+    "url": "https://github.com/effekseer/Effekseer/releases/tag/1807",
+    "archived": "kits/provenance/archive/effekseer-samples-readme.txt"
+  },
+  "changes": "None: copied byte for byte from the Sample folder of Effekseer1.80.7Linux.zip (SHA-256 462a18b289ebee09a792d38f7d5824c5333c0559aff29cb76ddfcf401c9a0505), its folders kept so each effect finds its textures; its readme.txt, which puts every sample under CC0, is the archived licence page"
+}
