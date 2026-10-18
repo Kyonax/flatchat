@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Avatars in the core (S4.01 uploads, S4.04 the store and delivery). An account at trust level 1
-// or more (or a tester) asks for an upload slot with the file's size and SHA-256; the client sends
-// the file to the slot's signed link; the core keeps the source in its store and converts it in a
-// separate, sandboxed process (tools/converter/src/avatar-cli.ts under Node.js's permission model:
-// it reads only the converter and the upload, writes only its own folder, loads no native addon,
-// runs in a network namespace where the system allows one, with a time and a memory limit), one
-// conversion at a time. A converted avatar's files go to the store; its manifest's SHA-256 names
-// it. An account wears one of its ready avatars; anyone signed in may fetch a worn avatar's levels
-// through signed links (they see it in the world anyway); the source is never handed out.
-import { spawn, spawnSync } from 'node:child_process';
+// Avatars in the core (S4.01 uploads, S4.04 the store and delivery, S5.05 the standard bodies). An
+// account at trust level 1 or more (or a tester) asks for an upload slot with the file's size and
+// SHA-256; the client sends the file to the slot's signed link; the core keeps the source in its
+// store and converts it in a separate, sandboxed process (tools/converter/src/avatar-cli.ts; see
+// sandbox.ts), one conversion at a time. A converted avatar's files go to the store; its manifest's
+// SHA-256 names it. An account wears one of its ready avatars; anyone signed in may fetch a worn
+// avatar's levels through signed links (they see it in the world anyway); the source is never
+// handed out. The three standard bodies (kits/bodies/, dp-001) are avatars too: any account may
+// take one without an upload (`kit`), and an avatar whose source is a kit's exact bytes is that
+// body (its delivery says `kit`), so the client knows the items made for it fit.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AVATAR_SOURCE_LIMIT, type AvatarManifest, checkManifest, LEVELS } from '@flatchat/content';
+import { AVATAR_SOURCE_LIMIT, type AvatarManifest, BODY_KITS, type BodyKit, checkManifest, LEVELS } from '@flatchat/content';
 import type { Db, Sql } from './db.ts';
+import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -22,16 +23,6 @@ export const MAX_AVATARS = 50;
 export const SLOT_MS = 15 * 60_000;
 export const CONVERT_MS = 10 * 60_000;
 export const NAME_MAX = 64;
-
-export type AvatarProblemCode = 'upload-trust' | 'upload-limit' | 'too-large' | 'bad-request' | 'not-found' | 'not-ready' | 'mismatch' | 'slot-expired';
-
-export class AvatarProblem extends Error {
-  readonly code: AvatarProblemCode;
-  constructor(code: AvatarProblemCode, message: string) {
-    super(message);
-    this.code = code;
-  }
-}
 
 export interface AvatarRow {
   id: string;
@@ -42,6 +33,31 @@ export interface AvatarRow {
   manifest: string | null;
   createdAt: Date;
   wearing: boolean;
+  /** The standard body it is, when its source is a kit's exact bytes. */
+  kit: BodyKit | null;
+}
+
+/** A standard body as kits/bodies/kits.json names it: its VRM and that file's SHA-256 and size. */
+export interface KitFile {
+  file: string;
+  sha256: string;
+  bytes: number;
+}
+
+/** The standard bodies in a kits folder (kits/bodies/), by name; none when it has no kits.json. */
+export function readKits(dir: string): Map<BodyKit, KitFile> {
+  const kits = new Map<BodyKit, KitFile>();
+  let listed: { kits?: Record<string, { vrm?: string; vrmSha256?: string; vrmBytes?: number }> };
+  try {
+    listed = JSON.parse(readFileSync(join(dir, 'kits.json'), 'utf8')) as typeof listed;
+  } catch {
+    return kits;
+  }
+  for (const body of BODY_KITS) {
+    const k = listed.kits?.[body];
+    if (k?.vrm && k.vrmSha256 && HASH.test(k.vrmSha256) && Number.isInteger(k.vrmBytes)) kits.set(body, { file: join(dir, body, k.vrm), sha256: k.vrmSha256, bytes: k.vrmBytes! });
+  }
+  return kits;
 }
 
 export interface AvatarsOptions {
@@ -53,35 +69,9 @@ export interface AvatarsOptions {
   ktx2?: boolean;
   log?: (event: string, fields: Record<string, unknown>) => void;
   /** The converter program (default: the repository's tools/converter). */
-  converter?: { script: string; sandbox: string; reads: string[] };
-}
-
-/** The converter's command line: Node.js's permission model with reads of the converter's code
- *  and the upload only, writes of its folder only, no addons, workers or child processes (none is
- *  allowed), a memory ceiling, and the hook that keeps sharp's addon out. */
-export function converterArgs(c: { script: string; sandbox: string; reads: string[] }, input: string, out: string, ktx2: boolean): string[] {
-  return [
-    '--permission',
-    ...c.reads.map((r) => `--allow-fs-read=${r}`),
-    `--allow-fs-read=${input}`,
-    `--allow-fs-write=${out}`,
-    '--max-old-space-size=3072',
-    '--import',
-    c.sandbox,
-    c.script,
-    input,
-    out,
-    ...(ktx2 ? [] : ['--no-ktx2']),
-  ];
-}
-
-/** Whether `unshare -rn` gives a process its own empty network here (Linux user namespaces). */
-function networkNamespace(): boolean {
-  try {
-    return spawnSync('unshare', ['-rn', 'true'], { timeout: 5000 }).status === 0;
-  } catch {
-    return false;
-  }
+  converter?: ConverterProgram;
+  /** The standard bodies' folder (default: the repository's kits/bodies/). */
+  kits?: string;
 }
 
 export class Avatars {
@@ -89,7 +79,12 @@ export class Avatars {
   private readonly key: Buffer;
   private queue: Promise<void> = Promise.resolve();
   private readonly isolated: boolean;
-  private readonly converter: { script: string; sandbox: string; reads: string[] };
+  private readonly converter: ConverterProgram;
+  /** The standard bodies, by name and by their VRM's SHA-256. */
+  readonly kits: Map<BodyKit, KitFile>;
+  private readonly kitBySource: Map<string, BodyKit>;
+  /** Conversions made since this start are made by this converter: a body converted once is reused. */
+  private readonly startedAt = new Date();
   /** Conversions waiting or running, for tests and a clean shutdown. */
   pending = 0;
 
@@ -102,18 +97,62 @@ export class Avatars {
       sandbox: join(ROOT, 'tools', 'converter', 'src', 'sandbox.ts'),
       reads: [join(ROOT, 'node_modules'), join(ROOT, 'tools', 'converter'), join(ROOT, 'packages')],
     };
-    o.log?.('avatar-converter', { sandbox: this.isolated ? 'files, addons and network' : 'files and addons (no network namespace on this system)' });
+    this.kits = readKits(o.kits ?? join(ROOT, 'kits', 'bodies'));
+    this.kitBySource = new Map([...this.kits].map(([body, k]) => [k.sha256, body]));
+    o.log?.('avatar-converter', { sandbox: this.isolated ? 'files, addons and network' : 'files and addons (no network namespace on this system)', kits: this.kits.size });
+  }
+
+  /** A standard body for an account (S5.05): any active account may take one, no upload and no
+   *  trust level needed (it is the platform's). The account's own copy when it has one; else one
+   *  converted by this start of the core is reused; else the kit is converted like an upload. */
+  async kit(account: { id: string; status: string }, body: string, now: Date): Promise<{ id: string; status: 'converting' | 'ready' }> {
+    if (account.status !== 'active') throw new ContentProblem('upload-trust', 'this account cannot choose an avatar');
+    const k = this.kits.get(body as BodyKit);
+    if (!k) throw new ContentProblem('not-found', 'no such standard body');
+    const [mine] = await this.o.db.query<{ id: string; status: 'converting' | 'ready' }>(
+      "select id, status from avatars where owner_id = $1 and kit = $2 and source_sha256 = $3 and status in ('converting', 'ready') and deleted_at is null order by created_at desc limit 1",
+      [account.id, body, k.sha256],
+    );
+    if (mine) return mine;
+    const [n] = await this.o.db.query<{ n: string }>('select count(*) as n from avatars where owner_id = $1 and deleted_at is null', [account.id]);
+    if (Number(n?.n ?? 0) >= MAX_AVATARS) throw new ContentProblem('upload-limit', `${MAX_AVATARS} avatars at most: delete one first`);
+    const done = await this.converted(body as BodyKit, k.sha256);
+    if (done) {
+      const [row] = await this.o.db.query<{ id: string }>(
+        "insert into avatars (owner_id, name, status, source_sha256, source_bytes, manifest_sha256, rank, kit, created_at, converted_at) values ($1, $2, 'ready', $3, $4, $5, $6, $7, $8, $9) returning id",
+        [account.id, done.name, k.sha256, k.bytes, done.manifest, done.rank, body, now, new Date()],
+      );
+      return { id: row!.id, status: 'ready' };
+    }
+    const bytes = new Uint8Array(readFileSync(k.file));
+    if (bytes.length !== k.bytes || sha256(bytes) !== k.sha256) throw new Error(`the ${body} body is not the one kits.json names`);
+    this.o.store.put(bytes);
+    const [row] = await this.o.db.query<{ id: string }>(
+      "insert into avatars (owner_id, name, status, source_sha256, source_bytes, kit, created_at) values ($1, '', 'converting', $2, $3, $4, $5) returning id",
+      [account.id, k.sha256, k.bytes, body, now],
+    );
+    this.enqueue(row!.id, k.sha256);
+    return { id: row!.id, status: 'converting' };
+  }
+
+  /** A standard body this start of the core already converted, with its files in the store. */
+  private async converted(body: BodyKit, source: string): Promise<{ manifest: string; rank: string; name: string } | undefined> {
+    const [r] = await this.o.db.query<{ manifest_sha256: string; rank: string; name: string }>(
+      "select manifest_sha256, rank, name from avatars where kit = $1 and source_sha256 = $2 and status = 'ready' and converted_at >= $3 order by converted_at desc limit 1",
+      [body, source, this.startedAt],
+    );
+    return r && this.o.store.has(r.manifest_sha256) ? { manifest: r.manifest_sha256, rank: r.rank, name: r.name } : undefined;
   }
 
   /** An upload slot: checked against the account's trust, its avatars and the size limit. */
   async slot(account: { id: string; trust: number; tester: boolean; status: string }, req: { name: string; bytes: number; sha256: string }, now: Date): Promise<{ id: string; url: string; method: 'PUT'; expires: Date }> {
-    if (account.status !== 'active') throw new AvatarProblem('upload-trust', 'this account cannot upload');
-    if (account.trust < 1 && !account.tester) throw new AvatarProblem('upload-trust', 'uploading needs trust level 1: an account a few days old with a verified email');
-    if (!Number.isInteger(req.bytes) || req.bytes < 20 || !HASH.test(req.sha256)) throw new AvatarProblem('bad-request', 'the size and the SHA-256 of the file');
-    if (req.bytes > AVATAR_SOURCE_LIMIT) throw new AvatarProblem('too-large', `an avatar file is ${AVATAR_SOURCE_LIMIT / 1048576} MB at most`);
+    if (account.status !== 'active') throw new ContentProblem('upload-trust', 'this account cannot upload');
+    if (account.trust < 1 && !account.tester) throw new ContentProblem('upload-trust', 'uploading needs trust level 1: an account a few days old with a verified email');
+    if (!Number.isInteger(req.bytes) || req.bytes < 20 || !HASH.test(req.sha256)) throw new ContentProblem('bad-request', 'the size and the SHA-256 of the file');
+    if (req.bytes > AVATAR_SOURCE_LIMIT) throw new ContentProblem('too-large', `an avatar file is ${AVATAR_SOURCE_LIMIT / 1048576} MB at most`);
     const [n] = await this.o.db.query<{ n: string }>('select count(*) as n from avatars where owner_id = $1 and deleted_at is null', [account.id]);
-    if (Number(n?.n ?? 0) >= MAX_AVATARS) throw new AvatarProblem('upload-limit', `${MAX_AVATARS} avatars at most: delete one first`);
-    const name = cleanName(req.name);
+    if (Number(n?.n ?? 0) >= MAX_AVATARS) throw new ContentProblem('upload-limit', `${MAX_AVATARS} avatars at most: delete one first`);
+    const name = cleanName(req.name, NAME_MAX);
     const [row] = await this.o.db.query<{ id: string }>(
       "insert into avatars (owner_id, name, status, source_sha256, source_bytes, created_at) values ($1, $2, 'uploading', $3, $4, $5) returning id",
       [account.id, name, req.sha256, req.bytes, now],
@@ -125,12 +164,12 @@ export class Avatars {
 
   /** The file sent to a slot: it must be what the slot was asked for. Starts the conversion. */
   async receive(id: string, query: { e: string; s: string }, bytes: Uint8Array, now: Date): Promise<void> {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new AvatarProblem('not-found', 'no such upload');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new ContentProblem('not-found', 'no such upload');
     const check = checkSignature(this.key, `/api/v1/avatars/${id}/source`, query.e, query.s, now);
-    if (check !== 'ok') throw new AvatarProblem(check === 'expired' ? 'slot-expired' : 'not-found', check === 'expired' ? 'the upload slot expired: ask for a new one' : 'no such upload');
+    if (check !== 'ok') throw new ContentProblem(check === 'expired' ? 'slot-expired' : 'not-found', check === 'expired' ? 'the upload slot expired: ask for a new one' : 'no such upload');
     const [row] = await this.o.db.query<{ source_sha256: string; source_bytes: number }>("select source_sha256, source_bytes from avatars where id = $1 and status = 'uploading'", [id]);
-    if (!row) throw new AvatarProblem('not-found', 'no such upload');
-    if (bytes.length !== row.source_bytes || sha256(bytes) !== row.source_sha256) throw new AvatarProblem('mismatch', 'the file is not the one the slot was asked for');
+    if (!row) throw new ContentProblem('not-found', 'no such upload');
+    if (bytes.length !== row.source_bytes || sha256(bytes) !== row.source_sha256) throw new ContentProblem('mismatch', 'the file is not the one the slot was asked for');
     this.o.store.put(bytes);
     await this.o.db.query("update avatars set status = 'converting' where id = $1", [id]);
     this.enqueue(id, row.source_sha256);
@@ -147,6 +186,13 @@ export class Avatars {
   }
 
   private async convert(id: string, source: string): Promise<void> {
+    const kit = this.kitBySource.get(source) ?? null;
+    // Two accounts that took the same body while it converted: the second reuses the first's.
+    const done = kit ? await this.converted(kit, source) : undefined;
+    if (done) {
+      await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, kit = $4, converted_at = $5, name = case when name = '' then $6 else name end where id = $1", [id, done.manifest, done.rank, kit, new Date(), done.name]);
+      return;
+    }
     const dir = mkdtempSync(join(tmpdir(), 'fcavatar-'));
     const input = join(dir, 'upload');
     const out = join(dir, 'out');
@@ -154,24 +200,8 @@ export class Avatars {
     try {
       writeFileSync(input, this.o.store.read(source)!);
       mkdirSync(out);
-      const args = converterArgs(this.converter, input, out, this.o.ktx2 !== false);
-      const [cmd, argv] = this.isolated ? ['unshare', ['-rn', '--', process.execPath, ...args]] : [process.execPath, args];
-      const { code, stderr } = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
-        const child = spawn(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'] });
-        let err = '';
-        child.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
-        const timer = setTimeout(() => child.kill('SIGKILL'), CONVERT_MS);
-        child.on('close', (c) => {
-          clearTimeout(timer);
-          resolve({ code: c, stderr: err });
-        });
-      });
-      let result: { ok: boolean; id?: string; manifest?: unknown; problems?: string[] } | undefined;
-      try {
-        result = JSON.parse(readFileSync(join(out, 'result.json'), 'utf8')) as typeof result;
-      } catch {
-        result = undefined;
-      }
+      const run = await runConverter(converterArgs(this.converter, input, out, this.o.ktx2 !== false), out, { isolated: this.isolated, timeoutMs: CONVERT_MS });
+      const { code, result } = run;
       if (result?.ok && code === 0) {
         const manifest = checkManifest(result.manifest);
         // Every file the manifest names, checked against its name, into the store.
@@ -185,13 +215,13 @@ export class Avatars {
         for (const name of names) if (!this.o.store.has(name)) throw new Error('the converter left out a level');
         const manifestHash = this.o.store.put(readFileSync(join(out, 'manifest.json')));
         if (manifestHash !== result.id) throw new Error('the manifest is not the one the converter named');
-        await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, converted_at = $4, name = case when name = '' then $5 else name end where id = $1", [id, manifestHash, manifest.rank, new Date(), cleanName(manifest.name)]);
-        this.o.log?.('avatar-ready', { rank: manifest.rank, ms: Date.now() - started });
+        await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, kit = $4, converted_at = $5, name = case when name = '' then $6 else name end where id = $1", [id, manifestHash, manifest.rank, kit, new Date(), cleanName(manifest.name, NAME_MAX)]);
+        this.o.log?.('avatar-ready', { rank: manifest.rank, ...(kit ? { kit } : {}), ms: Date.now() - started });
       } else if (result && !result.ok) {
         await this.o.db.query("update avatars set status = 'refused', problems = $2, converted_at = $3 where id = $1", [id, (result.problems ?? []).join('\n').slice(0, 4000), new Date()]);
         this.o.log?.('avatar-refused', { problems: (result.problems ?? []).length, ms: Date.now() - started });
       } else {
-        throw new Error(code === null ? 'the converter ran out of time' : `the converter stopped (${code}): ${stderr.split('\n').filter(Boolean).at(-1)?.slice(0, 200) ?? ''}`);
+        throw new Error(converterFailure(run));
       }
     } catch (err) {
       await this.o.db.query("update avatars set status = 'failed', problems = $2, converted_at = $3 where id = $1", [id, err instanceof Error ? err.message.slice(0, 500) : 'failed', new Date()]);
@@ -202,20 +232,20 @@ export class Avatars {
   }
 
   async list(db: Sql, accountId: string): Promise<AvatarRow[]> {
-    const rows = await db.query<{ id: string; name: string; status: AvatarRow['status']; rank: string | null; problems: string; manifest_sha256: string | null; created_at: Date; wearing: boolean }>(
-      'select v.id, v.name, v.status, v.rank, v.problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing from avatars v join accounts a on a.id = v.owner_id where v.owner_id = $1 and v.deleted_at is null order by v.created_at desc limit 100',
+    const rows = await db.query<{ id: string; name: string; status: AvatarRow['status']; rank: string | null; problems: string; manifest_sha256: string | null; created_at: Date; wearing: boolean; kit: BodyKit | null }>(
+      'select v.id, v.name, v.status, v.rank, v.problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing, v.kit from avatars v join accounts a on a.id = v.owner_id where v.owner_id = $1 and v.deleted_at is null order by v.created_at desc limit 100',
       [accountId],
     );
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, rank: r.rank, problems: r.problems ? r.problems.split('\n') : [], manifest: r.manifest_sha256, createdAt: r.created_at, wearing: r.wearing === true }));
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, rank: r.rank, problems: r.problems ? r.problems.split('\n') : [], manifest: r.manifest_sha256, createdAt: r.created_at, wearing: r.wearing === true, kit: r.kit }));
   }
 
   /** Wears one of the account's ready avatars (or none). */
   async wear(db: Sql, accountId: string, avatarId: string | null): Promise<void> {
     if (avatarId !== null) {
-      if (!/^[0-9a-f-]{36}$/i.test(avatarId)) throw new AvatarProblem('not-found', 'no such avatar');
+      if (!/^[0-9a-f-]{36}$/i.test(avatarId)) throw new ContentProblem('not-found', 'no such avatar');
       const [r] = await db.query<{ status: string }>('select status from avatars where id = $1 and owner_id = $2 and deleted_at is null', [avatarId, accountId]);
-      if (!r) throw new AvatarProblem('not-found', 'no such avatar');
-      if (r.status !== 'ready') throw new AvatarProblem('not-ready', 'that avatar is not ready');
+      if (!r) throw new ContentProblem('not-found', 'no such avatar');
+      if (r.status !== 'ready') throw new ContentProblem('not-ready', 'that avatar is not ready');
     }
     await db.query('update accounts set avatar_id = $2 where id = $1', [accountId, avatarId]);
   }
@@ -239,23 +269,16 @@ export class Avatars {
 
   /** A converted avatar's manifest and signed links to its files, for any signed-in account: only
    *  avatars that are ready and not deleted are delivered, and never their source. */
-  async delivery(db: Sql, manifestHash: string, now: Date): Promise<{ manifest: AvatarManifest; links: Record<string, string> } | undefined> {
+  async delivery(db: Sql, manifestHash: string, now: Date): Promise<{ manifest: AvatarManifest; links: Record<string, string>; kit?: BodyKit } | undefined> {
     if (!HASH.test(manifestHash)) return undefined;
-    const [r] = await db.query("select 1 from avatars where manifest_sha256 = $1 and status = 'ready' and deleted_at is null limit 1", [manifestHash]);
+    const [r] = await db.query<{ kit: BodyKit | null }>("select kit from avatars where manifest_sha256 = $1 and status = 'ready' and deleted_at is null order by kit nulls last limit 1", [manifestHash]);
     const bytes = r ? this.o.store.read(manifestHash) : undefined;
     if (!bytes) return undefined;
     const manifest = checkManifest(JSON.parse(new TextDecoder().decode(bytes)));
     const links: Record<string, string> = { manifest: this.o.store.link(manifestHash, now) };
     for (const l of LEVELS) links[l] = this.o.store.link(manifest.levels[l].file, now);
     if (manifest.thumbnail) links['thumbnail'] = this.o.store.link(manifest.thumbnail, now);
-    return { manifest, links };
+    return { manifest, links, ...(r?.kit ? { kit: r.kit } : {}) };
   }
 }
 
-function cleanName(name: unknown): string {
-  return String(name ?? '')
-    .normalize('NFKC')
-    .replace(/\p{Cc}/gu, '')
-    .trim()
-    .slice(0, NAME_MAX);
-}

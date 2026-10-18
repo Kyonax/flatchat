@@ -29,8 +29,8 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_MAIL` | `none` (the default), `resend` (Resend's API: `FLATCHAT_CORE_RESEND_KEY`, and `FLATCHAT_CORE_RESEND_URL` only for tests) or `folder` (each mail a `.eml` file in `FLATCHAT_CORE_MAIL_FOLDER`, for development); `FLATCHAT_CORE_MAIL_FROM` is the sender, like `FlatChat <noreply@example.org>` |
 | `FLATCHAT_CORE_MINORS` | `on` lets players aged 13 to 17 sign up, each playing only once a parent or guardian authorized it (S3.04); off by default: the owner opens it at Stage 3's gate (OQ-16) |
 | `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
-| `FLATCHAT_CORE_STORE` | The file store's folder (S4.04): avatars' levels, manifests, thumbnails and the uploads they came from, each named by its SHA-256 (default `~/.local/share/flatchat/core-store`) |
-| `FLATCHAT_CORE_KTX2` | `off` keeps avatars' textures as PNG: conversions take seconds instead of minutes (default on) |
+| `FLATCHAT_CORE_STORE` | The file store's folder (S4.04): avatars' levels, items' fits and props (S5.05), manifests, thumbnails and the uploads they came from, each named by its SHA-256 (default `~/.local/share/flatchat/core-store`) |
+| `FLATCHAT_CORE_KTX2` | `off` keeps avatars' and items' textures as PNG: conversions take seconds instead of minutes (default on) |
 
 Then:
 
@@ -87,6 +87,10 @@ A report of child sexual abuse material or of intimate images shared without con
 
 A player at trust level 1 (or a tester) uploads a VRM or a GLB from the client: it asks for a slot with the file's size and SHA-256, then sends the file to the slot's signed link. The core keeps the source in its file store and converts it in a separate process, one at a time: the avatar converter (`tools/converter/src/avatar-cli.ts`) under Node.js's permission model, reading only the converter's code and the upload, writing only its own folder, with no native addons, workers or child processes, 3 GB of memory and ten minutes, and in a network namespace of its own where the system allows one (the log says which at start). The converted avatar's files go to the store under their SHA-256; its manifest's names it. Anyone signed in fetches a worn avatar's files through signed links that last an hour; the client keeps them in its cache by hash. The local store serves files itself, fine on this PC, a LAN and the closed test; behind the Cloudflare Tunnel large files must not cross it (DR-16), so the R2 store (Cloudflare's free object storage, presigned links) takes over there once its bucket exists.
 
+## Items, Standard Bodies and Outfits (S5.05)
+
+An item (clothes, hair, a hat, a prop) is uploaded the way an avatar is: a slot first, then the file, then a conversion in the same sandbox by the item converter (`tools/converter/src/item-cli.ts`), which may also read the three standard bodies in `kits/bodies/` (each checked against `kits.json`'s SHA-256) for its skeleton and clipping checks. A ready item names its slot and the bodies it fits; its fits (one per body) or its prop go to the store under their SHA-256. Anyone signed in fetches a ready item's files through signed links. Any account, a new one included, takes one of the three standard bodies with no upload and no trust level: the core converts the kit once per start and reuses that conversion for everyone after. An avatar whose source is a kit's exact bytes is that body, and its delivery says `kit`, so the client knows the items made for it fit. An outfit is a saved set of the account's own ready items (16 at most), wearable together (one item to a slot, one prop to a point, a full outfit alone), each prop's adjustment within 10 cm, 45 degrees and 80 to 125 percent; deleting an item takes it out of the outfits that held it.
+
 ## The API
 
 | Method and path | Auth | What |
@@ -113,7 +117,14 @@ A player at trust level 1 (or a tester) uploads a VRM or a GLB from the client: 
 | `PUT /api/v1/avatars/:id/source?e=…&s=…` | The slot's signature | The file itself (`application/octet-stream`), exactly the size and SHA-256 the slot was asked for; then it converts |
 | `GET /api/v1/avatars`, `DELETE /api/v1/avatars/:id` | Bearer | The account's avatars (status `uploading`, `converting`, `ready`, `refused` with the reasons, `failed`; rank; manifest; wearing), and deleting one |
 | `PUT /api/v1/me/avatar` | Bearer | `{ avatar: id \| null }`: wear a ready avatar of the account's, or none |
-| `GET /api/v1/avatar-files/:manifest` | Bearer | A worn avatar's manifest and signed links (an hour) to its manifest, levels and thumbnail (S4.04); never its source |
+| `GET /api/v1/avatar-files/:manifest` | Bearer | A worn avatar's manifest and signed links (an hour) to its manifest, levels and thumbnail (S4.04), and `kit` when it is a standard body (S5.05); never its source |
+| `POST /api/v1/avatars/kit` | Bearer | `{ kit: feminine \| masculine \| neutral }`: one of the standard bodies as the account's avatar (S5.05), with no upload and no trust level → `{ id, status }`: 200 `ready` (the account's own, or one this start of the core converted), 202 `converting` |
+| `POST /api/v1/items` | Bearer | An item upload slot (S5.05): `{ name, bytes, sha256 }` → `{ id, upload }`, as for avatars; trust level 1 or a tester, 200 items, 32 MB, the same ten a day |
+| `PUT /api/v1/items/:id/source?e=…&s=…` | The slot's signature | The item file itself; then it converts, with the standard bodies at hand |
+| `GET /api/v1/items`, `DELETE /api/v1/items/:id` | Bearer | The account's items (status, slot, the bodies it fits, reasons, warnings, manifest), and deleting one (it leaves every outfit) |
+| `GET /api/v1/item-files/:manifest` | Bearer | A ready item's manifest and signed links to it and to each fit by body (`feminine`, `masculine`, `neutral`) or its `prop`; never its source |
+| `GET /api/v1/outfits` | Bearer | The account's outfits: `{ id, name, items: [{ item, adjust? }], updatedAt }`, 30 at most |
+| `POST /api/v1/outfits`, `PUT /api/v1/outfits/:id`, `DELETE /api/v1/outfits/:id` | Bearer | Save an outfit, new or in place (`{ name, items }`: the account's ready items as manifest SHA-256s, a prop's `adjust` in centimetres, degrees and percent), or delete one |
 | `GET /api/v1/files/:hash?e=…&s=…` | The link's signature | A file of the local store; immutable (a year's cache, an `ETag`, 304 on a repeat) |
 
 The pages: `/signup?invite=CODE`, `/signin?request=ID`, `/privacy`, each in English or Spanish (`?lang=es`, or the browser's language).

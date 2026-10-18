@@ -6,11 +6,13 @@ import { timingSafeEqual } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import websocket from '@fastify/websocket';
-import { AVATAR_SOURCE_LIMIT } from '@flatchat/content';
+import { AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
-import { AvatarProblem, Avatars } from './avatars.ts';
+import { Avatars } from './avatars.ts';
+import { Items } from './items.ts';
+import { ContentProblem } from './sandbox.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import {
   APPEAL_MAX,
@@ -117,7 +119,7 @@ export interface CoreOptions {
   /** The file store (S4.04): avatars' levels and sources; a folder under the system's temporary
    *  directory when left out (tests). */
   store?: FileStore;
-  /** Avatar conversion (S4.01): KTX2 textures on (the default) or off (tests). */
+  /** Avatar and item conversion (S4.01, S5.05): KTX2 textures on (the default) or off (tests). */
   avatars?: { ktx2?: boolean };
 }
 
@@ -167,6 +169,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   const hosts = new HostRegistry();
   const store = o.store ?? localStore(join(tmpdir(), `flatchat-core-store-${process.pid}`), o.secret, publicUrl);
   const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
+  const items = new Items({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
@@ -189,6 +192,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => hosts.closeAll());
   // A conversion under way finishes before the database closes.
   app.addHook('onClose', async () => avatars.idle());
+  app.addHook('onClose', async () => items.idle());
   // Reports' evidence is kept for its time, then purged (S3.02), and so are the abuse path's sealed
   // packages after their year (S3.12): at start and every six hours.
   const purge = (): void => {
@@ -759,9 +763,9 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   // Reports from the client (S3.02): the target, the text, the evidence and the reporter's voice
   // clip (a WAV the client cut from what it heard); the receipt now, the decision later.
   // ---------------------------------------------------------------- avatars (S4.01, S4.04)
-  const avatarProblem = (reply: FastifyReply, err: unknown): FastifyReply => {
-    if (!(err instanceof AvatarProblem)) throw err;
-    const status = { 'upload-trust': 403, 'upload-limit': 409, 'too-large': 413, 'bad-request': 400, 'not-found': 404, 'not-ready': 409, mismatch: 400, 'slot-expired': 410 }[err.code];
+  const contentProblem = (reply: FastifyReply, err: unknown): FastifyReply => {
+    if (!(err instanceof ContentProblem)) throw err;
+    const status = { 'upload-trust': 403, 'upload-limit': 409, 'too-large': 413, 'bad-request': 400, 'not-found': 404, 'not-ready': 409, mismatch: 400, 'slot-expired': 410, 'outfit-limit': 409 }[err.code];
     return sendProblem(reply, problem(status, err.code, err.message));
   };
 
@@ -777,7 +781,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       const slot = await avatars.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
       return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
     } catch (err) {
-      return avatarProblem(reply, err);
+      return contentProblem(reply, err);
     }
   });
 
@@ -789,7 +793,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       await avatars.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now());
       return reply.code(202).send({ status: 'converting' });
     } catch (err) {
-      return avatarProblem(reply, err);
+      return contentProblem(reply, err);
     }
   });
 
@@ -815,17 +819,112 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
       await avatars.wear(o.db, who.accountId, typeof v === 'string' ? v : null);
       return reply.code(204).send();
     } catch (err) {
-      return avatarProblem(reply, err);
+      return contentProblem(reply, err);
     }
   });
 
-  // A worn avatar's manifest and signed links, for anyone signed in (they see it in a world).
+  // One of the three standard bodies (S5.05): any active account takes one, with no upload.
+  app.post('/api/v1/avatars/kit', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (limited(limits.uploadByAccount, a.id, reply)) return reply;
+    try {
+      const k = await avatars.kit({ id: a.id, status: a.status }, str(((req.body ?? {}) as Record<string, unknown>)['kit'], 32), now());
+      return reply.code(k.status === 'ready' ? 200 : 202).send(k);
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  // A worn avatar's manifest and signed links, for anyone signed in (they see it in a world); a
+  // standard body says which (`kit`), so the client puts the items made for it on it.
   app.get('/api/v1/avatar-files/:manifest', async (req, reply) => {
     const who = await bearer(req, reply);
     if (!who) return reply;
     const d = await avatars.delivery(o.db, (req.params as { manifest: string }).manifest, now());
     if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such avatar'));
     return reply.header('cache-control', 'private, max-age=600').send(d);
+  });
+
+  // ---------------------------------------------------------------- items and outfits (S5.05)
+  // An upload slot, as for avatars: the file's size and SHA-256 first, the file to the signed link after.
+  app.post('/api/v1/items', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (limited(limits.uploadByAccount, a.id, reply)) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const slot = await items.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
+      return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  app.put('/api/v1/items/:id/source', { bodyLimit: ITEM_SOURCE_LIMIT + 1024 }, async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const q = req.query as Record<string, unknown>;
+    if (!Buffer.isBuffer(req.body)) return sendProblem(reply, problem(415, 'bad-request', 'send the file as application/octet-stream'));
+    try {
+      await items.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now());
+      return reply.code(202).send({ status: 'converting' });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  app.get('/api/v1/items', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const list = await items.list(o.db, who.accountId);
+    return { items: list.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })) };
+  });
+
+  app.delete('/api/v1/items/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await items.remove(o.db, who.accountId, (req.params as { id: string }).id, now()))) return sendProblem(reply, problem(404, 'not-found', 'no such item'));
+    return reply.code(204).send();
+  });
+
+  // A worn item's manifest and signed links to its fits (by body) or its prop, for anyone signed in.
+  app.get('/api/v1/item-files/:manifest', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const d = await items.delivery(o.db, (req.params as { manifest: string }).manifest, now());
+    if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such item'));
+    return reply.header('cache-control', 'private, max-age=600').send(d);
+  });
+
+  app.get('/api/v1/outfits', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    return { outfits: (await items.outfits(o.db, who.accountId)).map((v) => ({ ...v, updatedAt: v.updatedAt.toISOString() })) };
+  });
+
+  const saveOutfit = async (req: FastifyRequest, reply: FastifyReply, id: string | null): Promise<FastifyReply> => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const saved = await items.saveOutfit(o.db, who.accountId, id, { name: str(b['name'], 200), items: b['items'] }, now());
+      return reply.code(id === null ? 201 : 200).send({ ...saved, updatedAt: saved.updatedAt.toISOString() });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  };
+  app.post('/api/v1/outfits', async (req, reply) => saveOutfit(req, reply, null));
+  app.put('/api/v1/outfits/:id', async (req, reply) => saveOutfit(req, reply, (req.params as { id: string }).id));
+
+  app.delete('/api/v1/outfits/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await items.removeOutfit(o.db, who.accountId, (req.params as { id: string }).id))) return sendProblem(reply, problem(404, 'not-found', 'no such outfit'));
+    return reply.code(204).send();
   });
 
   // The local store's files by signed link (S4.04): immutable, so a cache keeps them for good.

@@ -17,7 +17,7 @@ import { buildCore } from '../src/app.ts';
 import type { Db } from '../src/db.ts';
 import { TEST_COST } from '../src/secrets.ts';
 import { startSession } from '../src/sessions.ts';
-import { converterArgs } from '../src/avatars.ts';
+import { converterArgs } from '../src/sandbox.ts';
 import { localStore } from '../src/store.ts';
 import { freshDb } from './db.ts';
 
