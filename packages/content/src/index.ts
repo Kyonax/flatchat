@@ -12,6 +12,7 @@ export {
   localMatrix,
   type Mat4,
   multiply,
+  type EffectPlacement,
   type PartPlacement,
   type Portal,
   type Pose,
@@ -31,6 +32,7 @@ export { FILE_LIMIT, FOLDER_LIMIT, imageSize, validateWorld, type WorldReport } 
 export {
   BUILT_FORMAT,
   type BuiltBox,
+  type BuiltEffect,
   type BuiltEmitter,
   type BuiltFile,
   type BuiltKind,

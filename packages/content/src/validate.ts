@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // The world validator (S2.01): a world folder's files in, its manifest, its scenes' markers and
 // every problem out. It reads only what the folder holds, decodes no image (sizes come from the
-// headers) and runs no code from the world.
-import { parseManifest, type Problem, type WorldManifest } from './manifest.ts';
+// headers) and runs no code from the world (an effect is read, never played: the converter's dry
+// run plays it).
+import { editorVersion, EFFECT_RUNTIME, type EffectFile, effectFiles, EffectFormatError, effectPath, readEffectFile } from './effect.ts';
+import { parseManifest, type Problem, type Severity, type WorldManifest } from './manifest.ts';
 import { inspectScene, LIMITS, readGltf, type SceneInfo } from './scene.ts';
 
 export const FOLDER_LIMIT = 512 * 1024 * 1024;
@@ -92,6 +94,31 @@ export function validateWorld(files: ReadonlyMap<string, Uint8Array>): WorldRepo
         if (bv) sizes.push({ at: `images[${i}]`, size: imageSize(read.bin.subarray(bv.byteOffset ?? 0, (bv.byteOffset ?? 0) + (bv.byteLength ?? 0))) });
       }
     });
+    // Effects (S6.01): each a file the pinned runtime reads, with every file it names beside it.
+    for (const e of scene.effects) {
+      const data = files.get(e.path);
+      if (!data) continue;
+      const problem = (code: string, message: string, severity: Severity = 'error'): void => void problems.push({ code, severity, file: e.path, at: `nodes[${e.node}]`, message });
+      let fx: EffectFile;
+      try {
+        fx = readEffectFile(data);
+      } catch (err) {
+        problem('effect-invalid', err instanceof EffectFormatError ? err.problems.join('; ') : 'not an Effekseer effect');
+        continue;
+      }
+      if (fx.version > EFFECT_RUNTIME.bodyVersion) {
+        problem('effect-too-new', `saved by Effekseer ${editorVersion(fx.version)}, newer than the platform's runtime (Effekseer ${EFFECT_RUNTIME.effekseer}): save it with Effekseer 1.8 or older`);
+        continue;
+      }
+      if (fx.resources.materials.length) problem('effect-materials', `uses material files (${fx.resources.materials.join(', ')}): creator shaders, which worlds cannot use yet`);
+      const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/') + 1) : '';
+      for (const { path, kind } of effectFiles(fx)) {
+        if (kind === 'materials') continue;
+        const f = files.get(effectPath(dir + path));
+        if (!f) problem('effect-file-missing', `the effect needs ${path}, which is not beside it`, kind === 'sounds' ? 'warning' : 'error');
+        else if ((kind === 'colorImages' || kind === 'normalImages' || kind === 'distortionImages') && !(f[0] === 0x89 && f[1] === 0x50 && f[2] === 0x4e && f[3] === 0x47)) problem('effect-texture', `${path}: the platform's runtime takes PNG textures`);
+      }
+    }
     for (const { at, size } of sizes) {
       if (!size) continue;
       const side = Math.max(size.width, size.height);

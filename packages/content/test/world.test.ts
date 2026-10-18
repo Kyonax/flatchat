@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The world format's validator (S2.01) on good and broken worlds, built here byte by byte.
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BASE_PARTS, imageSize, parseManifest, poseOf, readGltf, validateWorld } from '../src/index.ts';
 
@@ -211,5 +214,36 @@ describe('base library parts (S2.05)', () => {
     expect(codes(bad)).toContain('marker-invalid');
     expect(BASE_PARTS['flatchat:bench']!.seats).toHaveLength(2);
     for (const def of Object.values(BASE_PARTS)) for (const b of def.boxes) for (const k of [0, 1, 2]) expect(b.max[k]!).toBeGreaterThan(b.min[k]!);
+  });
+});
+
+describe('effects in a world (S6.01)', () => {
+  const SAMPLES = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'kits', 'effects', 'samples', '00_Basic');
+  const laser = new Uint8Array(readFileSync(join(SAMPLES, 'Laser01.efkefc')));
+  const textures = Object.fromEntries(['LaserMain01.png', 'Particle01.png', 'Particle02.png'].map((n) => [`scenes/fx/Texture/${n}`, new Uint8Array(readFileSync(join(SAMPLES, 'Texture', n)))]));
+  const withEffect = (effect: Record<string, unknown>): Uint8Array => {
+    const json = sceneJson();
+    const nodes = json['nodes'] as Array<Record<string, unknown>>;
+    nodes.push({ name: 'laser', translation: [3, 1, 3], extensions: { FLATCHAT_world: { effect } } });
+    (json['scenes'] as Array<{ nodes: number[] }>)[0]!.nodes.push(nodes.length - 1);
+    return glb(json);
+  };
+
+  it('reads an effect a node places, with its scale, the file beside the scene and every file it names', () => {
+    const r = validateWorld(world(withEffect({ uri: 'fx/Laser01.efkefc', scale: 0.2 }), TOML, { 'scenes/fx/Laser01.efkefc': laser, ...textures }));
+    expect(codes(r)).toEqual([]);
+    expect(r.scenes[0]!.effects).toEqual([expect.objectContaining({ path: 'scenes/fx/Laser01.efkefc', scale: 0.2 })]);
+    expect(r.scenes[0]!.effects[0]!.matrix.slice(12, 15)).toEqual([3, 1, 3]);
+  });
+
+  it('refuses a missing effect, a missing texture, a newer editor’s file, and a bad marker', () => {
+    expect(codes(validateWorld(world(withEffect({ uri: 'fx/Laser01.efkefc' }))))).toContain('file-missing');
+    const fewer = Object.fromEntries(Object.entries(textures).filter(([path]) => path !== 'scenes/fx/Texture/Particle02.png'));
+    expect(codes(validateWorld(world(withEffect({ uri: 'fx/Laser01.efkefc' }), TOML, { 'scenes/fx/Laser01.efkefc': laser, ...fewer })))).toEqual(['effect-file-missing']);
+    const newer = laser.slice();
+    new DataView(newer.buffer).setInt32(new TextDecoder('latin1').decode(newer).indexOf('SKFE') + 4, 1900, true);
+    expect(codes(validateWorld(world(withEffect({ uri: 'fx/Laser01.efkefc' }), TOML, { 'scenes/fx/Laser01.efkefc': newer, ...textures })))).toEqual(['effect-too-new']);
+    expect(codes(validateWorld(world(withEffect({ uri: '../outside.efkefc' }))))).toContain('marker-invalid');
+    expect(codes(validateWorld(world(withEffect({ uri: 'fx/Laser01.efkefc', scale: 500 }), TOML, { 'scenes/fx/Laser01.efkefc': laser, ...textures })))).toContain('marker-invalid');
   });
 });

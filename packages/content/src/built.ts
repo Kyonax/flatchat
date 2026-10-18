@@ -8,7 +8,7 @@ import { isPart, MAX_PARTS } from './parts.ts';
 
 export const BUILT_FORMAT = 1;
 
-export type BuiltKind = 'scene' | 'collision' | 'navmesh' | 'audio';
+export type BuiltKind = 'scene' | 'collision' | 'navmesh' | 'audio' | 'effect';
 
 export interface BuiltFile {
   hash: string;
@@ -70,6 +70,15 @@ export interface BuiltPart {
   scale: V3;
 }
 
+/** A world's effect (S6.01): its bundle, where it plays (a column-major 4×4), its scale, and what the
+ *  host tool's dry run measured. Clients measure it again themselves: a host is not trusted. */
+export interface BuiltEffect {
+  file: string;
+  matrix: number[];
+  scale: number;
+  peak: { instances: number; quads: number; triangles: number };
+}
+
 export interface BuiltScene {
   id: string;
   /** The scene's visual GLB. */
@@ -81,6 +90,8 @@ export interface BuiltScene {
   emitters: BuiltEmitter[];
   /** Base library parts (S2.05); none in a world built before them. */
   parts: BuiltPart[];
+  /** Effects (S6.01); none in a world built before them. */
+  effects: BuiltEffect[];
   triangles: number;
 }
 
@@ -145,7 +156,7 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
     const files = list(j['files'], 'files', LIMIT.files, (f, at) => {
       if (!isObj(f)) return fail(at, 'an object');
       const kind = f['kind'];
-      if (kind !== 'scene' && kind !== 'collision' && kind !== 'navmesh' && kind !== 'audio') fail(`${at}.kind`, 'scene, collision, navmesh or audio');
+      if (kind !== 'scene' && kind !== 'collision' && kind !== 'navmesh' && kind !== 'audio' && kind !== 'effect') fail(`${at}.kind`, 'scene, collision, navmesh, audio or effect');
       return { hash: hash(f['hash'], `${at}.hash`), size: num(f['size'], `${at}.size`, 0, LIMIT.fileSize), kind: kind as BuiltKind };
     });
     const known = new Set(files.map((f) => f.hash));
@@ -197,6 +208,20 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
                   position: v3(p['position'], `${a}.position`),
                   rotation: [num(r[0], `${a}.rotation`, -1, 1), num(r[1], `${a}.rotation`, -1, 1), num(r[2], `${a}.rotation`, -1, 1), num(r[3], `${a}.rotation`, -1, 1)] as [number, number, number, number],
                   scale: v3(p['scale'], `${a}.scale`, 0.01, 100),
+                };
+              }),
+        effects:
+          s['effects'] === undefined
+            ? []
+            : list(s['effects'], `${at}.effects`, 64, (e, a) => {
+                if (!isObj(e)) return fail(a, 'an object');
+                const m = Array.isArray(e['matrix']) && e['matrix'].length === 16 ? e['matrix'] : fail(`${a}.matrix`, 'sixteen numbers');
+                const p = isObj(e['peak']) ? e['peak'] : fail(`${a}.peak`, 'an object');
+                return {
+                  file: listed(hash(e['file'], `${a}.file`), `${a}.file`),
+                  matrix: m.map((x, i) => num(x, `${a}.matrix[${i}]`)),
+                  scale: num(e['scale'], `${a}.scale`, 0.01, 100),
+                  peak: { instances: num(p['instances'], `${a}.peak.instances`, 0, 1e6), quads: num(p['quads'], `${a}.peak.quads`, 0, 1e7), triangles: num(p['triangles'], `${a}.peak.triangles`, 0, 1e8) },
                 };
               }),
         triangles: num(s['triangles'], `${at}.triangles`, 0, 4_000_000),

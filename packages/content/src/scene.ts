@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // A world's glTF scene, read without an engine: the JSON (from a .gltf, or a GLB's first chunk),
 // every node's world transform, and the markers of docs/world-format.md (spawn points, seats,
-// solids, sounds, portals, zones, base library parts), with the limits that keep a world drawable on a weak laptop.
+// solids, sounds, portals, zones, base library parts, effects), with the limits that keep a world
+// drawable on a weak laptop.
 // Web APIs only (DataView, TextDecoder), so it runs in the world server, the client and the tools.
 import type { Problem, Severity } from './manifest.ts';
 import { plainText, safePath } from './manifest.ts';
@@ -81,6 +82,16 @@ export interface PartPlacement {
   id: string;
 }
 
+/** An effect placed in a world (S6.01): an Effekseer file in the world folder, played where the
+ *  node is, looping. */
+export interface EffectPlacement {
+  node: number;
+  matrix: Mat4;
+  /** The effect file, relative to the folder. */
+  path: string;
+  scale: number;
+}
+
 export interface SceneInfo {
   file: string;
   spawns: SpawnPoint[];
@@ -91,6 +102,7 @@ export interface SceneInfo {
   portals: Portal[];
   zones: Zone[];
   parts: PartPlacement[];
+  effects: EffectPlacement[];
   triangles: number;
   textures: number;
   /** Files the scene needs from the world folder (buffers and images), relative to the folder. */
@@ -109,6 +121,7 @@ export const LIMITS = {
   zones: 256,
   emitters: 256,
   parts: MAX_PARTS,
+  effects: 64,
   name: 128,
   dataUri: 1024 * 1024,
 } as const;
@@ -324,7 +337,7 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
     shapes.push(shape);
   });
 
-  const info: SceneInfo = { file, spawns: [], seats: [], shapes, bodies: [], emitters: [], portals: [], zones: [], parts: [], triangles, textures: json.images?.length ?? 0, needs };
+  const info: SceneInfo = { file, spawns: [], seats: [], shapes, bodies: [], emitters: [], portals: [], zones: [], parts: [], effects: [], triangles, textures: json.images?.length ?? 0, needs };
   const emitterCount = Array.isArray((json.extensions?.['KHR_audio_emitter'] as Record<string, unknown> | undefined)?.['emitters'])
     ? ((json.extensions!['KHR_audio_emitter'] as Record<string, unknown>)['emitters'] as unknown[]).length
     : 0;
@@ -383,6 +396,18 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
         if (!isPart(id)) add('marker-invalid', at('FLATCHAT_world.part'), `a part names one of the base library's ids (${String(id).slice(0, 64)} is not one)`);
         else info.parts.push({ node: index, matrix, id });
       }
+      if (isObj(f['effect'])) {
+        const e = f['effect'];
+        const uri = e['uri'];
+        const scale = e['scale'] ?? 1;
+        const base = file.includes('/') ? file.slice(0, file.lastIndexOf('/') + 1) : '';
+        if (typeof uri !== 'string' || !safePath(uri) || !/\.(efkefc|efk)$/i.test(uri)) add('marker-invalid', at('FLATCHAT_world.effect'), 'an effect names its Effekseer file (.efkefc or .efk), a relative path inside the world folder');
+        else if (typeof scale !== 'number' || !(scale >= 0.01 && scale <= 100)) add('marker-invalid', at('FLATCHAT_world.effect'), "an effect's scale is 0.01 to 100");
+        else {
+          info.effects.push({ node: index, matrix, path: base + uri, scale });
+          if (!needs.includes(uri)) needs.push(uri);
+        }
+      }
       if (isObj(f['zone'])) {
         const z = f['zone'];
         const size = vec3(z['size']);
@@ -404,6 +429,7 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
     ['zones', LIMITS.zones],
     ['emitters', LIMITS.emitters],
     ['parts', LIMITS.parts],
+    ['effects', LIMITS.effects],
   ] as const) {
     if (info[key].length > limit) add('too-big', key, `more than ${limit} ${key}`);
   }
