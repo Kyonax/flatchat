@@ -44,6 +44,7 @@ import {
   type MessageName,
   type MessageOf,
   openToken,
+  PROPORTIONS,
   PROTOCOL_VERSION,
   ProtocolError,
   type Refusal,
@@ -231,6 +232,12 @@ const APPEARANCE_EVERY_MS = 1000;
 const WEAR_EVERY_MS = 2000;
 const FACE_EVERY_MS = 125;
 const NEUTRAL_FACE = { expression: 'neutral', left: 'relaxed', right: 'relaxed' } as const;
+type Proportions = { width: number; arms: number; legs: number; head: number };
+/** A player's proportions (S4.10) fitted into the platform's range, in percent; as made when left out. */
+export function fitProportions(p: Proportions | undefined): Proportions {
+  const fit = (v: number | undefined): number => Math.round(Math.min(PROPORTIONS.max, Math.max(PROPORTIONS.min, v ?? 100)));
+  return { width: fit(p?.width), arms: fit(p?.arms), legs: fit(p?.legs), head: fit(p?.head) };
+}
 /** Teleports and seats (S2.06). */
 export const TELEPORT = { range: 40, seatReach: 3, everyMs: 1000 };
 
@@ -501,7 +508,7 @@ export class WorldServer implements PluginWorld {
         if (conn.sink) this.options.content?.unfetch(conn.sink, message.hash);
         break;
       case 'appearance':
-        this.appearance(conn, message.height, now);
+        this.appearance(conn, message.height, now, message.proportions);
         break;
       case 'wear':
         void this.wear(conn, message.token, now);
@@ -619,6 +626,7 @@ export class WorldServer implements PluginWorld {
       height: conn.height,
       role,
       face: { ...NEUTRAL_FACE },
+      proportions: fitProportions(hello.proportions),
       // The avatar the core vouches the account wears (S4.05): clients fetch it from the core by hash.
       ...(opened.claims.avatar ? { avatar: opened.claims.avatar } : {}),
     };
@@ -655,14 +663,18 @@ export class WorldServer implements PluginWorld {
   }
 
   /** A new height: fitted, then announced as a roster change (at most once a second). */
-  private appearance(conn: Conn, cm: number, now: number): void {
+  private appearance(conn: Conn, cm: number, now: number, proportions?: Proportions): void {
     if (conn.entity === undefined || now - conn.appearanceAt < APPEARANCE_EVERY_MS) return;
     conn.appearanceAt = now;
     const height = this.fitHeight(cm);
     const player = this.roster.get(conn.entity);
-    if (!player || height === conn.height) return;
+    if (!player) return;
+    const shaped = proportions ? fitProportions(proportions) : player.proportions;
+    const same = (a: Proportions, b: Proportions): boolean => a.width === b.width && a.arms === b.arms && a.legs === b.legs && a.head === b.head;
+    if (height === conn.height && same(shaped, player.proportions)) return;
     conn.height = height;
     player.height = height;
+    player.proportions = shaped;
     this.joinedThisTick.push(player);
     this.events.add('appearance', 0);
   }
