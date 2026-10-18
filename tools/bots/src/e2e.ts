@@ -9,8 +9,10 @@
 // runs, then coturn starts ("the relay we run", with the core's shared-secret credentials) and the
 // same join goes through it. --relay needs coturn's turnserver on the PATH. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
-// client's loopback port); everything else is the client's own: the world browser, joining, the
-// microphone question, walking, chat, and walking through the portal into the second world. It needs a display (Xvfb in CI) and PostgreSQL's programs.
+// client's loopback port); everything else is the client's own: an avatar uploaded, a standard body
+// taken and worn and the test tee uploaded (S5.05), the world browser, joining, the microphone
+// question, the tee put on from the outfits menu and drawn on the body, an outfit saved, walking,
+// chat, and walking through the portal into the second world, the outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--relay] [--keep]
 //
@@ -28,6 +30,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
 const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts');
+const TEE = join(ROOT, 'kits', 'items', 'test-tee', 'test-tee.glb');
 const EMAIL = 'e2e@example.org';
 const PASSWORD = 'an end-to-end password';
 
@@ -117,7 +120,7 @@ try {
   const app = await electron.launch({
     executablePath: client,
     args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
-    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile },
+    env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile, FLATCHAT_E2E_ITEM: TEE },
     timeout: 60_000,
   });
   try {
@@ -157,6 +160,20 @@ try {
     await page.locator('[data-test=wear-avatar]').click({ timeout: 10_000 });
     await page.locator('[data-test=wear-avatar]').waitFor({ state: 'detached', timeout: 10_000 });
     steps['avatar'] = 'worn';
+    // A standard body (S5.05): taken with no upload, converted by the core, worn once ready; then
+    // the test tee, uploaded and converted with the bodies at hand.
+    await page.locator('[data-test=kit-feminine]').click({ timeout: 10_000 });
+    steps['kit'] = await page
+      .locator('[data-test=avatar][data-kit=feminine][data-wearing=true]')
+      .waitFor({ timeout: 150_000 })
+      .then(() => 'worn')
+      .catch(() => 'not worn');
+    await page.locator('[data-test=upload-item]').click({ timeout: 10_000 });
+    steps['item'] = await page
+      .locator('[data-test=item][data-status=ready]')
+      .waitFor({ timeout: 120_000 })
+      .then(() => 'ready')
+      .catch(async () => (await page.locator('[data-test=item]').first().getAttribute('data-status').catch(() => null)) ?? 'none');
     await snap('0-home');
     if (values.relay) {
       // Relay only, and no relay yet: the join cannot reach the world.
@@ -183,6 +200,27 @@ try {
       .waitFor({ state: 'attached', timeout: 30_000 })
       .then(() => true)
       .catch(() => false);
+    // The outfits menu (S5.05): the tee put on; the world sends the outfit back in the roster and
+    // the client draws the tee's fit on the body it wears. Then the look saved as an outfit.
+    await page.keyboard.press('KeyO');
+    await page.locator('[data-test=outfit-menu]').waitFor({ timeout: 10_000 });
+    await page.locator('[data-test=outfit-item]').first().click({ timeout: 10_000 });
+    steps['dressed'] = await page
+      .locator('[data-test=outfit][data-items="1"][data-dressed="1"]')
+      .waitFor({ state: 'attached', timeout: 45_000 })
+      .then(() => true)
+      .catch(async () => `${await page.locator('[data-test=outfit]').getAttribute('data-items').catch(() => '?')} worn, ${await page.locator('[data-test=outfit]').getAttribute('data-dressed').catch(() => '?')} drawn`);
+    await page.locator('[data-test=outfit-name]').fill('E2E look');
+    await page.locator('[data-test=outfit-save]').click({ timeout: 10_000 });
+    steps['outfitSaved'] = await page
+      .locator('[data-test=outfit-saved]', { hasText: 'E2E look' })
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    await page.keyboard.press('KeyO');
+    await page.locator('[data-test=outfit-menu]').waitFor({ state: 'detached', timeout: 10_000 });
+    await page.waitForTimeout(500);
+    await snap('1-dressed');
     // The fountain's sound plays (S2.14): one emitter, from the downloaded world.
     steps['sounds'] = await page.locator('[data-test=sounds]').getAttribute('data-playing', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
@@ -236,6 +274,12 @@ try {
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
     steps['travelled'] = true;
     steps['gardenParts'] = await page.locator('[data-test=sounds]').getAttribute('data-parts', { timeout: 10_000 }).catch(() => null);
+    // The outfit came along (S5.05): kept in the settings by account, sent to the new world at its first roster.
+    steps['outfitKept'] = await page
+      .locator('[data-test=outfit][data-items="1"][data-dressed="1"]')
+      .waitFor({ state: 'attached', timeout: 45_000 })
+      .then(() => true)
+      .catch(() => false);
     await page.waitForTimeout(500);
     await snap('3-travelled');
   } finally {
@@ -275,6 +319,11 @@ try {
     steps['people'] === 'owner' &&
     steps['avatar'] === 'worn' &&
     steps['avatarDrawn'] === true &&
+    steps['kit'] === 'worn' &&
+    steps['item'] === 'ready' &&
+    steps['dressed'] === true &&
+    steps['outfitSaved'] === true &&
+    steps['outfitKept'] === true &&
     /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
     (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
