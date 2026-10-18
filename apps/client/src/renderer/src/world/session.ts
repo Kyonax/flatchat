@@ -21,7 +21,8 @@ import { Occlusion, reverbAt, SOURCE_CLEARANCE } from './acoustics';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
 import { AvatarLayer, type AvatarState, type Worn } from './avatar-layer';
-import { FrameTuner, type MeasuredTier, tierOf, viewerPolicy } from './avatar-policy';
+import { type MeasuredTier, tierOf, viewerPolicy } from './avatar-policy';
+import { allowedLook, pixelRatioFor, presetOf, type Quality, QualityTuner, qualityOf } from './quality';
 import type { Expression, HandPose } from './avatar-pose';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
@@ -141,6 +142,8 @@ export interface WorldState {
   gpuResets: number;
   /** The world's screen effects drawn now (S6.05): what it asks for and the viewer allows. */
   look: { bloom: boolean; shafts: boolean; reflections: boolean; filters: boolean };
+  /** The stats panel's numbers (S6.08), twice a second while it is open. */
+  stats: { frameMs: number; p95Ms: number; draws: number; triangles: number; geometries: number; textures: number; heapMb: number; width: number; height: number; pixelRatio: number; preset: string; step: number } | undefined;
   /** 3D audio (S6.06): the sounds and voices in reach, how many a wall muffles, the room of the
    *  reverb zone the listener is in ('' for none), and the occlusion's rays and milliseconds a frame. */
   audio: { audible: number; occluded: number; room: string; rays: number; rayMs: number; worstMs: number };
@@ -209,7 +212,11 @@ export class WorldSession {
   private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
   /** Each player's trust level, from the roster: the viewer's shield reads it (S4.09). */
   private readonly trusts = new Map<number, number>();
-  private readonly tuner = new FrameTuner();
+  /** The frame-rate tuner (S6.08): fewer avatars, then a lower resolution, then fewer screen effects. */
+  private readonly tuner = new QualityTuner();
+  /** The pixel ratio drawn at now; the last frames' times (ms), for the stats panel. */
+  private pixelRatio = 0;
+  private readonly frameTimes: number[] = [];
   /** The first visit's measurement (S4.05): frames from the third second to the fifteenth. */
   private bench: { from: number; samples: number[] } | undefined;
   private policyAt = 0;
@@ -331,6 +338,7 @@ export class WorldSession {
       gpuResets: gpuResets.count,
       look: { bloom: false, shafts: false, reflections: false, filters: false },
       audio: { audible: 0, occluded: 0, room: '', rays: 0, rayMs: 0, worstMs: 0 },
+      stats: undefined,
     });
   }
 
@@ -338,7 +346,8 @@ export class WorldSession {
   async start(ticket: Ticket): Promise<void> {
     const view = buildWorldScene(this.map);
     // Opaque: effects blend over the finished image, and their alpha must not show the page through.
-    const renderer = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+    // Smoothed edges as the quality says (S6.08): a renderer takes it when made, so from this world on.
+    const renderer = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: this.quality.antialias, alpha: false, powerPreference: 'high-performance' });
     await renderer.init();
     this.renderer = renderer;
     // A GPU reset (S6.03, T-01): creator shaders off for the session; the page joins again.
@@ -349,7 +358,10 @@ export class WorldSession {
     );
     if (window.flatchat?.e2e) (window as unknown as { flatchatTest?: { loseGpu(): void } }).flatchatTest = { loseGpu: () => loseGpu(renderer) };
     this.state.backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Draw counts for the stats panel (S6.08) cover the whole frame, the look's passes included.
+    renderer.info.autoReset = false;
+    this.pixelRatio = pixelRatioFor(window.devicePixelRatio, this.quality, 1);
+    renderer.setPixelRatio(this.pixelRatio);
     const resize = (): void => {
       const w = Math.max(1, this.canvas.clientWidth);
       const h = Math.max(1, this.canvas.clientHeight);
@@ -637,6 +649,17 @@ export class WorldSession {
     const now = performance.now();
     const dt = Math.min(0.25, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
+    this.frameTimes.push(dt * 1000);
+    if (this.frameTimes.length > 120) this.frameTimes.shift();
+    if (this.renderer) {
+      this.renderer.info.reset();
+      // The resolution the quality and the tuner allow now (S6.08).
+      const ratio = pixelRatioFor(window.devicePixelRatio, this.quality, this.settings.avatar.autoTune ? this.tuner.now.scale : 1);
+      if (ratio !== this.pixelRatio) {
+        this.pixelRatio = ratio;
+        this.renderer.setPixelRatio(ratio);
+      }
+    }
     if (!this.typing) {
       if (this.controls.took('view')) this.state.person = this.state.person === 'first' ? 'third' : 'first';
       if (this.controls.took('mute')) this.toggleMute();
@@ -702,6 +725,7 @@ export class WorldSession {
         this.state.emoteSounds = this.emoteSounds?.count ?? 0;
       }
       if (this.effects) this.state.effects = { ...this.effects.stats };
+      if (this.settings.graphics.stats && this.renderer) this.state.stats = this.statsNow();
       const rays = this.occlusion.takeCounts();
       if (rays.frames > 0) this.state.audio = { ...this.state.audio, rays: Math.round(rays.rays / rays.frames), rayMs: Number((rays.ms / rays.frames).toFixed(3)), worstMs: Number(rays.worstMs.toFixed(3)) };
       this.frames = 0;
@@ -790,7 +814,8 @@ export class WorldSession {
     this.policyAt = now;
     const friends = new Set(this.state.friends);
     const safe = this.state.safeMode;
-    const policy = viewerPolicy(s, s.autoTune ? this.tuner.factor : 1, {
+    // The avatars as the preset's tier draws them (S6.08; the measured tier with auto or custom).
+    const policy = viewerPolicy({ ...s, tier: presetOf(this.settings.graphics, s.tier) }, s.autoTune ? this.tuner.now.avatars : 1, {
       accountOf: (e) => this.people.get(e)?.account,
       trustOf: (e) => this.trusts.get(e) ?? 0,
       friends,
@@ -816,7 +841,7 @@ export class WorldSession {
       if (e === this.entity) return true;
       const account = this.people.get(e)?.account;
       if (account !== undefined && friends.has(account)) return true;
-      return s.shadersStrangers && s.tier !== 'low' && policy.shown?.(e) !== 'impostor';
+      return s.shadersStrangers && presetOf(this.settings.graphics, s.tier) !== 'low' && policy.shown?.(e) !== 'impostor';
     };
     if (this.avatarLayer) this.avatarLayer.policy = policy;
     if (this.effects) {
@@ -1162,11 +1187,41 @@ export class WorldSession {
     return buildReport(draft, evidence, this.recorder, now, wall, (entity) => this.everyone.get(entity));
   }
 
+  /** The stats panel's numbers (S6.08): the last frames' times, this frame's draws, memory, the
+   *  resolution drawn, the preset and the tuner's step. */
+  private statsNow(): NonNullable<WorldState['stats']> {
+    const r = this.renderer!;
+    const times = [...this.frameTimes].sort((a, b) => a - b);
+    const mean = times.reduce((a, b) => a + b, 0) / Math.max(1, times.length);
+    const size = r.getDrawingBufferSize(new THREE.Vector2());
+    const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
+    return {
+      frameMs: Number(mean.toFixed(1)),
+      p95Ms: Number((times[Math.floor(times.length * 0.95)] ?? 0).toFixed(1)),
+      draws: r.info.render.drawCalls,
+      triangles: r.info.render.triangles,
+      geometries: r.info.memory.geometries,
+      textures: r.info.memory.textures,
+      heapMb: Math.round(heap / 1048576),
+      width: size.x,
+      height: size.y,
+      pixelRatio: Number(this.pixelRatio.toFixed(2)),
+      preset: presetOf(this.settings.graphics, this.settings.avatar.tier),
+      step: this.tuner.step,
+    };
+  }
+
+  /** What to draw at (S6.08): the preset's quality, or the player's own with `custom`. */
+  private get quality(): Quality {
+    return qualityOf(this.settings.graphics, this.settings.avatar.tier);
+  }
+
   /** The world's screen effects as the viewer allows them now (S6.05): the pipeline is made again
    *  only when that changes (a setting, safe mode, a new world). */
   private updateLook(scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     if (!this.renderer) return;
-    const on = lookEffects(this.look, this.settings.look, this.state.safeMode);
+    const tuned = this.settings.avatar.autoTune ? this.tuner.now.look : {};
+    const on = lookEffects(this.look, allowedLook(this.settings.look, this.quality, tuned), this.state.safeMode);
     const key = `${JSON.stringify(on)}|${JSON.stringify(this.look)}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
@@ -1281,7 +1336,7 @@ export class WorldSession {
     const audible = [...(this.sounds?.audibles() ?? []), ...(this.chain?.audibles() ?? [])];
     const state = this.settings.sound.occlusion && this.physics ? this.occlusion.update(head, audible) : NOTHING_OCCLUDED;
     const occluded = (this.sounds?.occlude(state) ?? 0) + (this.chain?.occlude(state) ?? 0);
-    const zone = this.settings.sound.reverb ? reverbAt(this.zones, head) : undefined;
+    const zone = this.settings.sound.reverb && this.quality.reverb ? reverbAt(this.zones, head) : undefined;
     this.sounds?.room(zone?.room, zone?.mix ?? 0);
     this.chain?.room(zone?.room, zone?.mix ?? 0);
     const a = this.state.audio;

@@ -5,7 +5,7 @@
 // the shield as impostors, a friend in full whatever their trust.
 import { describe, expect, it } from 'vitest';
 import { defaultSettings } from '../src/shared/settings';
-import { FrameTuner, TIER_POLICY, tierOf, viewerPolicy } from '../src/renderer/src/world/avatar-policy';
+import { TIER_POLICY, tierOf, viewerPolicy } from '../src/renderer/src/world/avatar-policy';
 
 describe('the first visit’s tier', () => {
   it('reads the frames’ p95', () => {
@@ -14,21 +14,6 @@ describe('the first visit’s tier', () => {
     expect(tierOf([...Array(90).fill(10), ...Array(10).fill(40)])).toBe('low');
     expect(tierOf([])).toBe('medium');
     expect(TIER_POLICY.low.full).toBeLessThan(TIER_POLICY.high.full);
-  });
-});
-
-describe('the frame-rate tuner', () => {
-  it('draws fewer in full while frames run past 33 ms, and more again once they recover', () => {
-    const t = new FrameTuner();
-    let now = 0;
-    const run = (ms: number, seconds: number): void => {
-      for (let i = 0; i < seconds * 30; i++) t.push(ms, (now += 1000 / 30));
-    };
-    run(50, 10);
-    expect(t.factor).toBeLessThan(0.5);
-    expect(t.factor).toBeGreaterThanOrEqual(0.25);
-    run(10, 30);
-    expect(t.factor).toBe(1);
   });
 });
 

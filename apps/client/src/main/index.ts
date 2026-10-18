@@ -25,6 +25,7 @@ import { crowdPass } from './crowd-pass';
 import { exitCodeFor, parseFlags, rendererQuery } from './flags';
 import { declaresItself, modelName, type NeedsDeclaration, PendingItems } from './item-files';
 import { listOffline, OfflineHost } from './offline';
+import type { Settings } from '../shared/settings';
 import { SettingsFile } from './settings-file';
 import { signal } from './signal';
 
@@ -138,8 +139,11 @@ ipcMain.handle('flatchat:locale', () => app.getLocale());
 ipcMain.handle('flatchat:content-has', (_event, hashes: unknown) => (Array.isArray(hashes) ? (cache?.has(hashes.slice(0, 4096)) ?? []) : []));
 ipcMain.handle('flatchat:content-get', (_event, hash: unknown) => cache?.get(hash));
 ipcMain.handle('flatchat:content-put', (_event, hash: unknown, bytes: unknown) => cache?.put(hash, bytes) ?? false);
-ipcMain.handle('flatchat:settings', () => settings?.get());
-ipcMain.handle('flatchat:settings-set', (_event, patch: unknown) => settings?.update(patch));
+/** The settings as this run sees them: --quality (S6.08) over the saved preset, with the tuner off so
+ *  the run draws exactly that; never saved. */
+const asRun = (s: Settings | undefined): Settings | undefined => (s && flags.quality ? { ...s, graphics: { ...s.graphics, preset: flags.quality }, avatar: { ...s.avatar, autoTune: false } } : s);
+ipcMain.handle('flatchat:settings', () => asRun(settings?.get()));
+ipcMain.handle('flatchat:settings-set', (_event, patch: unknown) => asRun(settings?.update(patch)));
 ipcMain.handle('flatchat:auth-state', () => auth?.state);
 ipcMain.handle('flatchat:sign-in', () => auth?.signIn());
 ipcMain.handle('flatchat:sign-in-cancel', () => auth?.cancel());

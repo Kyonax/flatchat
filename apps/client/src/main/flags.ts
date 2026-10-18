@@ -11,6 +11,9 @@
 //   --relay-only                                     connect to worlds only through the TURN relays the
 //                                                    core hands out, as a player behind a NAT that lets
 //                                                    nothing else through would (S2.12; tests, support)
+//   --quality=low|medium|high                        draw at that preset for this run, whatever the
+//                                                    settings say, with the frame-rate tuner off
+//                                                    (S6.08; CI's end-to-end runs, the low one)
 //   --smoke [--smoke-out=FILE]                       draw for a few seconds, report once, quit
 //           [--join=http://ADDRESS:PORT/rtc --join-token=HEX]
 //                                                    and join that world server over WebRTC (on
@@ -58,6 +61,8 @@ export interface Size {
 export interface ClientFlags {
   /** The core's address, checked: https, or http on this machine. */
   core?: string;
+  /** A quality preset for this run only (S6.08), over the settings'. */
+  quality?: 'low' | 'medium' | 'high';
   /** Worlds only through a TURN relay (WebRTC's relay-only policy). */
   relayOnly?: boolean;
   /** World folders offered in offline mode. */
@@ -147,6 +152,9 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
   };
   const smokeOut = value(argv, 'smoke-out');
   if (smokeOut) flags.smokeOut = smokeOut;
+  const quality = value(argv, 'quality');
+  if (quality === 'low' || quality === 'medium' || quality === 'high') flags.quality = quality;
+  else if (quality !== undefined) errors.push(`--quality is low, medium or high, got ${quality}`);
   const core = value(argv, 'core');
   if (core !== undefined) {
     const base = coreBase(core);

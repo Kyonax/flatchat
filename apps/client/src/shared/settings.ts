@@ -4,7 +4,7 @@
 // its default field by field, so a damaged file never stops the client.
 import { fitWornAdjust, type WornAdjust } from '@flatchat/content';
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'outfits', 'emotes', 'help', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'outfits', 'emotes', 'help', 'stats', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -45,6 +45,8 @@ export const DEFAULT_KEYS: Bindings = {
   emotes: ['KeyB'],
   // The keys help (S6.07): every key, as this keyboard prints it, over the world.
   help: ['F1'],
+  // The stats panel (S6.08): frame times, draws, memory, what the tuner took away.
+  stats: ['F3'],
   menu: ['Escape'],
 };
 
@@ -177,6 +179,20 @@ export interface LookSettings {
   filters: boolean;
 }
 
+/** What to render and at what quality (S6.08): a preset, `auto` (the measured tier's) or `custom`
+ *  (these values as set); `stats` shows the stats panel over the world. */
+export const QUALITY_PRESETS = ['auto', 'low', 'medium', 'high', 'custom'] as const;
+export interface GraphicsSettings {
+  preset: (typeof QUALITY_PRESETS)[number];
+  /** The share of the window's pixels drawn, 0.5 to 1. */
+  renderScale: number;
+  /** The most screen pixels per CSS pixel: 1 to 2. */
+  pixelRatio: number;
+  /** Smoothed edges, from the next world. */
+  antialias: boolean;
+  stats: boolean;
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -190,6 +206,7 @@ export interface Settings {
   effects: EffectSettings;
   overlays: ScreenOverlaySettings;
   look: LookSettings;
+  graphics: GraphicsSettings;
 }
 
 export function defaultSettings(): Settings {
@@ -205,6 +222,7 @@ export function defaultSettings(): Settings {
     effects: { show: true, strangers: false },
     overlays: { mine: true, world: true, allowed: [] },
     look: { bloom: true, shafts: true, reflections: true, filters: true },
+    graphics: { preset: 'auto', renderScale: 1, pixelRatio: 2, antialias: true, stats: false },
   };
 }
 
@@ -250,6 +268,7 @@ export function cleanSettings(raw: unknown): Settings {
   const effects = obj(r['effects']);
   const overlays = obj(r['overlays']);
   const look = obj(r['look']);
+  const graphics = obj(r['graphics']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -299,6 +318,13 @@ export function cleanSettings(raw: unknown): Settings {
       allowed: Array.isArray(overlays['allowed']) ? [...new Set(overlays['allowed'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
     },
     look: { bloom: bool(look['bloom'], d.look.bloom), shafts: bool(look['shafts'], d.look.shafts), reflections: bool(look['reflections'], d.look.reflections), filters: bool(look['filters'], d.look.filters) },
+    graphics: {
+      preset: pick(graphics['preset'], QUALITY_PRESETS, d.graphics.preset),
+      renderScale: num(graphics['renderScale'], 0.5, 1, d.graphics.renderScale),
+      pixelRatio: num(graphics['pixelRatio'], 1, 2, d.graphics.pixelRatio),
+      antialias: bool(graphics['antialias'], d.graphics.antialias),
+      stats: bool(graphics['stats'], d.graphics.stats),
+    },
   };
 }
 
@@ -315,6 +341,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     effects: { ...current.effects, ...obj(p['effects']) },
     overlays: { ...current.overlays, ...obj(p['overlays']) },
     look: { ...current.look, ...obj(p['look']) },
+    graphics: { ...current.graphics, ...obj(p['graphics']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

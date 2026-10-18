@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, PROPORTION_RANGE, RANK_CHOICES, type Settings, unbind, validCode } from '../../../shared/settings';
+import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, PROPORTION_RANGE, QUALITY_PRESETS, RANK_CHOICES, type Settings, unbind, validCode } from '../../../shared/settings';
 import { keyLabel, mouseCode } from './keys';
 
 const props = defineProps<{ settings: Settings }>();
@@ -66,6 +66,8 @@ const sound = (patch: Partial<Settings['sound']>): void => emit('change', { soun
 const effects = (patch: Partial<Settings['effects']>): void => emit('change', { effects: { ...props.settings.effects, ...patch } });
 const overlays = (patch: Partial<Settings['overlays']>): void => emit('change', { overlays: { ...props.settings.overlays, ...patch } });
 const look = (patch: Partial<Settings['look']>): void => emit('change', { look: { ...props.settings.look, ...patch } });
+const graphics = (patch: Partial<Settings['graphics']>): void => emit('change', { graphics: { ...props.settings.graphics, ...patch } });
+const checked = (e: Event): boolean => (e.target as HTMLInputElement).checked;
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -231,6 +233,69 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           :data-test="`proportion-${k}`"
           @change="avatar({ proportions: { ...settings.avatar.proportions, [k]: num($event) } })"
         >
+      </label>
+
+      <h2>{{ t('settings.graphics.title') }}</h2>
+      <label class="row">
+        <span class="grow">{{ t('settings.graphics.preset') }}</span>
+        <select
+          :value="settings.graphics.preset"
+          data-test="quality-preset"
+          @change="graphics({ preset: ($event.target as HTMLSelectElement).value as Settings['graphics']['preset'] })"
+        >
+          <option
+            v-for="p in QUALITY_PRESETS"
+            :key="p"
+            :value="p"
+          >
+            {{ t(`settings.graphics.presets.${p}`) }}
+          </option>
+        </select>
+      </label>
+      <template v-if="settings.graphics.preset === 'custom'">
+        <label class="row">
+          <span class="grow">{{ t('settings.graphics.renderScale') }}</span>
+          <input
+            type="range"
+            min="0.5"
+            max="1"
+            step="0.05"
+            :value="settings.graphics.renderScale"
+            data-test="render-scale"
+            @change="graphics({ renderScale: num($event) })"
+          >
+        </label>
+        <label class="row">
+          <span class="grow">{{ t('settings.graphics.pixelRatio') }}</span>
+          <input
+            type="range"
+            min="1"
+            max="2"
+            step="0.25"
+            :value="settings.graphics.pixelRatio"
+            @change="graphics({ pixelRatio: num($event) })"
+          >
+        </label>
+        <label class="row">
+          <input
+            type="checkbox"
+            :checked="settings.graphics.antialias"
+            @change="graphics({ antialias: checked($event) })"
+          >
+          <span>{{ t('settings.graphics.antialias') }}</span>
+        </label>
+      </template>
+      <p class="muted small">
+        {{ t('settings.graphics.nextWorld') }}
+      </p>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.graphics.stats"
+          data-test="stats-toggle"
+          @change="graphics({ stats: checked($event) })"
+        >
+        <span>{{ t('settings.graphics.stats') }}</span>
       </label>
 
       <h2>{{ t('settings.avatars') }}</h2>

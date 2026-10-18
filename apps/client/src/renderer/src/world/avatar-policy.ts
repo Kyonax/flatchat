@@ -3,7 +3,8 @@
 // renders on their own screen. A tier measured on the first visit sets how many avatars this
 // computer draws in full and the worst rank it draws in full; the viewer can change both, hide any
 // person's avatar (shown as the impostor), and shield themselves from strangers below a trust
-// level; and while frames are slow the tuner draws fewer in full until they recover. Pure.
+// level; and while frames are slow the frame-rate tuner (quality.ts, S6.08) draws fewer in full
+// until they recover. Pure.
 import type { AvatarSettings, Tier } from '../../../shared/settings';
 import type { AvatarPolicy } from './avatar-layer';
 
@@ -24,26 +25,6 @@ export function tierOf(frameMs: readonly number[]): MeasuredTier {
   if (p95 <= 12) return 'high';
   if (p95 <= 22) return 'medium';
   return 'low';
-}
-
-/** Draws fewer avatars in full while frames run past 30 fps's 33 ms (p90 over two seconds), and
- *  more again once they are well under 20 ms. */
-export class FrameTuner {
-  factor = 1;
-  private samples: number[] = [];
-  private since = -1;
-
-  push(frameMs: number, now: number): void {
-    if (this.since < 0) this.since = now;
-    this.samples.push(frameMs);
-    if (now - this.since < 2000 || this.samples.length < 20) return;
-    const sorted = this.samples.sort((a, b) => a - b);
-    const p90 = sorted[Math.floor(sorted.length * 0.9)]!;
-    if (p90 > 1000 / 30) this.factor = Math.max(0.25, this.factor - 0.15);
-    else if (p90 < 20) this.factor = Math.min(1, this.factor + 0.1);
-    this.samples = [];
-    this.since = now;
-  }
 }
 
 export interface Viewer {

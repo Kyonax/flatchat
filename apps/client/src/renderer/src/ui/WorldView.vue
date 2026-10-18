@@ -14,6 +14,7 @@ import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
 import EmoteMenu from './EmoteMenu.vue';
 import KeysHelp from './KeysHelp.vue';
+import StatsPanel from './StatsPanel.vue';
 import OutfitMenu from './OutfitMenu.vue';
 import ScreenOverlays from './ScreenOverlays.vue';
 
@@ -156,6 +157,10 @@ function onKey(e: KeyboardEvent): void {
   } else if (action === 'help' || (keysOpen.value && e.code === 'Escape')) {
     e.preventDefault();
     toggleKeys();
+  } else if (action === 'stats') {
+    // The stats panel (S6.08): a setting, so it stays open across worlds until pressed again.
+    e.preventDefault();
+    emit('change', { graphics: { ...props.settings.graphics, stats: !props.settings.graphics.stats } });
   } else if (action === 'menu' && !asking.value) {
     // Esc opens the menu: releasing a held pointer opens it (onLockChange), and with the pointer
     // already free there is no lock to release, so it opens here.
@@ -301,8 +306,8 @@ let lockMenuAt = -Infinity;
 
 function onLockChange(): void {
   // Esc releases the pointer (the browser's own key): that opens the menu, unless chat, the
-  // People panel or a report took it, or it was the safe-mode key (Shift+Esc).
-  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !emotesOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) {
+  // People panel, the keys help or a report took it, or it was the safe-mode key (Shift+Esc).
+  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !emotesOpen.value && !keysOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) {
     if (performance.now() - safeKeyAt < 500) return;
     menu.value = true;
     lockMenuAt = performance.now();
@@ -315,6 +320,7 @@ function look(): void {
   peopleOpen.value = false;
   outfitsOpen.value = false;
   emotesOpen.value = false;
+  keysOpen.value = false;
   session?.lock();
 }
 
@@ -871,6 +877,11 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+
+    <StatsPanel
+      v-if="settings.graphics.stats && state?.status === 'joined'"
+      :state="state"
+    />
 
     <div
       v-if="keysOpen && !paused"
