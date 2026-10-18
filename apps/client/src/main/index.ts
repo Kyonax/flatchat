@@ -63,7 +63,9 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 720,
     title: 'FlatChat',
-    backgroundColor: '#101014',
+    // The mark (S6.07), written into out/ by scripts/make-icon.ts; black behind the first frame.
+    icon: join(__dirname, '../icon.png'),
+    backgroundColor: '#000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

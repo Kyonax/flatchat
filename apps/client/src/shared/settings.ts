@@ -4,7 +4,7 @@
 // its default field by field, so a damaged file never stops the client.
 import { fitWornAdjust, type WornAdjust } from '@flatchat/content';
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'outfits', 'emotes', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'outfits', 'emotes', 'help', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -43,6 +43,8 @@ export const DEFAULT_KEYS: Bindings = {
   outfits: ['KeyO'],
   // The emotes menu (S5.07): the account's emotes and dances, played for everyone nearby.
   emotes: ['KeyB'],
+  // The keys help (S6.07): every key, as this keyboard prints it, over the world.
+  help: ['F1'],
   menu: ['Escape'],
 };
 

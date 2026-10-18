@@ -1,18 +1,85 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* The app's look until the UI pass (S6.07): dark, plain, one accent. */
+/* FlatChat's look (S6.07, Q-E5, Q-E7): the Kyonax HUD design system (black, translucent panels,
+   hairlines, Space Mono, labels in capitals with wide tracking, colour only for state) with the
+   platform's own accent, a violet, where Kyonax has its yellow. The laws: no rounded corners, no
+   gradients, no shadows, at most one accent on an element. docs/ui.md has the picture. */
+
+@font-face {
+  font-family: 'Space Mono';
+  src: url('../assets/fonts/SpaceMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Mono';
+  src: url('../assets/fonts/SpaceMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg: #101014;
-  --panel: #18181d;
-  --panel-2: #212128;
-  --line: #2e2e36;
-  --fg: #ececee;
-  --muted: #a1a1aa;
-  --accent: #f9cd26;
-  --accent-fg: #121214;
-  --danger: #ff8a80;
-  --ok: #8bd5a0;
-  font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color: var(--fg);
+  /* Surfaces and the ink ramp: hierarchy by luminance, not hue. */
+  --bg: #000000;
+  --panel: rgba(0, 0, 0, 0.72);
+  --panel-solid: #050505;
+  --panel-2: #0c0c0e;
+  --text: #c2c2c2;
+  --bright: #ffffff;
+  --muted: #8a8a8a;
+  --dim: #4a4a4a;
+  --faint: #242424;
+  /* Hairlines and tracks. */
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.28);
+  --line-faint: rgba(255, 255, 255, 0.06);
+  --track: rgba(255, 255, 255, 0.09);
+  /* The signal hues, for state only: FlatChat's accent (focus, active, the one thing to do), links,
+     ok, warn. */
+  --accent: oklch(74% 0.19 315);
+  --accent-bg: rgba(215, 128, 252, 0.1);
+  --accent-fg: #000000;
+  --cyan: oklch(85.9% 0.1686 215);
+  --ok: oklch(82% 0.15 150);
+  --danger: oklch(70% 0.18 26);
+  --danger-bg: rgba(250, 105, 97, 0.08);
+  /* Older names, kept for the components that use them. */
+  --fg: var(--text);
+  /* Type: Space Mono throughout. */
+  --font: 'Space Mono', 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'DejaVu Sans Mono', monospace;
+  --fs-title: 22px;
+  --fs-lg: 15px;
+  --fs-md: 13px;
+  --fs-sm: 12px;
+  --fs-xs: 11px;
+  --ls-label: 0.2em;
+  --ls-wide: 0.3em;
+  font: var(--fs-md) / 1.55 var(--font);
+  color: var(--text);
+  background: var(--bg);
+}
+
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
+}
+
+a {
+  color: var(--cyan);
 }
 
 .screen {
@@ -25,16 +92,28 @@
 }
 
 .card {
-  width: min(32rem, calc(100vw - 32px));
-  background: var(--panel);
+  /* Space Mono is wide: 44rem holds a line of the home screen's rows. */
+  width: min(44rem, calc(100vw - 32px));
+  background: var(--panel-solid);
   border: 1px solid var(--line);
-  border-radius: 6px;
   padding: 24px;
 }
 
 .card h1 {
   margin: 0 0 8px;
-  font-size: 1.4rem;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--bright);
+  letter-spacing: 0.04em;
+}
+
+h2,
+h3 {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label);
+  color: var(--muted);
 }
 
 .muted {
@@ -57,41 +136,68 @@
 
 button {
   font: inherit;
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--bright);
   padding: 8px 14px;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--bright);
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
-  font-weight: 600;
+  font-weight: 700;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--bright);
+  border-color: var(--bright);
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: default;
 }
 
 button:focus-visible,
+input:focus-visible,
 select:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+textarea:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
 }
 
+input,
 select,
-input[type='text'] {
+textarea {
   font: inherit;
-  background: var(--bg);
-  color: var(--fg);
+  color: var(--bright);
+  background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 6px 8px;
+  padding: 7px 10px;
+}
+
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* The wordmark beside the logo: capitals, the widest tracking. */
+.wordmark {
+  font-weight: 700;
+  letter-spacing: var(--ls-wide);
+  color: var(--bright);
+  text-transform: uppercase;
 }
 
 ul.plain {

@@ -76,7 +76,6 @@ const mode = ref<'open' | 'push'>('open');
   padding: 10px;
   margin: 8px 0;
   border: 1px solid var(--line);
-  border-radius: 4px;
   cursor: pointer;
 }
 

@@ -200,7 +200,6 @@ li button,
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: 6px;
   vertical-align: middle;
   margin-right: 8px;
 }

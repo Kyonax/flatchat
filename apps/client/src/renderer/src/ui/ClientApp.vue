@@ -9,6 +9,8 @@ import HomeView from './HomeView.vue';
 import OfflineView from './OfflineView.vue';
 import { loadLayout } from './keys';
 import SettingsView from './SettingsView.vue';
+import HelpView from './HelpView.vue';
+import CreditsView from './CreditsView.vue';
 import SignIn from './SignIn.vue';
 import './theme.css';
 import WorldView from './WorldView.vue';
@@ -19,6 +21,8 @@ const auth = ref<FlatchatAuthState | undefined>(undefined);
 const settings = ref<Settings | undefined>(undefined);
 const systemLocale = ref('en');
 const showSettings = ref(false);
+/** The help or credits page (S6.07), over whatever is open; Back returns to it. */
+const page = ref<'help' | 'credits' | undefined>(undefined);
 const world = ref<{ world: FlatchatWorld; ticket: { address: string; token: Uint8Array; iceServers: RTCIceServer[]; relayOnly: boolean; local?: boolean; spawn?: string }; visit: number } | undefined>(undefined);
 /** Offline mode (S2.13): no core, worlds on this computer. */
 const offline = ref(false);
@@ -167,6 +171,7 @@ onBeforeUnmount(() => {
     @sign-in="bridge?.signIn()"
     @cancel="bridge?.cancelSignIn()"
     @offline="offline = true"
+    @help="page = 'help'"
   />
   <template v-else>
     <WorldView
@@ -175,7 +180,7 @@ onBeforeUnmount(() => {
       :world="world.world"
       :ticket="world.ticket"
       :settings="settings"
-      :paused="showSettings"
+      :paused="showSettings || !!page"
       :travel="travel"
       @leave="leaveWorld"
       @settings="showSettings = true"
@@ -198,13 +203,26 @@ onBeforeUnmount(() => {
       :join-error="joinError"
       @join="join"
       @settings="showSettings = true"
+      @help="page = 'help'"
       @sign-out="bridge?.signOut()"
     />
     <SettingsView
-      v-if="showSettings"
+      v-if="showSettings && !page"
       :settings="settings"
       @change="change"
       @back="showSettings = false"
+      @help="page = 'help'"
+      @credits="page = 'credits'"
     />
   </template>
+  <HelpView
+    v-if="page === 'help' && settings"
+    :settings="settings"
+    @back="page = undefined"
+    @credits="page = 'credits'"
+  />
+  <CreditsView
+    v-if="page === 'credits'"
+    @back="page = undefined"
+  />
 </template>

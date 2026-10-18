@@ -2,9 +2,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import LogoMark from './LogoMark.vue';
 
 const props = defineProps<{ state: FlatchatAuthState }>();
-defineEmits<{ 'sign-in': []; cancel: []; offline: [] }>();
+defineEmits<{ 'sign-in': []; cancel: []; offline: []; help: [] }>();
 const { t } = useI18n();
 
 const waiting = computed(() => props.state.status === 'waiting');
@@ -18,6 +19,20 @@ const error = computed(() => {
 <template>
   <div class="screen">
     <div class="card">
+      <div class="row">
+        <LogoMark
+          class="grow"
+          :size="22"
+          wordmark
+        />
+        <button
+          type="button"
+          data-test="signin-help"
+          @click="$emit('help')"
+        >
+          {{ t('help.open') }}
+        </button>
+      </div>
       <h1>{{ t('signin.title') }}</h1>
       <p class="muted">
         {{ t('signin.lead') }}

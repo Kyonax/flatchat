@@ -6,7 +6,7 @@ import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, PROPORTI
 import { keyLabel, mouseCode } from './keys';
 
 const props = defineProps<{ settings: Settings }>();
-const emit = defineEmits<{ change: [patch: Partial<Settings>]; back: [] }>();
+const emit = defineEmits<{ change: [patch: Partial<Settings>]; back: []; help: []; credits: [] }>();
 const { t } = useI18n();
 
 /** The slot waiting for a key, if any. */
@@ -91,6 +91,20 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
         <h1 class="grow">
           {{ t('settings.title') }}
         </h1>
+        <button
+          type="button"
+          data-test="settings-help"
+          @click="emit('help')"
+        >
+          {{ t('help.open') }}
+        </button>
+        <button
+          type="button"
+          data-test="settings-credits"
+          @click="emit('credits')"
+        >
+          {{ t('credits.open') }}
+        </button>
         <button
           type="button"
           data-test="back"

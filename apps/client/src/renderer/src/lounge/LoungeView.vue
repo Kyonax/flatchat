@@ -121,7 +121,6 @@ onBeforeUnmount(() => {
   top: 12px;
   left: 12px;
   padding: 8px 10px;
-  border-radius: 6px;
   background: rgb(0 0 0 / 0.55);
   color: #e8e8ea;
   font: 13px/1.5 system-ui, sans-serif;

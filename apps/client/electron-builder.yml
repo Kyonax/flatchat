@@ -24,6 +24,8 @@ extraFiles:
 linux:
   target: dir
   executableName: flatchat
+  # The mark on black, written by scripts/make-icon.ts (S6.07).
+  icon: out/icon.png
   category: Game
   artifactName: FlatChat-${version}-linux-${arch}.${ext}
 win:

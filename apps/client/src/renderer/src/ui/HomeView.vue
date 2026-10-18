@@ -6,12 +6,13 @@ import AvatarsPanel from './AvatarsPanel.vue';
 import ItemsPanel from './ItemsPanel.vue';
 import AnimationsPanel from './AnimationsPanel.vue';
 import GalleryPanel from './GalleryPanel.vue';
+import LogoMark from './LogoMark.vue';
 import WorldRow from './WorldRow.vue';
 
 // The world browser (S2.09, Q-L4, Q-L11): join by a world's ID, the account's favourites, and the
 // public list (open worlds below their recommended count, busiest first).
 defineProps<{ account: FlatchatAccount; remembered: boolean; joining: string; joinError: string }>();
-const emit = defineEmits<{ join: [world: FlatchatWorld]; settings: []; 'sign-out': [] }>();
+const emit = defineEmits<{ join: [world: FlatchatWorld]; settings: []; help: []; 'sign-out': [] }>();
 const { t, te } = useI18n();
 
 const WORLD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,10 +106,21 @@ onMounted(load);
 <template>
   <div class="screen">
     <div class="card">
+      <LogoMark
+        :size="22"
+        wordmark
+      />
       <div class="row">
         <h1 class="grow">
           {{ t('home.hello', { name: account.displayName }) }}
         </h1>
+        <button
+          type="button"
+          data-test="home-help"
+          @click="emit('help')"
+        >
+          {{ t('help.open') }}
+        </button>
         <button
           type="button"
           data-test="settings"

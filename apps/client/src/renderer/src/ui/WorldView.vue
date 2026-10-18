@@ -13,6 +13,7 @@ import ReportForm from './ReportForm.vue';
 import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
 import EmoteMenu from './EmoteMenu.vue';
+import KeysHelp from './KeysHelp.vue';
 import OutfitMenu from './OutfitMenu.vue';
 import ScreenOverlays from './ScreenOverlays.vue';
 
@@ -39,6 +40,8 @@ const peopleOpen = ref(false);
 /** The outfits quick menu (S5.05), and the emotes menu (S5.07). */
 const outfitsOpen = ref(false);
 const emotesOpen = ref(false);
+/** The keys help over the world (S6.07): the help key (F1) or the menu's Keys. */
+const keysOpen = ref(false);
 /** The person a moderator is acting on in the panel (S3.07), and the choice and reason. */
 const moderating = ref('');
 const modChoice = ref<(typeof MODERATION)[number]['id']>('kick');
@@ -53,6 +56,7 @@ let travelling = false;
 const asking = computed(() => state.value?.status === 'joined' && !props.settings.voice.asked);
 const talkKey = computed(() => props.settings.keys.talk[0] ?? 'KeyT');
 const peopleKey = computed(() => props.settings.keys.people[0] ?? 'Tab');
+const helpKey = computed(() => props.settings.keys.help[0] ?? 'F1');
 const giving = computed(() => rolesToGive(state.value?.role ?? 'visitor'));
 /** The People panel's list: someone kept apart by a block is left out, unless this player blocked
  *  them (then they show, to be unblocked) (S3.11). */
@@ -149,6 +153,9 @@ function onKey(e: KeyboardEvent): void {
   } else if (action === 'emotes' || (emotesOpen.value && e.code === 'Escape')) {
     e.preventDefault();
     toggleEmotes();
+  } else if (action === 'help' || (keysOpen.value && e.code === 'Escape')) {
+    e.preventDefault();
+    toggleKeys();
   } else if (action === 'menu' && !asking.value) {
     // Esc opens the menu: releasing a held pointer opens it (onLockChange), and with the pointer
     // already free there is no lock to release, so it opens here.
@@ -187,6 +194,23 @@ function toggleEmotes(): void {
     peopleOpen.value = false;
     session?.unlock();
   } else session?.lock();
+}
+
+/** The keys help frees the mouse while it is open; closing it goes back to looking around. */
+function toggleKeys(): void {
+  keysOpen.value = !keysOpen.value;
+  if (keysOpen.value) {
+    peopleOpen.value = false;
+    outfitsOpen.value = false;
+    emotesOpen.value = false;
+    session?.unlock();
+  } else session?.lock();
+}
+
+/** The menu's Keys: the menu closes and the keys help opens (the mouse is free already). */
+function menuKeys(): void {
+  menu.value = false;
+  keysOpen.value = true;
 }
 
 function playEmote(anim: string | undefined): void {
@@ -488,11 +512,12 @@ onBeforeUnmount(() => {
       {{ state.download ? t('world.downloading', { percent: Math.floor((100 * state.download.done) / Math.max(1, state.download.total)) }) : t('world.connecting', { world: world.name }) }}
     </div>
     <div
-      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !outfitsOpen && !emotesOpen && !menu && !asking && !paused"
+      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !outfitsOpen && !emotesOpen && !keysOpen && !menu && !asking && !paused"
       class="center whud hint"
       @click="look"
     >
       {{ t('world.clickToLook') }}
+      <span class="muted">· {{ t('world.keysHint', { key: keyLabel(helpKey, t) }) }}</span>
     </div>
     <div
       v-if="refusedText"
@@ -823,6 +848,13 @@ onBeforeUnmount(() => {
           {{ t('home.settings') }}
         </button>
         <button
+          type="button"
+          data-test="world-keys"
+          @click="menuKeys"
+        >
+          {{ t('help.keys.title') }}
+        </button>
+        <button
           v-if="!ticket.local"
           type="button"
           data-test="report-world"
@@ -838,6 +870,17 @@ onBeforeUnmount(() => {
           {{ t('world.leave') }}
         </button>
       </div>
+    </div>
+
+    <div
+      v-if="keysOpen && !paused"
+      class="center"
+    >
+      <KeysHelp
+        :keys="settings.keys"
+        closable
+        @close="toggleKeys"
+      />
     </div>
 
     <ReportForm
@@ -871,9 +914,9 @@ onBeforeUnmount(() => {
 .whud {
   position: absolute;
   padding: 6px 10px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 0.45);
-  color: #f2f2f4;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--bright);
   pointer-events: none;
 }
 
@@ -891,7 +934,7 @@ onBeforeUnmount(() => {
   max-width: calc(100vw - 24px);
   text-align: center;
   z-index: 3;
-  border: 1px solid #f9cd26;
+  border: 1px solid var(--accent);
 }
 
 .small {
@@ -932,9 +975,8 @@ onBeforeUnmount(() => {
 .lines li {
   margin-top: 2px;
   padding: 2px 8px;
-  border-radius: 3px;
-  background: rgb(0 0 0 / 0.45);
-  color: #f2f2f4;
+  background: var(--panel);
+  color: var(--bright);
   overflow-wrap: anywhere;
 }
 
@@ -1008,14 +1050,13 @@ onBeforeUnmount(() => {
 }
 
 .badge.friend {
-  background: var(--ok, #2e7d32);
+  background: var(--ok);
 }
 
 .badge {
   padding: 0 6px;
-  border-radius: 3px;
-  background: var(--accent, #3a6ea5);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-fg);
   font-size: 0.8em;
 }
 </style>
