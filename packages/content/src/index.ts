@@ -88,3 +88,4 @@ export {
   SLOT_REPLACES,
   SLOTS,
 } from './item.ts';
+export { compositeSkin, LAYER_KINDS, LayerError, type LayerKind, type RgbaImage, type SkinComposite, type SkinLayer } from './layers.ts';
