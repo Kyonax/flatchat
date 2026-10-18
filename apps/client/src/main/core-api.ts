@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 // The client's side of the core's API (apps/core): sign-in requests, the code exchange, refresh,
 // sign-out, the account, the world browser (the public list, a world by its id, favourites) and
-// connect tokens. Only the main process talks to the
+// connect tokens; avatars, the standard bodies, items and outfits. Only the main process talks to the
 // core; the page never holds an account token. `fetch` is injected so tests need no network.
+import { BODY_KITS, type BodyKit, fitWornAdjust, type Slot, SLOTS, type WornAdjust } from '@flatchat/content';
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -105,10 +106,88 @@ export interface AvatarItem {
   manifest: string | null;
   createdAt: string;
   wearing: boolean;
+  /** The standard body it is (S5.05), when it is one. */
+  kit: BodyKit | null;
 }
 
 const STATUSES = new Set(['uploading', 'converting', 'ready', 'refused', 'failed']);
 const HEX64 = /^[0-9a-f]{64}$/;
+const isKit = (v: unknown): v is BodyKit => typeof v === 'string' && (BODY_KITS as readonly string[]).includes(v);
+const lines = (v: unknown, n = 10): string[] => (Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string').slice(0, n).map((p) => p.slice(0, 300)) : []);
+
+/** One of the account's items (S5.05). */
+export interface ItemEntry {
+  id: string;
+  name: string;
+  status: AvatarItem['status'];
+  slot: Slot | null;
+  /** The standard bodies it fits; none for an attachment, which goes on any avatar. */
+  fits: BodyKit[];
+  problems: string[];
+  warnings: string[];
+  manifest: string | null;
+  createdAt: string;
+}
+
+/** Keeps only well-formed items from the core's answer. */
+export function cleanItems(raw: unknown): ItemEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 500).flatMap((a): ItemEntry[] => {
+    const v = a as Record<string, unknown>;
+    if (typeof v['id'] !== 'string' || !/^[0-9a-f-]{36}$/.test(v['id']) || typeof v['status'] !== 'string' || !STATUSES.has(v['status'])) return [];
+    return [
+      {
+        id: v['id'],
+        name: typeof v['name'] === 'string' ? v['name'].slice(0, 64) : '',
+        status: v['status'] as ItemEntry['status'],
+        slot: typeof v['slot'] === 'string' && v['slot'] in SLOTS ? (v['slot'] as Slot) : null,
+        fits: Array.isArray(v['fits']) ? v['fits'].filter(isKit) : [],
+        problems: lines(v['problems']),
+        warnings: lines(v['warnings']),
+        manifest: typeof v['manifest'] === 'string' && HEX64.test(v['manifest']) ? v['manifest'] : null,
+        createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
+      },
+    ];
+  });
+}
+
+/** A worn item as an outfit keeps it and the protocol carries it (S5.05). */
+export interface WornEntry {
+  item: string;
+  adjust?: WornAdjust;
+}
+
+/** One of the account's saved outfits (S5.05). */
+export interface OutfitEntry {
+  id: string;
+  name: string;
+  items: WornEntry[];
+  updatedAt: string;
+}
+
+/** A worn list from anywhere (the core, the settings file, the page): only well-formed entries,
+ *  each adjustment fitted to the limits, 16 at most. */
+export function cleanWorn(raw: unknown): WornEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WornEntry[] = [];
+  for (const e of raw.slice(0, 16)) {
+    const v = (e ?? {}) as Record<string, unknown>;
+    if (typeof v['item'] !== 'string' || !HEX64.test(v['item']) || out.some((w) => w.item === v['item'])) continue;
+    const a = v['adjust'] as Record<string, unknown> | undefined;
+    const num = (k: string, d: number): number => (typeof a?.[k] === 'number' ? (a[k] as number) : d);
+    out.push(a && typeof a === 'object' ? { item: v['item'], adjust: fitWornAdjust({ x: num('x', 0), y: num('y', 0), z: num('z', 0), rx: num('rx', 0), ry: num('ry', 0), rz: num('rz', 0), scale: num('scale', 100) }) } : { item: v['item'] });
+  }
+  return out;
+}
+
+export function cleanOutfits(raw: unknown): OutfitEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 30).flatMap((o): OutfitEntry[] => {
+    const v = o as Record<string, unknown>;
+    if (typeof v['id'] !== 'string' || !/^[0-9a-f-]{36}$/.test(v['id']) || typeof v['name'] !== 'string') return [];
+    return [{ id: v['id'], name: v['name'].slice(0, 64), items: cleanWorn(v['items']), updatedAt: typeof v['updatedAt'] === 'string' ? v['updatedAt'] : '' }];
+  });
+}
 
 /** Keeps only well-formed avatars from the core's answer. */
 export function cleanAvatars(raw: unknown): AvatarItem[] {
@@ -126,6 +205,7 @@ export function cleanAvatars(raw: unknown): AvatarItem[] {
         manifest: typeof v['manifest'] === 'string' && HEX64.test(v['manifest']) ? v['manifest'] : null,
         createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
         wearing: v['wearing'] === true,
+        kit: isKit(v['kit']) ? v['kit'] : null,
       },
     ];
   });
@@ -372,8 +452,9 @@ export class CoreApi {
     return { id: r.id, url: this.onCore(r.upload.url) };
   }
 
-  /** The file to its slot. Only the core's own links are followed (its R2 store's come later). */
-  async sendAvatar(url: string, bytes: Uint8Array): Promise<void> {
+  /** A file to its slot (an avatar's, an item's). Only the core's own links are followed (its R2
+   *  store's come later). */
+  async sendUpload(url: string, bytes: Uint8Array): Promise<void> {
     const target = this.onCore(url);
     let res: Response;
     try {
@@ -397,12 +478,65 @@ export class CoreApi {
     await this.call('DELETE', `/api/v1/avatars/${id}`, undefined, access);
   }
 
-  /** A worn avatar's manifest and signed links to its files. */
-  async avatarFiles(access: string, manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+  /** A worn avatar's manifest and signed links to its files, and the standard body it is. */
+  async avatarFiles(access: string, manifest: string): Promise<{ manifest: unknown; links: Record<string, string>; kit?: BodyKit }> {
     if (!HEX64.test(manifest)) throw new CoreError(400, 'bad-request', 'not a manifest hash');
-    const r = await this.call<{ manifest?: unknown; links?: unknown }>('GET', `/api/v1/avatar-files/${manifest}`, undefined, access);
-    const links = (r.links && typeof r.links === 'object' ? r.links : {}) as Record<string, unknown>;
-    return { manifest: r.manifest, links: Object.fromEntries(Object.entries(links).filter((e): e is [string, string] => typeof e[1] === 'string').map(([k, v]) => [k, this.onCore(v)])) };
+    const r = await this.call<{ manifest?: unknown; links?: unknown; kit?: unknown }>('GET', `/api/v1/avatar-files/${manifest}`, undefined, access);
+    return { manifest: r.manifest, links: this.linksOf(r.links), ...(isKit(r.kit) ? { kit: r.kit } : {}) };
+  }
+
+  private linksOf(raw: unknown): Record<string, string> {
+    const links = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(links).filter((e): e is [string, string] => typeof e[1] === 'string').map(([k, v]) => [k, this.onCore(v)]));
+  }
+
+  // ---------------------------------------------------------------- standard bodies, items and outfits (S5.05)
+
+  /** One of the standard bodies as the account's avatar: ready, or converting. */
+  async takeKit(access: string, kit: BodyKit): Promise<{ id: string; status: 'ready' | 'converting' }> {
+    const r = await this.call<{ id?: unknown; status?: unknown }>('POST', '/api/v1/avatars/kit', { kit }, access);
+    if (typeof r.id !== 'string' || !/^[0-9a-f-]{36}$/.test(r.id)) throw new CoreError(502, 'bad-answer', 'the core sent no avatar');
+    return { id: r.id, status: r.status === 'ready' ? 'ready' : 'converting' };
+  }
+
+  async items(access: string): Promise<ItemEntry[]> {
+    return cleanItems((await this.call<{ items?: unknown }>('GET', '/api/v1/items', undefined, access)).items);
+  }
+
+  async itemSlot(access: string, file: { name: string; bytes: number; sha256: string }): Promise<{ id: string; url: string }> {
+    const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown } }>('POST', '/api/v1/items', file, access);
+    if (typeof r.id !== 'string' || typeof r.upload?.url !== 'string' || r.upload.method !== 'PUT') throw new CoreError(502, 'bad-answer', 'the core sent no upload slot');
+    return { id: r.id, url: this.onCore(r.upload.url) };
+  }
+
+  async deleteItem(access: string, id: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an item id');
+    await this.call('DELETE', `/api/v1/items/${id}`, undefined, access);
+  }
+
+  /** A worn item's manifest and signed links to its fits (by body) or its prop. */
+  async itemFiles(access: string, manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    if (!HEX64.test(manifest)) throw new CoreError(400, 'bad-request', 'not a manifest hash');
+    const r = await this.call<{ manifest?: unknown; links?: unknown }>('GET', `/api/v1/item-files/${manifest}`, undefined, access);
+    return { manifest: r.manifest, links: this.linksOf(r.links) };
+  }
+
+  async outfits(access: string): Promise<OutfitEntry[]> {
+    return cleanOutfits((await this.call<{ outfits?: unknown }>('GET', '/api/v1/outfits', undefined, access)).outfits);
+  }
+
+  /** Saves an outfit, new (`id` null) or in place of one. */
+  async saveOutfit(access: string, id: string | null, outfit: { name: string; items: WornEntry[] }): Promise<OutfitEntry> {
+    if (id !== null && !/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an outfit id');
+    const r = await this.call<unknown>(id ? 'PUT' : 'POST', id ? `/api/v1/outfits/${id}` : '/api/v1/outfits', { name: outfit.name.slice(0, 64), items: cleanWorn(outfit.items) }, access);
+    const saved = cleanOutfits([r])[0];
+    if (!saved) throw new CoreError(502, 'bad-answer', 'the core sent no outfit');
+    return saved;
+  }
+
+  async deleteOutfit(access: string, id: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an outfit id');
+    await this.call('DELETE', `/api/v1/outfits/${id}`, undefined, access);
   }
 
   /** A file through a signed link, at most FILE_MAX bytes. */

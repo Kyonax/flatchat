@@ -39,6 +39,34 @@ interface FlatchatAvatar {
   manifest: string | null;
   createdAt: string;
   wearing: boolean;
+  /** The standard body it is (S5.05). */
+  kit: import('@flatchat/content').BodyKit | null;
+}
+
+/** One of the account's items (S5.05). */
+interface FlatchatItem {
+  id: string;
+  name: string;
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  slot: import('@flatchat/content').Slot | null;
+  fits: Array<import('@flatchat/content').BodyKit>;
+  problems: string[];
+  warnings: string[];
+  manifest: string | null;
+  createdAt: string;
+}
+
+/** A worn item: its manifest's SHA-256, and a prop's adjustment (cm, degrees, percent). */
+interface FlatchatWorn {
+  item: string;
+  adjust?: import('@flatchat/content').WornAdjust;
+}
+
+interface FlatchatOutfit {
+  id: string;
+  name: string;
+  items: FlatchatWorn[];
+  updatedAt: string;
 }
 
 interface FlatchatPerson {
@@ -85,7 +113,16 @@ interface FlatchatBridge {
   uploadAvatar(): Promise<FlatchatResult<{ id: string }>>;
   wearAvatar(id: string | null): Promise<FlatchatResult<object>>;
   deleteAvatar(id: string): Promise<FlatchatResult<object>>;
-  avatarFile(manifest: string, level: 'manifest' | 'thumbnail' | 'lod0' | 'lod1' | 'lod2' | 'impostor'): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AvatarManifest; bytes: ArrayBuffer }>>;
+  avatarFile(manifest: string, level: 'manifest' | 'thumbnail' | 'lod0' | 'lod1' | 'lod2' | 'impostor'): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AvatarManifest; bytes: ArrayBuffer; kit?: import('@flatchat/content').BodyKit }>>;
+  // Standard bodies, items and outfits (S5.05).
+  takeKit(kit: import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ id: string; status: 'ready' | 'converting' }>>;
+  items(): Promise<FlatchatResult<{ items: FlatchatItem[] }>>;
+  uploadItem(): Promise<FlatchatResult<{ id: string }>>;
+  deleteItem(id: string): Promise<FlatchatResult<object>>;
+  itemFile(manifest: string, part: 'manifest' | 'prop' | import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ manifest: import('@flatchat/content').ItemManifest; bytes?: ArrayBuffer }>>;
+  outfits(): Promise<FlatchatResult<{ outfits: FlatchatOutfit[] }>>;
+  saveOutfit(id: string | null, name: string, items: FlatchatWorn[]): Promise<FlatchatResult<{ outfit: FlatchatOutfit }>>;
+  deleteOutfit(id: string): Promise<FlatchatResult<object>>;
   // Appeals against a world's ban (S3.07).
   appealBan(worldId: string, reason: string, text: string): Promise<FlatchatResult<object>>;
   banAppeal(worldId: string): Promise<FlatchatResult<{ appeal: { status: 'pending' | 'upheld' | 'reversed'; note: string } | null }>>;

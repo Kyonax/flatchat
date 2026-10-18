@@ -49,6 +49,15 @@ contextBridge.exposeInMainWorld('flatchat', {
   wearAvatar: (id: string | null): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:wear', id),
   deleteAvatar: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:delete', id),
   avatarFile: (manifest: string, level: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatar-file', manifest, level),
+  // Standard bodies, items and outfits (S5.05).
+  takeKit: (kit: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:kit', kit),
+  items: (): Promise<unknown> => ipcRenderer.invoke('flatchat:items'),
+  uploadItem: (): Promise<unknown> => ipcRenderer.invoke('flatchat:items:upload'),
+  deleteItem: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:items:delete', id),
+  itemFile: (manifest: string, part: string): Promise<unknown> => ipcRenderer.invoke('flatchat:item-file', manifest, part),
+  outfits: (): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits'),
+  saveOutfit: (id: string | null, name: string, items: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:save', id, name, items),
+  deleteOutfit: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:delete', id),
   banAppeal: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:ban-appeal', worldId),
   // Offline mode (S2.13): a world in the main process, its messages over IPC.
   offlineWorlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-worlds'),

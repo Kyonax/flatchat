@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AvatarsPanel from './AvatarsPanel.vue';
+import ItemsPanel from './ItemsPanel.vue';
 import WorldRow from './WorldRow.vue';
 
 // The world browser (S2.09, Q-L4, Q-L11): join by a world's ID, the account's favourites, and the
@@ -286,6 +287,7 @@ onMounted(load);
         </p>
       </template>
       <AvatarsPanel />
+      <ItemsPanel />
       <template v-if="reports.length > 0">
         <h2>{{ t('home.reports') }}</h2>
         <ul

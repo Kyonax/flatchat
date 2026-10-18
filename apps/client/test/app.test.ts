@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
-import { cleanAvatars, cleanIceServers, cleanWorlds, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
+import { cleanAvatars, cleanIceServers, cleanItems, cleanOutfits, cleanWorlds, cleanWorn, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
 import { listOffline } from '../src/main/offline';
 import en from '../src/renderer/src/i18n/en';
@@ -241,15 +241,33 @@ describe('avatars on the client side (S4.01, S4.04)', () => {
     const id = '00000000-0000-4000-8000-0000000000aa';
     expect(
       cleanAvatars([
-        { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true },
+        { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true, kit: 'feminine' },
         { id: 'nope', status: 'ready' },
         { id, status: 'exploded' },
-        { id, name: 7, status: 'refused', problems: ['no humanoid', 3], manifest: 'not-a-hash' },
+        { id, name: 7, status: 'refused', problems: ['no humanoid', 3], manifest: 'not-a-hash', kit: 'robot' },
       ]),
     ).toEqual([
-      { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true },
-      { id, name: '', status: 'refused', rank: null, problems: ['no humanoid'], manifest: null, createdAt: '', wearing: false },
+      { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true, kit: 'feminine' },
+      { id, name: '', status: 'refused', rank: null, problems: ['no humanoid'], manifest: null, createdAt: '', wearing: false, kit: null },
     ]);
+  });
+
+  it('keeps only well-formed items, outfits and worn lists (S5.05), each adjustment within the limits', () => {
+    const id = '00000000-0000-4000-8000-0000000000bb';
+    const hash = 'b'.repeat(64);
+    expect(
+      cleanItems([
+        { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'robot', 'neutral'], problems: [], warnings: ['2 points near the hem', 4], manifest: hash, createdAt: 'x' },
+        { id, status: 'ready', slot: 'cape' },
+        { id: 'nope', status: 'ready' },
+      ]),
+    ).toEqual([
+      { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'neutral'], problems: [], warnings: ['2 points near the hem'], manifest: hash, createdAt: 'x' },
+      { id, name: '', status: 'ready', slot: null, fits: [], problems: [], warnings: [], manifest: null, createdAt: '' },
+    ]);
+    expect(cleanWorn([{ item: hash, adjust: { x: 40, y: 0, z: 0, rx: 90, ry: 0, rz: 0, scale: 300 } }, { item: hash }, { item: 'not-a-hash' }, 'junk'])).toEqual([{ item: hash, adjust: { x: 10, y: 0, z: 0, rx: 45, ry: 0, rz: 0, scale: 125 } }]);
+    expect(cleanWorn(Array.from({ length: 20 }, (_, i) => ({ item: i.toString(16).padStart(64, '0') })))).toHaveLength(16);
+    expect(cleanOutfits([{ id, name: 'Day', items: [{ item: hash }], updatedAt: 't' }, { id, name: 3 }])).toEqual([{ id, name: 'Day', items: [{ item: hash }], updatedAt: 't' }]);
   });
 
   it('uploads to the slot the core gives, follows only the core’s own links, and takes files only within their size', async () => {
@@ -265,7 +283,7 @@ describe('avatars on the client side (S4.01, S4.04)', () => {
     };
     const api = new CoreApi(coreBase('https://core.example.org')!, fetchFake);
     const s = await api.avatarSlot('tok', { name: 'M', bytes: 30, sha256: 'b'.repeat(64) });
-    await api.sendAvatar(s.url, new Uint8Array(30));
+    await api.sendUpload(s.url, new Uint8Array(30));
     expect(calls).toEqual(['POST https://core.example.org/api/v1/avatars', `PUT ${slot}`]);
     slot = 'https://evil.example.com/steal';
     await expect(api.avatarSlot('tok', { name: 'M', bytes: 30, sha256: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'bad-answer' });

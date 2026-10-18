@@ -6,7 +6,8 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type JoinTicket, type MyReport, type Person, type ReportBody, type WorldSummary } from './core-api';
+import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type ItemEntry, type JoinTicket, type MyReport, type OutfitEntry, type Person, type ReportBody, type WornEntry, type WorldSummary } from './core-api';
+import type { BodyKit } from '@flatchat/content';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -203,7 +204,7 @@ export class Auth {
   /** Uploads a file: its slot first, then the file to the slot's link. */
   async uploadAvatar(name: string, bytes: Uint8Array): Promise<string> {
     const slot = await this.api.avatarSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
-    await this.api.sendAvatar(slot.url, bytes);
+    await this.api.sendUpload(slot.url, bytes);
     return slot.id;
   }
 
@@ -215,8 +216,44 @@ export class Auth {
     return this.api.deleteAvatar(await this.access(), id);
   }
 
-  async avatarFiles(manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+  async avatarFiles(manifest: string): Promise<{ manifest: unknown; links: Record<string, string>; kit?: BodyKit }> {
     return this.api.avatarFiles(await this.access(), manifest);
+  }
+
+  // Standard bodies, items and outfits (S5.05).
+  async takeKit(kit: BodyKit): Promise<{ id: string; status: 'ready' | 'converting' }> {
+    return this.api.takeKit(await this.access(), kit);
+  }
+
+  async items(): Promise<ItemEntry[]> {
+    return this.api.items(await this.access());
+  }
+
+  /** Asks for a slot and sends the file there; the core converts it. Returns the item's id. */
+  async uploadItem(name: string, bytes: Uint8Array): Promise<string> {
+    const slot = await this.api.itemSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+    await this.api.sendUpload(slot.url, bytes);
+    return slot.id;
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    return this.api.deleteItem(await this.access(), id);
+  }
+
+  async itemFiles(manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    return this.api.itemFiles(await this.access(), manifest);
+  }
+
+  async outfits(): Promise<OutfitEntry[]> {
+    return this.api.outfits(await this.access());
+  }
+
+  async saveOutfit(id: string | null, outfit: { name: string; items: WornEntry[] }): Promise<OutfitEntry> {
+    return this.api.saveOutfit(await this.access(), id, outfit);
+  }
+
+  async deleteOutfit(id: string): Promise<void> {
+    return this.api.deleteOutfit(await this.access(), id);
   }
 
   async file(url: string): Promise<Uint8Array> {

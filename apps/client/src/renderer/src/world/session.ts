@@ -11,7 +11,7 @@
 // hello and in `appearance`; everyone is drawn, and the camera placed, at the height the world
 // fitted (the roster's).
 import { type Collider, decodeColliders } from '@flatchat/content';
-import { decodeCellBlock, type Message, type MessageOf, toHex } from '@flatchat/protocol';
+import { decodeCellBlock, fromHex, type Message, type MessageOf, toHex } from '@flatchat/protocol';
 import { BODY, type MoveInput, type WorldMap } from '@flatchat/sim';
 import * as THREE from 'three/webgpu';
 import type { Settings } from '../../../shared/settings';
@@ -19,7 +19,7 @@ import { JoinRefused, WorldConnection } from '../net/connection';
 import { VoiceChain } from '../voice/chain';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
-import { AvatarLayer, type AvatarState } from './avatar-layer';
+import { AvatarLayer, type AvatarState, type Worn } from './avatar-layer';
 import { FrameTuner, type MeasuredTier, tierOf, viewerPolicy } from './avatar-policy';
 import type { Expression, HandPose } from './avatar-pose';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
@@ -109,6 +109,10 @@ export interface WorldState {
   blocked: string[];
   /** This account is under 18 (S3.10): its client keeps a minor's defaults too. */
   minor: boolean;
+  /** What this player wears (S5.05): what it asked for, then what the world fitted. */
+  outfit: Worn[];
+  /** Items drawn on avatars now, everyone's together (S5.05). */
+  dressed: number;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -191,6 +195,12 @@ export class WorldSession {
   private chatTokens = CHAT_BURST;
   private chatAt = performance.now();
   private rosterSeen = false;
+  /** What this player wants to wear and when the last change went: the world takes one a second
+   *  (S5.05), so a quicker toggle waits and goes as the latest. */
+  private wantOutfit: Worn[] | undefined;
+  private outfitSentAt = -Infinity;
+  private outfitTimer: ReturnType<typeof setTimeout> | undefined;
+  private outfitRestored = false;
   private closed = false;
   /** Set while the page's chat box has focus: keys go to the text, not the avatar. */
   typing = false;
@@ -252,6 +262,8 @@ export class WorldSession {
       outgoing: [],
       blocked: [],
       minor: false,
+      outfit: [],
+      dressed: 0,
     });
   }
 
@@ -278,11 +290,21 @@ export class WorldSession {
     // Avatars come from the core (S4.05): an offline world has none, and keeps the placeholders.
     const bridge = window.flatchat;
     if (bridge?.avatarFile) {
-      this.avatarLayer = new AvatarLayer(renderer, async (manifest, level) => {
-        const r = await bridge.avatarFile(manifest, level);
-        if (!r.ok) throw new Error(r.error);
-        return { bytes: r.bytes, manifest: r.manifest };
-      });
+      this.avatarLayer = new AvatarLayer(
+        renderer,
+        async (manifest, level) => {
+          const r = await bridge.avatarFile(manifest, level);
+          if (!r.ok) throw new Error(r.error);
+          return { bytes: r.bytes, manifest: r.manifest, ...(r.kit ? { kit: r.kit } : {}) };
+        },
+        bridge.itemFile
+          ? async (manifest, part) => {
+              const r = await bridge.itemFile(manifest, part);
+              if (!r.ok) throw new Error(r.error);
+              return { manifest: r.manifest, ...(r.bytes ? { bytes: r.bytes } : {}) };
+            }
+          : undefined,
+      );
       view.scene.add(this.avatarLayer.group);
       this.detachers.push(() => this.avatarLayer?.dispose());
     }
@@ -347,6 +369,8 @@ export class WorldSession {
     }
     this.physics!.teleport(this.me.x, this.me.y, this.me.z);
     this.state.status = 'joined';
+    // An outfit restored at the first roster waited for this (S5.05).
+    this.flushOutfit();
     this.conn.onClose((reason) => {
       if (this.closed || this.state.status !== 'joined') return;
       this.state.status = 'lost';
@@ -539,7 +563,10 @@ export class WorldSession {
     this.frames += 1;
     if (now - this.fpsAt >= 500) {
       this.state.fps = Math.round((this.frames * 1000) / (now - this.fpsAt));
-      if (this.avatarLayer) this.state.avatars = this.avatarLayer.counts();
+      if (this.avatarLayer) {
+        this.state.avatars = this.avatarLayer.counts();
+        this.state.dressed = this.avatarLayer.dressedItems();
+      }
       this.frames = 0;
       this.fpsAt = now;
       this.remotes.prune(now - 5000);
@@ -587,6 +614,29 @@ export class WorldSession {
       friends,
       me: this.entity,
     });
+  }
+
+  /** What this player wears now (S5.05): sent to the world, which fits it and shows everyone. The
+   *  world takes one change a second; a quicker one waits and goes as the latest. */
+  wearOutfit(items: readonly Worn[]): void {
+    this.wantOutfit = items.slice(0, 16).map((w) => ({ item: w.item, ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
+    this.state.outfit = this.wantOutfit;
+    this.flushOutfit();
+  }
+
+  private flushOutfit(): void {
+    if (!this.wantOutfit || this.state.status !== 'joined' || !this.conn) return;
+    const wait = this.outfitSentAt + 1100 - performance.now();
+    if (wait > 0) {
+      this.outfitTimer ??= setTimeout(() => {
+        this.outfitTimer = undefined;
+        this.flushOutfit();
+      }, wait);
+      return;
+    }
+    this.conn.send({ type: 'outfit', items: this.wantOutfit.map((w) => ({ item: fromHex(w.item), ...(w.adjust ? { adjust: w.adjust } : {}) })) });
+    this.outfitSentAt = performance.now();
+    this.wantOutfit = undefined;
   }
 
   /** A new face or hand pose (S4.07): drawn at once here, sent to the world for everyone else. */
@@ -734,6 +784,18 @@ export class WorldSession {
       this.faces.set(p.entity, p.face);
       this.trusts.set(p.entity, p.trust);
       this.avatarLayer?.reshape(p.entity, p.proportions);
+      // What they wear (S5.05), as the world fitted it.
+      const outfit = p.outfit.map((w) => ({ item: toHex(w.item), ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
+      this.avatarLayer?.dress(p.entity, outfit);
+      if (p.entity === this.entity) {
+        if (!this.wantOutfit) this.state.outfit = outfit;
+        // At the first roster: what this account wore last time, from the settings.
+        if (!this.outfitRestored) {
+          this.outfitRestored = true;
+          const saved = this.settings.avatar.worn[p.account];
+          if (saved && saved.length > 0 && outfit.length === 0) this.wearOutfit(saved);
+        }
+      }
       // A change lists a player again (a new height, a role): only a new entity is an arrival.
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
@@ -1028,6 +1090,7 @@ export class WorldSession {
     this.navigation?.dispose();
     this.sounds?.close();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
+    if (this.outfitTimer) clearTimeout(this.outfitTimer);
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();
     void this.renderer?.setAnimationLoop(null);

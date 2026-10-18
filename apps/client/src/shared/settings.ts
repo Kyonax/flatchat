@@ -2,8 +2,9 @@
 // The player's settings, shared by the main process (which keeps them in a file) and the page (which
 // shows and changes them). Pure: no Node.js, no Electron, no DOM. Anything malformed falls back to
 // its default field by field, so a damaged file never stops the client.
+import { fitWornAdjust, type WornAdjust } from '@flatchat/content';
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'outfits', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -38,6 +39,8 @@ export const DEFAULT_KEYS: Bindings = {
   relaxed: ['Digit4'],
   surprised: ['Digit5'],
   hands: ['KeyR'],
+  // The outfits quick menu (S5.05): saved outfits and the account's items, on and off.
+  outfits: ['KeyO'],
   menu: ['Escape'],
 };
 
@@ -103,6 +106,32 @@ export interface AvatarSettings {
   autoTune: boolean;
   /** The avatar's proportions (S4.10), each a share of the avatar as made, 0.8 to 1.25. */
   proportions: { width: number; arms: number; legs: number; head: number };
+  /** What each account on this computer wears now (S5.05), by account id: sent to every world it
+   *  joins. 20 accounts, 16 items each, at most. */
+  worn: Record<string, WornItem[]>;
+}
+
+/** A worn item: its manifest's SHA-256, and a prop's adjustment (cm, degrees, percent). */
+export interface WornItem {
+  item: string;
+  adjust?: WornAdjust;
+}
+
+/** A worn list made safe: well-formed entries, each once, adjustments within the limits, 16 at most. */
+export function cleanWornItems(raw: unknown): WornItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WornItem[] = [];
+  for (const e of raw.slice(0, 16)) {
+    const v = obj(e);
+    if (typeof v['item'] !== 'string' || !/^[0-9a-f]{64}$/.test(v['item']) || out.some((w) => w.item === v['item'])) continue;
+    const a = v['adjust'];
+    if (a && typeof a === 'object') {
+      const x = obj(a);
+      const n = (k: string, d: number): number => (typeof x[k] === 'number' ? (x[k] as number) : d);
+      out.push({ item: v['item'], adjust: fitWornAdjust({ x: n('x', 0), y: n('y', 0), z: n('z', 0), rx: n('rx', 0), ry: n('ry', 0), rz: n('rz', 0), scale: n('scale', 100) }) });
+    } else out.push({ item: v['item'] });
+  }
+  return out;
 }
 
 
@@ -133,7 +162,7 @@ export function defaultSettings(): Settings {
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
-    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 } },
+    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
     sound: { world: 0.8, ui: 0.5 },
   };
 }
@@ -210,6 +239,12 @@ export function cleanSettings(raw: unknown): Settings {
         const share = (v: unknown): number => Math.round(num(v, PROPORTION_RANGE.min, PROPORTION_RANGE.max, 1) * 100) / 100;
         return { width: share(p['width']), arms: share(p['arms']), legs: share(p['legs']), head: share(p['head']) };
       })(),
+      worn: Object.fromEntries(
+        Object.entries(obj(avatar['worn']))
+          .filter(([account]) => ACCOUNT_ID.test(account))
+          .slice(0, 20)
+          .map(([account, items]) => [account, cleanWornItems(items)]),
+      ),
     },
     sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui) },
   };

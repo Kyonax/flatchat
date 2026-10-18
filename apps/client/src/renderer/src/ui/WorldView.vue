@@ -12,6 +12,7 @@ import BanAppeal from './BanAppeal.vue';
 import ReportForm from './ReportForm.vue';
 import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
+import OutfitMenu from './OutfitMenu.vue';
 
 const props = defineProps<{
   world: FlatchatWorld;
@@ -33,6 +34,8 @@ const tooFast = ref(false);
 const menu = ref(false);
 /** The People panel (S3.06): who is here, their roles, and the roles this player may give. */
 const peopleOpen = ref(false);
+/** The outfits quick menu (S5.05). */
+const outfitsOpen = ref(false);
 /** The person a moderator is acting on in the panel (S3.07), and the choice and reason. */
 const moderating = ref('');
 const modChoice = ref<(typeof MODERATION)[number]['id']>('kick');
@@ -87,7 +90,7 @@ const refusedDetail = computed(() => {
 });
 /** While the menu, the chat box, the People panel or a report is open, keys go to the page (its
  *  buttons and fields), not to the avatar: the session leaves them alone. */
-const overlay = computed(() => menu.value || chatOpen.value || peopleOpen.value || reporting.value !== undefined);
+const overlay = computed(() => menu.value || chatOpen.value || peopleOpen.value || outfitsOpen.value || reporting.value !== undefined);
 
 /** Banned here, now or before: the player may appeal to the world's owner (S3.07). */
 const banned = computed(() => (state.value?.status === 'refused' || state.value?.status === 'lost') && state.value.reason === 'banned' && !props.ticket.local);
@@ -128,6 +131,9 @@ function onKey(e: KeyboardEvent): void {
   } else if (action === 'people' || (peopleOpen.value && e.code === 'Escape')) {
     e.preventDefault();
     togglePeople();
+  } else if (action === 'outfits' || (outfitsOpen.value && e.code === 'Escape')) {
+    e.preventDefault();
+    toggleOutfits();
   } else if (action === 'menu' && !asking.value) {
     // Esc opens the menu: releasing a held pointer opens it (onLockChange), and with the pointer
     // already free there is no lock to release, so it opens here.
@@ -144,6 +150,30 @@ function togglePeople(): void {
   if (peopleOpen.value) session?.unlock();
   else session?.lock();
 }
+
+/** The outfits quick menu frees the mouse to click in it, like the People panel. */
+function toggleOutfits(): void {
+  outfitsOpen.value = !outfitsOpen.value;
+  if (outfitsOpen.value) {
+    peopleOpen.value = false;
+    session?.unlock();
+  } else session?.lock();
+}
+
+function wearOutfit(items: FlatchatWorn[]): void {
+  session?.wearOutfit(items);
+}
+
+// What this account wears goes into the settings by account (S5.05): the next world gets it too.
+watch(
+  () => JSON.stringify(state.value?.outfit ?? null),
+  () => {
+    const me = state.value?.people.find((p) => p.me);
+    const outfit = state.value?.outfit;
+    if (!me || !outfit || JSON.stringify(props.settings.avatar.worn[me.account] ?? []) === JSON.stringify(outfit)) return;
+    emit('change', { avatar: { ...props.settings.avatar, worn: { ...props.settings.avatar.worn, [me.account]: outfit } } });
+  },
+);
 
 function startModerating(p: Person): void {
   moderating.value = moderating.value === p.account ? '' : p.account;
@@ -207,13 +237,14 @@ function give(p: Person, role: string): void {
 function onLockChange(): void {
   // Esc releases the pointer (the browser's own key): that opens the menu, unless chat, the
   // People panel or a report took it.
-  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
+  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
 }
 
 function look(): void {
   if (state.value?.status !== 'joined' || chatOpen.value || asking.value) return;
   menu.value = false;
   peopleOpen.value = false;
+  outfitsOpen.value = false;
   session?.lock();
 }
 
@@ -313,6 +344,13 @@ onBeforeUnmount(() => {
       :data-lod2="state.avatars.lod2"
       :data-impostor="state.avatars.impostor"
     />
+    <span
+      v-if="state?.status === 'joined'"
+      hidden
+      data-test="outfit"
+      :data-items="state.outfit.length"
+      :data-dressed="state.dressed"
+    />
     <div
       v-if="state?.notice"
       class="whud toast"
@@ -338,7 +376,7 @@ onBeforeUnmount(() => {
       {{ state.download ? t('world.downloading', { percent: Math.floor((100 * state.download.done) / Math.max(1, state.download.total)) }) : t('world.connecting', { world: world.name }) }}
     </div>
     <div
-      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !menu && !asking && !paused"
+      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !outfitsOpen && !menu && !asking && !paused"
       class="center whud hint"
       @click="look"
     >
@@ -386,6 +424,12 @@ onBeforeUnmount(() => {
       {{ t('world.heldMute') }}{{ state.heldMute ? ` · ${t('world.reason', { reason: state.heldMute })}` : '' }}
     </div>
 
+    <OutfitMenu
+      v-if="outfitsOpen && state?.status === 'joined'"
+      :outfit="state.outfit"
+      @wear="wearOutfit"
+      @close="toggleOutfits"
+    />
     <aside
       v-if="peopleOpen && state?.status === 'joined'"
       class="people card"

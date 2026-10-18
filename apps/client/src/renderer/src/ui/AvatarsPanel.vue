@@ -1,23 +1,50 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
+import { BODY_KITS, type BodyKit } from '@flatchat/content';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 // The account's avatars (S4.01): upload a VRM or a GLB (the main process opens the file dialog,
 // reads the file and sends it; the page never holds the file or the token), watch it convert, see
-// its rank or why it was refused, wear it, take it off, delete it.
+// its rank or why it was refused, wear it, take it off, delete it. And the three standard bodies
+// (S5.05), which any account wears with no upload: the one clothes are made for.
 const { t, te } = useI18n();
 const avatars = ref<FlatchatAvatar[]>([]);
 const uploading = ref(false);
 const error = ref('');
+/** A standard body taken and still converting: worn once it is ready. */
+const preparing = ref<string | undefined>(undefined);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load(): Promise<void> {
   const r = await window.flatchat?.avatars();
   if (r?.ok) avatars.value = r.avatars;
+  const waited = preparing.value ? avatars.value.find((a) => a.id === preparing.value) : undefined;
+  if (waited && waited.status !== 'converting' && waited.status !== 'uploading') {
+    preparing.value = undefined;
+    if (waited.status === 'ready') {
+      await wear(waited);
+      return;
+    }
+  }
   // While one converts, look again every few seconds.
   if (timer) clearTimeout(timer);
   if (avatars.value.some((a) => a.status === 'converting' || a.status === 'uploading')) timer = setTimeout(() => void load(), 3000);
+}
+
+async function takeKit(kit: BodyKit): Promise<void> {
+  error.value = '';
+  const r = await window.flatchat?.takeKit(kit);
+  if (!r) return;
+  if (!r.ok) {
+    error.value = failure(r.error);
+    return;
+  }
+  if (r.status === 'ready') {
+    const w = await window.flatchat?.wearAvatar(r.id);
+    if (w && !w.ok) error.value = failure(w.error);
+  } else preparing.value = r.id;
+  await load();
 }
 
 function failure(code: string): string {
@@ -75,6 +102,30 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
     >
       {{ error }}
     </p>
+    <h3>{{ t('kits.title') }}</h3>
+    <p class="muted small">
+      {{ t('kits.hint') }}
+    </p>
+    <div class="row">
+      <button
+        v-for="k in BODY_KITS"
+        :key="k"
+        type="button"
+        :data-test="`kit-${k}`"
+        :disabled="preparing !== undefined"
+        @click="takeKit(k)"
+      >
+        {{ t('kits.wear', { body: t(`kits.${k}`) }) }}
+      </button>
+    </div>
+    <p
+      v-if="preparing"
+      class="muted small"
+      role="status"
+      data-test="kit-preparing"
+    >
+      {{ t('kits.preparing') }}
+    </p>
     <p
       v-if="avatars.length === 0"
       class="muted"
@@ -90,8 +141,10 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         :key="a.id"
         data-test="avatar"
         :data-status="a.status"
+        :data-kit="a.kit ?? ''"
+        :data-wearing="a.wearing"
       >
-        <strong>{{ a.name || t('avatars.untitled') }}</strong>
+        <strong>{{ a.kit ? t('kits.named', { body: t(`kits.${a.kit}`) }) : a.name || t('avatars.untitled') }}</strong>
         ·
         <span v-if="a.status === 'ready' && a.rank">{{ te(`avatars.rank.${a.rank}`) ? t(`avatars.rank.${a.rank}`) : a.rank }}</span>
         <span v-else>{{ t(`avatars.status.${a.status}`) }}</span>
@@ -144,6 +197,13 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
 h2 {
   font-size: 1.05rem;
   margin: 16px 0 8px;
+}
+h3 {
+  font-size: 0.95rem;
+  margin: 10px 0 4px;
+}
+.row button {
+  margin-right: 6px;
 }
 li button {
   margin-left: 6px;

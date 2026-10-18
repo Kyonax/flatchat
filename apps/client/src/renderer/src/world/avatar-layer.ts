@@ -15,13 +15,20 @@
 // of one avatar share one parsed template (geometry, material and texture once on the GPU) and are
 // posed straight on their bones with three-vrm's own normalized-to-raw rule, so 200 of them cost
 // little more than their draw calls.
-import type { AvatarManifest, Level, Rank } from '@flatchat/content';
-import { rankIndex } from '@flatchat/content';
+//
+// Outfits (S5.05) go on LOD0 to LOD2: on a standard body, the clothes made for it (each fit on the
+// avatar's own bones, the regions it hides taken off the body); on any avatar, the props at their
+// points (outfit.ts). Items conflicting in the roster are settled as a toggle settles them, the one
+// worn later winning (resolveOutfit). Each item's manifest and files are parsed once and shared by
+// every avatar wearing it; one outfit is put on at a time. Impostors wear none.
+import type { AvatarManifest, BodyKit, ItemManifest, Level, Rank, Region } from '@flatchat/content';
+import { rankIndex, resolveOutfit } from '@flatchat/content';
 import type { VRM } from '@pixiv/three-vrm';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three/webgpu';
-import { disposeLevel, parseLevel } from './avatar-loader';
+import { disposeLevel, parseItemFile, parseLevel } from './avatar-loader';
 import { type BoneAngles, type Expression, gaitOf, handPose, type HandPose, locomotion, mouthShapes, strideRate } from './avatar-pose';
+import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 
 export interface AvatarState {
   entity: number;
@@ -57,7 +64,14 @@ export interface AvatarPolicy {
 
 export const DEFAULT_POLICY: AvatarPolicy = { full: 8, lower: 20, springs: 6, minRank: 'poor' };
 
-export type Fetcher = (manifest: string, level: Level) => Promise<{ bytes: ArrayBuffer; manifest: AvatarManifest }>;
+export type Fetcher = (manifest: string, level: Level) => Promise<{ bytes: ArrayBuffer; manifest: AvatarManifest; kit?: BodyKit }>;
+/** An item's manifest (`manifest`), or its manifest and one of its files: a body's fit, or the prop. */
+export type ItemFetcher = (manifest: string, part: 'manifest' | 'prop' | BodyKit) => Promise<{ manifest: ItemManifest; bytes?: ArrayBuffer }>;
+/** A worn item, as the roster gives it: its manifest's SHA-256 in hex and a prop's adjustment. */
+export interface Worn {
+  item: string;
+  adjust?: { x: number; y: number; z: number; rx: number; ry: number; rz: number; scale: number };
+}
 export interface Proportions {
   width: number;
   arms: number;
@@ -109,6 +123,15 @@ interface Entry {
   speed: number;
   last: { x: number; z: number; t: number } | undefined;
   blinkAt: number;
+  /** The standard body this avatar is (from its delivery), when it is one. */
+  kit: BodyKit | undefined;
+  /** What the player wears (S5.05), the outfit put on the current level (its key), and what was added. */
+  outfit: Worn[];
+  dressed: string | undefined;
+  worn: THREE.Object3D[];
+  wornItems: number;
+  /** Each bone's place at rest on the current level, for props. */
+  rest2: Map<string, THREE.Matrix4> | undefined;
 }
 
 const euler = new THREE.Euler();
@@ -132,10 +155,29 @@ export class AvatarLayer {
   /** Loads done and failed, for the report and the tests. */
   loads = 0;
   failures = 0;
+  /** Items that could not be put on (S5.05). */
+  itemFailures = 0;
+  private readonly fetchItem: ItemFetcher | undefined;
+  private dressing = false;
+  private readonly itemManifests = new Map<string, Promise<ItemManifest>>();
+  private readonly fits = new Map<string, Promise<FitTemplate>>();
+  private readonly props = new Map<string, Promise<THREE.Object3D>>();
+  private readonly pendingOutfits = new Map<number, Worn[]>();
 
-  constructor(renderer: THREE.WebGPURenderer, fetch: Fetcher) {
+  constructor(renderer: THREE.WebGPURenderer, fetch: Fetcher, fetchItem?: ItemFetcher) {
     this.renderer = renderer;
     this.fetch = fetch;
+    this.fetchItem = fetchItem;
+  }
+
+  /** What a player wears changed (a roster entry, S5.05). */
+  dress(entity: number, outfit: readonly Worn[]): void {
+    const list = outfit.map((w) => ({ item: w.item, ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
+    this.pendingOutfits.set(entity, list);
+    const e = this.entries.get(entity);
+    if (!e || JSON.stringify(e.outfit) === JSON.stringify(list)) return;
+    e.outfit = list;
+    e.dressed = undefined;
   }
 
   /** The avatar a player wears changed (a roster entry). */
@@ -164,6 +206,12 @@ export class AvatarLayer {
       speed: 0,
       last: undefined,
       blinkAt: 0,
+      kit: undefined,
+      outfit: this.pendingOutfits.get(entity) ?? [],
+      dressed: undefined,
+      worn: [],
+      wornItems: 0,
+      rest2: undefined,
     });
   }
 
@@ -216,6 +264,7 @@ export class AvatarLayer {
   /** A player left. */
   drop(entity: number): void {
     this.pending.delete(entity);
+    this.pendingOutfits.delete(entity);
     const e = this.entries.get(entity);
     if (!e) return;
     this.clear(e);
@@ -225,6 +274,9 @@ export class AvatarLayer {
 
   private clear(e: Entry): void {
     e.rest = new Map();
+    // The worn items share their parsed files with every other wearer: off before the level goes.
+    this.undress(e);
+    e.rest2 = undefined;
     if (e.vrm) {
       e.holder.remove(e.vrm.scene);
       disposeLevel(e.vrm);
@@ -286,6 +338,7 @@ export class AvatarLayer {
         this.place(e, s, dt, now, springs < this.policy.springs && e.level !== 'impostor' && d < FULL_WITHIN * 1.5);
         if (e.level !== 'impostor') springs += 1;
         if (!s.hidden) this.inView += 1;
+        if (e.vrm && e.dressed !== this.outfitKey(e)) this.dressUp(s.entity, e);
       }
       if (!s.hidden) drawn.add(s.entity);
     }
@@ -324,6 +377,9 @@ export class AvatarLayer {
           this.clear(e);
           e.vrm = parsed.vrm;
           e.hipsHeight = parsed.hipsHeight;
+          e.kit = got.kit;
+          // Taken while the level stands at rest: where each prop's point is measured from.
+          e.rest2 = restPlaces(parsed.vrm.scene);
           e.holder.add(parsed.vrm.scene);
         }
         e.level = level;
@@ -432,6 +488,127 @@ export class AvatarLayer {
     return undefined;
   }
 
+  /** What an entry's current level should wear: changes when the outfit or the level does. */
+  private outfitKey(e: Entry): string {
+    return `${e.level ?? ''}:${e.kit ?? ''}:${JSON.stringify(e.outfit)}`;
+  }
+
+  private undress(e: Entry): void {
+    for (const o of e.worn) o.removeFromParent();
+    e.worn = [];
+    e.wornItems = 0;
+    e.dressed = undefined;
+  }
+
+  /** Items worn on the avatars now, all players together (S5.05). */
+  dressedItems(): number {
+    let n = 0;
+    for (const e of this.entries.values()) n += e.wornItems;
+    return n;
+  }
+
+  /** Puts an entry's outfit on its current level: one outfit at a time across the layer. */
+  private dressUp(entity: number, e: Entry): void {
+    if (this.dressing || !this.fetchItem) return;
+    this.dressing = true;
+    const key = this.outfitKey(e);
+    const vrm = e.vrm!;
+    void (async () => {
+      const added: THREE.Object3D[] = [];
+      try {
+        const known = await Promise.all(
+          e.outfit.map(async (w) => {
+            try {
+              return { w, m: await this.itemManifest(w.item) };
+            } catch {
+              this.itemFailures += 1;
+              return undefined;
+            }
+          }),
+        );
+        const kept = resolveOutfit(known.filter((k): k is { w: Worn; m: ItemManifest } => k !== undefined).map((k) => ({ ...k, slot: k.m.slot, attach: k.m.attach })));
+        const hidden = new Set<Region>();
+        let items = 0;
+        for (const { w, m } of kept) {
+          try {
+            if (m.slot === 'attachment' && m.attach) {
+              const prop = (await this.prop(w.item)).clone();
+              const node = (b: string): THREE.Object3D | undefined => vrm.humanoid.getRawBoneNode(b as Parameters<VRM['humanoid']['getRawBoneNode']>[0]) ?? undefined;
+              const pivot = e.rest2 ? wearProp(prop, m.attach, node, e.rest2, e.info?.height && e.info.height > 0.3 ? e.info.height : 1.7, w.adjust) : undefined;
+              if (pivot) {
+                added.push(pivot);
+                items += 1;
+              }
+            } else if (e.kit && m.fits[e.kit]) {
+              const meshes = wearFit(await this.fit(w.item, e.kit), vrm.scene);
+              if (!meshes) throw new Error('the fit does not match the body');
+              vrm.scene.add(...meshes);
+              added.push(...meshes);
+              for (const r of m.hides) hidden.add(r);
+              items += 1;
+            }
+          } catch {
+            this.itemFailures += 1;
+          }
+        }
+        // The level changed or the outfit did while this loaded: what was added comes off again.
+        if (e.vrm !== vrm || this.outfitKey(e) !== key || this.entries.get(entity) !== e) {
+          for (const o of added) o.removeFromParent();
+          return;
+        }
+        this.undress(e);
+        vrm.scene.traverse((o) => {
+          const m = o as THREE.SkinnedMesh;
+          if (m.isSkinnedMesh && m.name !== 'flatchat-fit') hideRegions(m, hidden);
+        });
+        e.worn = added;
+        e.wornItems = items;
+        e.dressed = key;
+      } finally {
+        this.dressing = false;
+      }
+    })();
+  }
+
+  private itemManifest(hash: string): Promise<ItemManifest> {
+    let m = this.itemManifests.get(hash);
+    if (!m) {
+      m = this.fetchItem!(hash, 'manifest').then((r) => r.manifest);
+      m.catch(() => this.itemManifests.delete(hash));
+      this.itemManifests.set(hash, m);
+    }
+    return m;
+  }
+
+  private fit(hash: string, kit: BodyKit): Promise<FitTemplate> {
+    const id = `${hash}:${kit}`;
+    let t = this.fits.get(id);
+    if (!t) {
+      t = (async () => {
+        const got = await this.fetchItem!(hash, kit);
+        if (!got.bytes) throw new Error('no fit');
+        return fitTemplate(await parseItemFile(this.renderer, got.bytes, 'fit'));
+      })();
+      t.catch(() => this.fits.delete(id));
+      this.fits.set(id, t);
+    }
+    return t;
+  }
+
+  private prop(hash: string): Promise<THREE.Object3D> {
+    let t = this.props.get(hash);
+    if (!t) {
+      t = (async () => {
+        const got = await this.fetchItem!(hash, 'prop');
+        if (!got.bytes) throw new Error('no prop');
+        return parseItemFile(this.renderer, got.bytes, 'prop');
+      })();
+      t.catch(() => this.props.delete(hash));
+      this.props.set(hash, t);
+    }
+    return t;
+  }
+
   /** The layer's own state, for reports: a load under way, templates, and why loads failed. */
   status(): { busy: boolean; entries: number; templates: number; failed: number; lastError: string } {
     let failed = 0;
@@ -452,5 +629,10 @@ export class AvatarLayer {
     for (const t of this.templates.values()) void t.then((x) => disposeLevel(x.vrm)).catch(() => undefined);
     this.templates.clear();
     this.ready.clear();
+    for (const t of this.fits.values()) void t.then((x) => x.parts.forEach((p) => p.geometry.dispose())).catch(() => undefined);
+    for (const t of this.props.values()) void t.then((x) => x.traverse((o) => (o as THREE.Mesh).geometry?.dispose())).catch(() => undefined);
+    this.fits.clear();
+    this.props.clear();
+    this.itemManifests.clear();
   }
 }

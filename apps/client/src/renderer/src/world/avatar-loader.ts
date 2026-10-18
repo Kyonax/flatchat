@@ -5,7 +5,7 @@
 // only the converter's extensions, the hard limits). MToon becomes node materials on the WebGPU
 // renderer; each avatar gets one skeleton, shared texture objects and no outline pass, as spike
 // S0.09 measured a crowd needs.
-import { checkAvatarLevel, readGltf } from '@flatchat/content';
+import { checkAvatarLevel, checkItemFit, checkItemProp, readGltf } from '@flatchat/content';
 import { MToonMaterialLoaderPlugin, type VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { MToonNodeMaterial } from '@pixiv/three-vrm/nodes';
 import type * as THREE from 'three/webgpu';
@@ -55,4 +55,24 @@ export async function parseLevel(renderer: THREE.WebGPURenderer, bytes: ArrayBuf
 /** Frees what a level holds on the GPU. */
 export function disposeLevel(vrm: VRM): void {
   VRMUtils.deepDispose(vrm.scene);
+}
+
+/** Parses an item's file (S5.05): a fit (one skinned mesh on the kits' bones) or a prop (rigid
+ *  meshes), checked first with the client's own checks, its MToon materials as node materials. */
+export async function parseItemFile(renderer: THREE.WebGPURenderer, bytes: ArrayBuffer, kind: 'fit' | 'prop'): Promise<THREE.Object3D> {
+  try {
+    const json = readGltf(new Uint8Array(bytes), `${kind}.glb`).json as Record<string, unknown>;
+    if (kind === 'fit') checkItemFit(json);
+    else checkItemProp(json);
+  } catch (err) {
+    throw new AvatarLoadError(`not an item's ${kind}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const l = loader(renderer);
+  l.register((parser) => new MToonMaterialLoaderPlugin(parser, { materialType: MToonNodeMaterial }));
+  const gltf = await l.parseAsync(bytes, '');
+  gltf.scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh) mesh.frustumCulled = false;
+  });
+  return gltf.scene;
 }
