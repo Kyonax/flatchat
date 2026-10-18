@@ -14,8 +14,9 @@
 //     played again.
 //
 // A world's effects (its scenes' markers) play where the world put them, looping, owned by the
-// world. A world comes from its host, who is not trusted: each of its effects is measured here first,
-// in a worker (effects-measure.ts), and those numbers, not the host's, decide.
+// world. A world comes from its host, who is not trusted: each of its effects is checked by the
+// upload rules and measured here first, in a worker (effects-measure.ts), and those numbers, not
+// the host's, decide.
 //
 // The runtime loads only when the first effect is admitted, on the renderer's backend; it draws
 // after three's frame (effects-draw.ts).
@@ -114,14 +115,15 @@ export class EffectsLayer implements EffectSink {
   async wearWorld(e: BuiltEffect, marker: THREE.Object3D, bytes: Uint8Array): Promise<number | undefined> {
     // Loaded when a world first has effects: the measuring worker carries the WebGL build inlined.
     this.measurer ??= new (await import('./effects-measure')).EffectMeasurer();
-    let run;
+    let measured;
     try {
-      run = await this.measurer.measure(bytes, e.scale);
+      measured = await this.measurer.measure(bytes, e.scale);
     } catch {
       this.stats.refused += 1;
       return undefined;
     }
-    const fit: EffectFit = { file: e.file, bytes: bytes.length, version: 0, peak: run.peak, frames: run.frames, textures: 0, texturePixels: 0, models: 0, distortion: false, sounds: 0, scale: e.scale, updateUs: run.updateUs };
+    const { run, stats } = measured;
+    const fit: EffectFit = { file: e.file, bytes: bytes.length, ...stats, peak: run.peak, frames: run.frames, scale: e.scale, updateUs: run.updateUs };
     // Its peaks decide here. Its time is judged on this machine while it plays (the watches): the
     // dry run's update limit is for the converter's machine, and a weak laptop is slower. One
     // update the dry run saw take a tenth of a second would freeze the view as long, so that refuses.
