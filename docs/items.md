@@ -108,3 +108,13 @@ Publishing (Publish, beside one of your ready avatars or items) needs trust leve
 | Licence | A link to the licence's text (VRM's by default), and another if you like |
 
 An avatar's file states its own terms (VRoid Studio and the VRM add-ons write them): you can make them stricter, never looser. The gallery shows each entry with its makers and its licence. Take an entry out of the gallery whenever you like (deleting it does too): copies already taken stay with whoever took them. An exact copy of someone else's entry cannot be uploaded unless its licence allows copies; changed copies are caught later (fingerprints).
+
+## Stage 5's acceptance
+
+`node tools/bots/src/accept-stage5.ts` runs on every push (CI's Harness job). It uses the real core with PostgreSQL and the sandboxed converters with KTX2 on, a world server connected to the core, and bots holding the tokens the core issued. It checks four things:
+
+1. **A jacket made with the kit.** A creator makes one the way the test tee is made (`makeGarment(TEST_JACKET)` in `tools/converter/src/item/samples.ts`): each body's own surface over the chest, belly and both arms, 14 mm out. The upload converts with a fit for each body and nothing out through it in the seven reference poses. It is published to the gallery, and three players on the three standard bodies take it and wear it. Everyone sees each of them in it.
+2. **An outfit toggled.** One player takes the jacket off and puts it back on, and everyone sees each change. The quick menu sends this same message; its own buttons are the end-to-end test in CI's Linux client job.
+3. **A takedown.** A rights holder asks on the takedown form and the admin removes the jacket. It leaves the gallery, the three copies, the outfits everyone in the world sees and the delivery, and the claimant reads the decision by their reference.
+4. **A copy caught.** One fit, ripped and written as a DAE, is uploaded with its declaration. It is refused as a copy of an item taken down, and its uploader gets a strike on the admin page.
+
