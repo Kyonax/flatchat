@@ -31,6 +31,7 @@ The converter writes it into `result.json` (`{ ok, id, manifest, fingerprint }`)
 | `apps/core/src/avatars.ts`, `items.ts` | After `checkManifest`, before any file reaches the store: `readFingerprint(result.fingerprint)`, then `copyOf` (never for a kit's own conversion), refusal and a `copy` strike; the ready row keeps the fingerprint; lists show a removed row's `removal` as its problems |
 | `apps/core/src/pages.ts`, `strings.ts`, `admin-web.ts`, `app.ts` | `/takedown`, `/takedown/status` (en/es, `takedownByAddress`); the admin page's Takedown requests, Remove an avatar or item and Repeat uploads; `POST /admin/takedowns/:id`, `POST /admin/remove`; the privacy notice says fingerprints and takedown requests are kept |
 | `apps/client/src/main/core-api.ts`, `renderer/src/env.d.ts`, i18n | `removed` in `STATUSES` and the status unions; `avatars.status.removed` |
+| `apps/world-server/src/net/relay.ts`, `server.ts`, `main.ts` | `removed` from the core → `onRemoved` → `takeDown(manifests)`: worn avatars and outfit items matching come off, everyone is told |
 
 ## The Rules
 
@@ -40,6 +41,7 @@ The converter writes it into `result.json` (`{ ok, id, manifest, fingerprint }`)
 | Set aside what a kit explains before any comparison | The kits share their skin textures (4 bits apart) and anyone may make a kit avatar: without `beyondKits` every kit-based upload would be a copy of every removed one |
 | A copy of something removed is a strike; a copy of a closed gallery entry is not | Q-J4's bans are for re-uploaded stolen items; a closed licence is the publisher's choice, refused with its reason |
 | Remove by manifest, everywhere, in one transaction | The entry, the original, taken copies and exact re-uploads share the manifest; the worn avatar and outfit entries go too, so delivery refuses everywhere |
+| Then tell every connected world: `{ type: 'removed', manifests }` on the host channel | The roster keeps the manifest a connect token vouched for until the player rejoins; `WorldServer.takeDown` (through `CoreRelay`'s `onRemoved`) takes the avatar and outfit entries off and announces it as a change |
 | Never remove a standard body (`kit is not null`) | Everyone's base body would vanish |
 | Removed rows keep their fingerprint | That is what catches the next re-export |
 | The claimant reads the decision by reference; the uploader reads `removal` | No mail needed for either; both see why |
@@ -65,3 +67,4 @@ The converter writes it into `result.json` (`{ ok, id, manifest, fingerprint }`)
   - a re-exported DAE of what was taken down refused with a `copy` strike shown on the admin page;
   - a DAE copy of another's closed entry refused with no strike, then taken once the licence allows copies;
   - a kit avatar taken down catching no other kit avatar.
+- `apps/core/test/hosting.test.ts` checks that a removal reaches a connected world as `removed`. `apps/world-server/test/avatars.test.ts` checks that `takeDown` takes off the avatar and one of two items, and that the others see it. `hosting.test.ts` there checks that the relay passes only well-formed manifests.
