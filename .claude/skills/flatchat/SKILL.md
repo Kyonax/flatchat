@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.46.0"
+  version: "1.47.0"
   verified: "2026-10-18"
 ---
 
@@ -72,6 +72,7 @@ Reference these guidelines when:
 | The client app: signing in through the browser, settings and key bindings, the two languages, the world view, chat, voice in the world, the end-to-end test | `rules/client-app.md` + `rules/client-electron.md` |
 | Movement: the character controller, the server's move checks, the plaza and maps | `rules/movement-sim.md` + `rules/world-networking.md` |
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
+| Buildings from SVG plans: the plan format, the builder (walls, openings, slabs, stairs, the trim sheet, baked light), the docking bay, the isometric previews (anatomy, iso-figures) | `rules/building-plans.md` + `rules/world-format.md` |
 | Avatar uploads: the converter (VRM 0.x/1.0, GLB), VRM inside glTF-Transform, levels, impostors, ranks, the manifest, the sandboxed CLI | `rules/avatar-converter.md` + `rules/security-untrusted-input.md` |
 | The three standard bodies: making or changing the body kits, headless Blender with MPFB and the VRM add-on, `kits/bodies/` | `rules/body-kits.md` + `rules/avatar-converter.md` |
 | Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check, outfits and what can be worn together; the starter wardrobe and making garments from MakeHuman's | `rules/items.md` + `rules/body-kits.md` |
@@ -114,6 +115,7 @@ A trap-linter finding names its rule; read that rule.
 | `roles-and-moderation` | Roles per world (S3.06): `RIGHTS` and `can`, the owner from the token, roles in the world's database, `giveRole`'s rules, the People panel, builds by others (`put`/`got`/`publish`, staging, `loadBuiltWorld`, the swap, exit 75, the client's rejoin). |
 | `reports-and-safety` | Reports (S3.02): the clip recorder and the one place that takes it (T20), evidence, the report form, the core's reports, the public form, the triage queue's order, under-age reports, keeping and purging evidence; friends, blocks, minors and the guardian link; the abuse path (S3.12): takedown, sealed preservation (T21), the authorities' drafts, the 48-hour clock, the drill. |
 | `world-format` | `packages/content`: world.toml's fields, the OMI and FLATCHAT_world markers at world transforms, safe paths, limits, `validateWorld`. |
+| `building-plans` | Semantic SVG plans built into worlds (P.01): the SVG reader, `readPlan`, `buildPlan` (mitered walls, openings, slabs, stairs, strips, the trim sheet, light baked with shadows, one mesh a material), faces wound to their normals, the docking bay, previews by anatomy and iso-figures. |
 | `avatar-converter` | Avatar uploads into four VRM 1.0 levels, a thumbnail and a ranked manifest: validators and the four repairs, VRM 0.x migration by three-vrm's rules, plain rigs by bone names, the turn to +Z, LOD1/LOD2 with merged materials, the impostor, the rank table, the reference avatars and golden file, the sandboxed CLI. |
 | `body-kits` | The three standard bodies made headless from MakeHuman's CC0 assets (MPFB 2.0.18, the VRM Add-on 4.10.2, Blender 5.2 LTS): presets, expression recipes, the underwear layer, MToon, the pinned setup, two agreeing runs, the checks in CI. |
 | `animations` | Emotes and dances into VRMA on the normalized humanoid: measured from the source's T-pose (A-pose rests straightened), stood up and turned to face +Z, hips baked and kept near, hand-written VRMA, BVH and GLB readers, FBX through headless Blender, golden files per format. |
