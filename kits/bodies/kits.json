@@ -1,0 +1,478 @@
+{
+  "made": "node tools/blender/bodykit/run.mts",
+  "tools": {
+    "blender": {
+      "url": "https://download.blender.org/release/Blender5.2/blender-5.2.2-linux-x64.tar.xz",
+      "sha256": "84098912789dc450e95697c4184fb8a90acbe5111c2ba4aede3fecb57806a168"
+    },
+    "mpfb": {
+      "url": "https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip",
+      "sha256": "c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad"
+    },
+    "vrm": {
+      "url": "https://extensions.blender.org/download/sha256:228e622d158fbbf070b1b49547708f360a223873f00fa81a42170794492e6db9/add-on-vrm-v4.10.2.zip",
+      "sha256": "228e622d158fbbf070b1b49547708f360a223873f00fa81a42170794492e6db9"
+    },
+    "systemAssets": {
+      "url": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+      "sha256": "b542127a8e25547c7c29c19f2d1d2adb9a664c80396ecd694095dbc8028a0107"
+    },
+    "faceunits01": {
+      "url": "https://files.makehumancommunity.org/functional/faceunits01.zip",
+      "sha256": "d113107bd7eb59f3af4df6fc0ec29bfcc593f496d0b336aec14f086a80ce7146"
+    },
+    "visemes02": {
+      "url": "https://files.makehumancommunity.org/functional/visemes02.zip",
+      "sha256": "a69ab6fb95ddd5f56f70acc7e859f5f9c6ae613c527d577ea1571eff2183d29e"
+    }
+  },
+  "kits": {
+    "feminine": {
+      "bones": 53,
+      "expressions": [
+        "aa",
+        "angry",
+        "blink",
+        "blink_left",
+        "blink_right",
+        "ee",
+        "happy",
+        "ih",
+        "look_down",
+        "look_left",
+        "look_right",
+        "look_up",
+        "neutral",
+        "oh",
+        "ou",
+        "relaxed",
+        "sad",
+        "surprised"
+      ],
+      "humanoid": {
+        "chest": "spine_02",
+        "head": "head",
+        "hips": "pelvis",
+        "left_foot": "foot_l",
+        "left_hand": "hand_l",
+        "left_index_proximal": "index_01_l",
+        "left_little_distal": "pinky_03_l",
+        "left_lower_arm": "lowerarm_l",
+        "left_lower_leg": "calf_l",
+        "left_shoulder": "clavicle_l",
+        "left_thumb_metacarpal": "thumb_01_l",
+        "left_toes": "ball_l",
+        "left_upper_arm": "upperarm_l",
+        "left_upper_leg": "thigh_l",
+        "neck": "neck_01",
+        "spine": "spine_01",
+        "upper_chest": "spine_03"
+      },
+      "markers": [
+        "attach_head_top",
+        "attach_face",
+        "attach_neck",
+        "attach_chest",
+        "attach_back",
+        "attach_hips",
+        "attach_hip_l",
+        "attach_hip_r",
+        "attach_hand_l",
+        "attach_hand_r",
+        "attach_foot_l",
+        "attach_foot_r"
+      ],
+      "materials": [
+        "feminine_body.body",
+        "feminine_body.eyebrow001",
+        "feminine_body.eyelashes01",
+        "feminine_body.low-poly"
+      ],
+      "measurements": {
+        "armLength": 0.411,
+        "chest": 0.682,
+        "height": 1.562,
+        "hips": 0.938,
+        "inseam": 0.799,
+        "shoulderWidth": 0.305,
+        "waist": 0.825
+      },
+      "meshes": {
+        "feminine_body": {
+          "shapes": 36,
+          "triangles": 26756,
+          "vertices": 13380
+        },
+        "feminine_eyebrows": {
+          "shapes": 33,
+          "triangles": 192,
+          "vertices": 124
+        },
+        "feminine_eyelashes": {
+          "shapes": 23,
+          "triangles": 368,
+          "vertices": 250
+        },
+        "feminine_eyes": {
+          "shapes": 8,
+          "triangles": 172,
+          "vertices": 96
+        }
+      },
+      "regions": {
+        "foot_l": 1068,
+        "foot_r": 1067,
+        "hand_l": 412,
+        "hand_r": 412,
+        "head": 4319,
+        "lower_arm_l": 247,
+        "lower_arm_r": 253,
+        "lower_leg_l": 229,
+        "lower_leg_r": 230,
+        "torso": 1518,
+        "upper_arm_l": 293,
+        "upper_arm_r": 293,
+        "upper_leg_l": 338,
+        "upper_leg_r": 339
+      },
+      "shapesDropped": 44,
+      "triangles": 27488,
+      "underwearTexels": 219900,
+      "vrm": "feminine.vrm",
+      "vrmBytes": 4975176,
+      "vrmSha256": "ba95d550c4ab6349b219a24f9e1ab9ec9fb0958f2436c891847ff31b439f4739",
+      "converter": {
+        "rank": "excellent",
+        "limitedBy": [],
+        "height": 1.562,
+        "levels": {
+          "lod0": {
+            "triangles": 27488,
+            "bones": 53,
+            "materialSlots": 4
+          },
+          "lod1": {
+            "triangles": 14110,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "lod2": {
+            "triangles": 6422,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "impostor": {
+            "triangles": 1499,
+            "bones": 20,
+            "materialSlots": 1
+          }
+        },
+        "checks": {
+          "humanoid": true,
+          "triangles": true,
+          "bones": true,
+          "expressions": true,
+          "warnings": true
+        }
+      }
+    },
+    "masculine": {
+      "bones": 53,
+      "expressions": [
+        "aa",
+        "angry",
+        "blink",
+        "blink_left",
+        "blink_right",
+        "ee",
+        "happy",
+        "ih",
+        "look_down",
+        "look_left",
+        "look_right",
+        "look_up",
+        "neutral",
+        "oh",
+        "ou",
+        "relaxed",
+        "sad",
+        "surprised"
+      ],
+      "humanoid": {
+        "chest": "spine_02",
+        "head": "head",
+        "hips": "pelvis",
+        "left_foot": "foot_l",
+        "left_hand": "hand_l",
+        "left_index_proximal": "index_01_l",
+        "left_little_distal": "pinky_03_l",
+        "left_lower_arm": "lowerarm_l",
+        "left_lower_leg": "calf_l",
+        "left_shoulder": "clavicle_l",
+        "left_thumb_metacarpal": "thumb_01_l",
+        "left_toes": "ball_l",
+        "left_upper_arm": "upperarm_l",
+        "left_upper_leg": "thigh_l",
+        "neck": "neck_01",
+        "spine": "spine_01",
+        "upper_chest": "spine_03"
+      },
+      "markers": [
+        "attach_head_top",
+        "attach_face",
+        "attach_neck",
+        "attach_chest",
+        "attach_back",
+        "attach_hips",
+        "attach_hip_l",
+        "attach_hip_r",
+        "attach_hand_l",
+        "attach_hand_r",
+        "attach_foot_l",
+        "attach_foot_r"
+      ],
+      "materials": [
+        "masculine_body.body",
+        "masculine_body.eyebrow001",
+        "masculine_body.eyelashes01",
+        "masculine_body.low-poly"
+      ],
+      "measurements": {
+        "armLength": 0.491,
+        "chest": 1.543,
+        "height": 1.78,
+        "hips": 0.929,
+        "inseam": 0.953,
+        "shoulderWidth": 0.392,
+        "waist": 0.837
+      },
+      "meshes": {
+        "masculine_body": {
+          "shapes": 36,
+          "triangles": 26756,
+          "vertices": 13380
+        },
+        "masculine_eyebrows": {
+          "shapes": 33,
+          "triangles": 192,
+          "vertices": 124
+        },
+        "masculine_eyelashes": {
+          "shapes": 23,
+          "triangles": 368,
+          "vertices": 250
+        },
+        "masculine_eyes": {
+          "shapes": 8,
+          "triangles": 172,
+          "vertices": 96
+        }
+      },
+      "regions": {
+        "foot_l": 1068,
+        "foot_r": 1067,
+        "hand_l": 412,
+        "hand_r": 412,
+        "head": 4319,
+        "lower_arm_l": 247,
+        "lower_arm_r": 253,
+        "lower_leg_l": 229,
+        "lower_leg_r": 230,
+        "torso": 1518,
+        "upper_arm_l": 293,
+        "upper_arm_r": 293,
+        "upper_leg_l": 338,
+        "upper_leg_r": 339
+      },
+      "shapesDropped": 44,
+      "triangles": 27488,
+      "underwearTexels": 133354,
+      "vrm": "masculine.vrm",
+      "vrmBytes": 4670940,
+      "vrmSha256": "96260ac10740cd7fc343e7f8cb074c859b653187faf0391d7a80416ebb8b44b9",
+      "converter": {
+        "rank": "excellent",
+        "limitedBy": [],
+        "height": 1.78,
+        "levels": {
+          "lod0": {
+            "triangles": 27488,
+            "bones": 53,
+            "materialSlots": 4
+          },
+          "lod1": {
+            "triangles": 14110,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "lod2": {
+            "triangles": 6418,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "impostor": {
+            "triangles": 1499,
+            "bones": 20,
+            "materialSlots": 1
+          }
+        },
+        "checks": {
+          "humanoid": true,
+          "triangles": true,
+          "bones": true,
+          "expressions": true,
+          "warnings": true
+        }
+      }
+    },
+    "neutral": {
+      "bones": 53,
+      "expressions": [
+        "aa",
+        "angry",
+        "blink",
+        "blink_left",
+        "blink_right",
+        "ee",
+        "happy",
+        "ih",
+        "look_down",
+        "look_left",
+        "look_right",
+        "look_up",
+        "neutral",
+        "oh",
+        "ou",
+        "relaxed",
+        "sad",
+        "surprised"
+      ],
+      "humanoid": {
+        "chest": "spine_02",
+        "head": "head",
+        "hips": "pelvis",
+        "left_foot": "foot_l",
+        "left_hand": "hand_l",
+        "left_index_proximal": "index_01_l",
+        "left_little_distal": "pinky_03_l",
+        "left_lower_arm": "lowerarm_l",
+        "left_lower_leg": "calf_l",
+        "left_shoulder": "clavicle_l",
+        "left_thumb_metacarpal": "thumb_01_l",
+        "left_toes": "ball_l",
+        "left_upper_arm": "upperarm_l",
+        "left_upper_leg": "thigh_l",
+        "neck": "neck_01",
+        "spine": "spine_01",
+        "upper_chest": "spine_03"
+      },
+      "markers": [
+        "attach_head_top",
+        "attach_face",
+        "attach_neck",
+        "attach_chest",
+        "attach_back",
+        "attach_hips",
+        "attach_hip_l",
+        "attach_hip_r",
+        "attach_hand_l",
+        "attach_hand_r",
+        "attach_foot_l",
+        "attach_foot_r"
+      ],
+      "materials": [
+        "neutral_body.body",
+        "neutral_body.eyebrow001",
+        "neutral_body.eyelashes01",
+        "neutral_body.low-poly"
+      ],
+      "measurements": {
+        "armLength": 0.441,
+        "chest": 1.305,
+        "height": 1.637,
+        "hips": 0.936,
+        "inseam": 0.851,
+        "shoulderWidth": 0.338,
+        "waist": 0.828
+      },
+      "meshes": {
+        "neutral_body": {
+          "shapes": 36,
+          "triangles": 26756,
+          "vertices": 13380
+        },
+        "neutral_eyebrows": {
+          "shapes": 33,
+          "triangles": 192,
+          "vertices": 124
+        },
+        "neutral_eyelashes": {
+          "shapes": 23,
+          "triangles": 368,
+          "vertices": 250
+        },
+        "neutral_eyes": {
+          "shapes": 8,
+          "triangles": 172,
+          "vertices": 96
+        }
+      },
+      "regions": {
+        "foot_l": 1068,
+        "foot_r": 1067,
+        "hand_l": 412,
+        "hand_r": 412,
+        "head": 4319,
+        "lower_arm_l": 247,
+        "lower_arm_r": 253,
+        "lower_leg_l": 229,
+        "lower_leg_r": 230,
+        "torso": 1518,
+        "upper_arm_l": 293,
+        "upper_arm_r": 293,
+        "upper_leg_l": 338,
+        "upper_leg_r": 339
+      },
+      "shapesDropped": 44,
+      "triangles": 27488,
+      "underwearTexels": 227234,
+      "vrm": "neutral.vrm",
+      "vrmBytes": 4710320,
+      "vrmSha256": "9e08e26c5f14c33b61aacef64e41a1ea82249ff7eea7cbd324bd825acc9e4d0b",
+      "converter": {
+        "rank": "excellent",
+        "limitedBy": [],
+        "height": 1.637,
+        "levels": {
+          "lod0": {
+            "triangles": 27488,
+            "bones": 53,
+            "materialSlots": 4
+          },
+          "lod1": {
+            "triangles": 14110,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "lod2": {
+            "triangles": 6416,
+            "bones": 53,
+            "materialSlots": 1
+          },
+          "impostor": {
+            "triangles": 1499,
+            "bones": 20,
+            "materialSlots": 1
+          }
+        },
+        "checks": {
+          "humanoid": true,
+          "triangles": true,
+          "bones": true,
+          "expressions": true,
+          "warnings": true
+        }
+      }
+    }
+  }
+}

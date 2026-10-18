@@ -13,6 +13,8 @@ Rules for every entry:
 | Item | Path | Creator | Source | Licence | Retrieved | Changes |
 |---|---|---|---|---|---|---|
 | The libopus 1.6.1 licence text | `apps/client/third_party/opus/COPYING` | Xiph.Org Foundation and the Opus contributors | [xiph/opus, v1.6.1](https://github.com/xiph/opus/blob/v1.6.1/COPYING) | BSD-3-Clause | 2026-10-17 | None |
+| MakeHuman's base mesh and game_engine rig (bundled with MPFB), and its toon skin, low-poly eyes, eyebrow001 and eyelashes01 | `kits/bodies/` | the MakeHuman team (Data Collection AB, Joel Palmius, Jonas Hauquier) | [MPFB 2.0.18](https://extensions.blender.org/add-ons/mpfb/), [MakeHuman system assets](https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html) | CC0-1.0 | 2026-10-17 | Baked into three bodies with their macros, an underwear layer painted into the skin, the parts joined, MToon materials, exported as VRM 1.0 (`tools/blender/bodykit/`) |
+| The Faceunits 01 and Visemes 02 face shapes | `kits/bodies/` | Mika Suominen | [MakeHuman asset packs](https://static.makehumancommunity.org/assets/assetpacks.html) | CC0-1.0 | 2026-10-17 | 36 of their 67 shapes kept and mixed into the 18 VRM expressions |
 | The Recast & Detour licence text | `apps/client/third_party/recast/License.txt` | Mikko Mononen | [recastnavigation/recastnavigation](https://github.com/recastnavigation/recastnavigation/blob/main/License.txt) | Zlib | 2026-10-17 | None |
 
 ## Packages that ship

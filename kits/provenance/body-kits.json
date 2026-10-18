@@ -1,0 +1,44 @@
+{
+  "files": ["kits/bodies/*/*.vrm", "kits/bodies/*/*.blend", "kits/bodies/*/*.png"],
+  "title": "The three standard bodies (Track P's P.03): their VRM 1.0 avatars, .blend files and pictures",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "node tools/blender/bodykit/run.mts: tools/blender/bodykit/generate.py in Blender 5.2.2 LTS with MPFB 2.0.18 and the VRM Add-on 4.10.2, from the presets and expression recipes beside it, every download pinned by its SHA-256 (kits/bodies/kits.json)",
+  "derivedFrom": [
+    {
+      "what": "MakeHuman's base mesh and the game_engine rig, bundled with MPFB 2.0.18, and MPFB's output",
+      "creator": "the MakeHuman team",
+      "source": "https://extensions.blender.org/add-ons/mpfb/",
+      "licence": "CC0-1.0",
+      "licencePage": { "url": "https://github.com/makehumancommunity/mpfb2/blob/master/LICENSE.md", "archived": "kits/provenance/archive/mpfb-LICENSE.md" }
+    },
+    {
+      "what": "MakeHuman's system assets: the toon skin, low-poly eyes, eyebrow001 and eyelashes01",
+      "creator": "the MakeHuman team (Data Collection AB, Joel Palmius, Jonas Hauquier)",
+      "source": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+      "licence": "CC0-1.0",
+      "licencePage": { "url": "https://static.makehumancommunity.org/about/license.html", "archived": "kits/provenance/archive/makehuman-system-assets-pack.json" }
+    },
+    {
+      "what": "Faceunits 01 (ARKit-style face units) and Visemes 02 (Meta-style visemes)",
+      "creator": "Mika Suominen",
+      "source": "https://static.makehumancommunity.org/assets/assetpacks.html",
+      "licence": "CC0-1.0",
+      "licencePage": { "url": "https://static.makehumancommunity.org/about/license.html", "archived": "kits/provenance/archive/makehuman-faceunits01-pack.json" }
+    },
+    {
+      "what": "The face packs' per-target licences",
+      "creator": "Mika Suominen",
+      "source": "https://files.makehumancommunity.org/functional/visemes02.zip",
+      "licence": "CC0-1.0",
+      "licencePage": { "url": "https://static.makehumancommunity.org/about/license.html", "archived": "kits/provenance/archive/makehuman-visemes02-pack.json" }
+    },
+    {
+      "what": "MakeHuman's licence page as it read on 2026-10-17",
+      "creator": "the MakeHuman team",
+      "source": "https://static.makehumancommunity.org/about/license.html",
+      "licence": "CC0-1.0",
+      "licencePage": { "url": "https://static.makehumancommunity.org/about/license.html", "archived": "kits/provenance/archive/makehuman-license.txt" }
+    }
+  ]
+}
