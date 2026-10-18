@@ -180,7 +180,24 @@
               "arms": 100,
               "legs": 100,
               "head": 100
-            }
+            },
+            "outfit": [
+              {
+                "item": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "item": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "adjust": {
+                  "x": -5,
+                  "y": 3,
+                  "z": 0,
+                  "rx": 0,
+                  "ry": -45,
+                  "rz": 10,
+                  "scale": 110
+                }
+              }
+            ]
           },
           {
             "entity": 2,
@@ -200,12 +217,13 @@
               "arms": 100,
               "legs": 80,
               "head": 100
-            }
+            },
+            "outfit": []
           }
         ],
         "left": []
       },
-      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f40a0190919191090000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a228231e19141900"
+      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f40a01909191910900aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbf7070000a615dc040000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a228231e1914190000"
     },
     {
       "name": "roster-change",
@@ -237,6 +255,38 @@
         "right": "open"
       },
       "hex": "175501"
+    },
+    {
+      "name": "outfit",
+      "value": {
+        "type": "outfit",
+        "items": [
+          {
+            "item": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
+          },
+          {
+            "item": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+            "adjust": {
+              "x": 10,
+              "y": -10,
+              "z": 2,
+              "rx": 45,
+              "ry": 0,
+              "rz": -45,
+              "scale": 80
+            }
+          }
+        ]
+      },
+      "hex": "18020f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f001e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e15ec055a00a6a100"
+    },
+    {
+      "name": "outfit-none",
+      "value": {
+        "type": "outfit",
+        "items": []
+      },
+      "hex": "1800"
     },
     {
       "name": "appearance",

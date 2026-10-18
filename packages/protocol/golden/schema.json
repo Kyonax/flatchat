@@ -1,6 +1,6 @@
 {
-  "protocol": 8,
-  "fingerprint": "f2ea7edf",
+  "protocol": 9,
+  "fingerprint": "96b318d5",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -641,6 +641,85 @@
                           }
                         ]
                       }
+                    },
+                    {
+                      "name": "outfit",
+                      "type": {
+                        "kind": "list",
+                        "max": 16,
+                        "of": {
+                          "kind": "struct",
+                          "fields": [
+                            {
+                              "name": "item",
+                              "type": {
+                                "kind": "fixedBytes",
+                                "length": 32
+                              }
+                            },
+                            {
+                              "name": "adjust",
+                              "type": {
+                                "kind": "optional",
+                                "of": {
+                                  "kind": "struct",
+                                  "fields": [
+                                    {
+                                      "name": "x",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "y",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "z",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "rx",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "ry",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "rz",
+                                      "type": {
+                                        "kind": "int",
+                                        "bits": 8
+                                      }
+                                    },
+                                    {
+                                      "name": "scale",
+                                      "type": {
+                                        "kind": "uint",
+                                        "bits": 8
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
@@ -788,6 +867,96 @@
                   "open",
                   "rock"
                 ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "outfit",
+        "id": 24,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "items",
+              "type": {
+                "kind": "list",
+                "max": 16,
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "item",
+                      "type": {
+                        "kind": "fixedBytes",
+                        "length": 32
+                      }
+                    },
+                    {
+                      "name": "adjust",
+                      "type": {
+                        "kind": "optional",
+                        "of": {
+                          "kind": "struct",
+                          "fields": [
+                            {
+                              "name": "x",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "y",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "z",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "rx",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "ry",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "rz",
+                              "type": {
+                                "kind": "int",
+                                "bits": 8
+                              }
+                            },
+                            {
+                              "name": "scale",
+                              "type": {
+                                "kind": "uint",
+                                "bits": 8
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
               }
             }
           ]

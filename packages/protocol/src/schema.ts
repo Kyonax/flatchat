@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -86,6 +86,14 @@ const face = struct({ expression: oneOf(EXPRESSIONS), left: oneOf(HAND_POSES), r
  *  into PROPORTIONS; every client moves the avatar's bones by them. */
 export const PROPORTIONS = { min: 80, max: 125 } as const;
 const proportions = struct({ width: u8, arms: u8, legs: u8, head: u8 });
+/** A worn item (version 9, S5.05): its manifest's SHA-256 in the core's store, and for an
+ *  attachment the player's adjustment at its point (centimetres, degrees, percent), fitted by the
+ *  world to the platform's limits (packages/content's ADJUST_LIMITS). The clothes go on a standard
+ *  body by their fits; a prop goes on any avatar at the point its manifest names. */
+const worn = struct({ item: fixedBytes(32), adjust: optional(struct({ x: int(8), y: int(8), z: int(8), rx: int(8), ry: int(8), rz: int(8), scale: u8 })) });
+/** The most items a player wears at once (version 9). */
+export const OUTFIT_MAX = 16;
+const outfit = list(worn, OUTFIT_MAX);
 
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
  *  core's asset store, never from the host; `height` is the world's fitted height. */
@@ -99,6 +107,7 @@ const player = struct({
   role,
   face,
   proportions,
+  outfit,
 });
 
 export const REFUSE_REASONS = [
@@ -191,6 +200,8 @@ export const MESSAGES = {
   wear: { id: 0x16, from: 'client', channel: 'reliable', body: struct({ token: bytes(4096) }) },
   // The player's face and hands (version 7, S4.07); the world keeps it in the roster.
   face: { id: 0x17, from: 'client', channel: 'reliable', body: face },
+  // What the player wears (version 9, S5.05): the world fits it and keeps it in the roster.
+  outfit: { id: 0x18, from: 'client', channel: 'reliable', body: struct({ items: outfit }) },
   // A move the client cannot walk (version 4, S2.06): onto a seat (`seat`, its index in the built
   // world), or to a clicked spot. The world checks it and answers `placed`: where the player is
   // now, and whether it moved them.
