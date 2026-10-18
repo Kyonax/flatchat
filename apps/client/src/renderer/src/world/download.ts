@@ -76,7 +76,7 @@ export class Downloader {
     }
     if ('error' in parsed) throw new DownloadError(`world.json: ${parsed.error}`);
     const world = parsed.world;
-    const wanted = new Set<string>([world.collision, ...world.scenes.map((s) => s.glb), ...(world.navmesh ? [world.navmesh] : []), ...world.scenes.flatMap((s) => s.emitters.map((e) => e.audio))]);
+    const wanted = new Set<string>([world.collision, ...world.scenes.map((s) => s.glb), ...(world.navmesh ? [world.navmesh] : []), ...world.scenes.flatMap((s) => s.emitters.map((e) => e.audio)), ...world.scenes.flatMap((s) => s.effects.map((e) => e.file))]);
     const sizes = new Map(world.files.map((f) => [f.hash, f.size]));
     this.progress = { done: size, total: size + [...wanted].reduce((n, h) => n + (sizes.get(h) ?? 0), 0) };
     this.onProgress(this.progress);

@@ -378,6 +378,7 @@ onBeforeUnmount(() => {
       hidden
       data-test="effects"
       :data-playing="state.effects.playing"
+      :data-world="state.effects.world"
       :data-instances="state.effects.instances"
       :data-refused="state.effects.refused"
       :data-stopped="state.effects.stopped"

@@ -22,6 +22,7 @@
     "@dimforge/rapier3d-compat": "0.21.0",
     "@flatchat/content": "*",
     "@flatchat/converter": "*",
+    "@flatchat/effects": "*",
     "@flatchat/protocol": "*",
     "@flatchat/sim": "^0.0.0",
     "@flatchat/world-server": "*",

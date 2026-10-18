@@ -13,12 +13,17 @@
 //   - A runtime that gives up (a broken file) is replaced, the effect that did it blocked, the rest
 //     played again.
 //
+// A world's effects (its scenes' markers) play where the world put them, looping, owned by the
+// world. A world comes from its host, who is not trusted: each of its effects is measured here first,
+// in a worker (effects-measure.ts), and those numbers, not the host's, decide.
+//
 // The runtime loads only when the first effect is admitted, on the renderer's backend; it draws
 // after three's frame (effects-draw.ts).
 import * as THREE from 'three/webgpu';
-import { type EffectBundle, type EffectFit, readBundle } from '@flatchat/content';
+import { type BuiltEffect, type EffectBundle, type EffectFit, effectFitProblems, readBundle } from '@flatchat/content';
 import { EffectBudget, EffectsRuntime, type EffectImage, InstanceTrim, type LoadedEffect, type Owner, RuntimeSpent, TimeWatch } from '@flatchat/effects';
 import { type DrawResult, WebGlEffectsDraw, WebGpuEffectsDraw } from './effects-draw';
+import type { EffectMeasurer } from './effects-measure';
 import { effectsBuild } from './effects-runtime';
 
 /** Where the avatar layer hands its worn effects (implemented by EffectsLayer). */
@@ -31,8 +36,9 @@ export interface EffectSink {
 export type BundleFetcher = (item: string) => Promise<Uint8Array>;
 
 export interface EffectStats {
-  /** Effects playing now, and their particles. */
+  /** Effects playing now (the world's among them), and their particles. */
   playing: number;
+  world: number;
   instances: number;
   /** Effects not played: over a budget, blocked, or not allowed (Q-M10). */
   refused: number;
@@ -73,8 +79,12 @@ const visible = (o: THREE.Object3D): boolean => {
   return true;
 };
 
+/** A world effect's slowest update in the client's dry run, at most: far above a busy worker's
+ *  scheduling noise, far below the runtime's worst (a broken file took 32 s). */
+const WORLD_HITCH_US = 100_000;
+
 export class EffectsLayer implements EffectSink {
-  readonly stats: EffectStats = { playing: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false };
+  readonly stats: EffectStats = { playing: 0, world: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false };
   /** The viewer's policy: whether an owner's effects show. */
   allowed: (owner: Owner) => boolean = () => true;
   private runtime: EffectsRuntime | undefined;
@@ -90,10 +100,37 @@ export class EffectsLayer implements EffectSink {
   private nextId = 1;
   private readonly renderer: THREE.WebGPURenderer;
   private readonly fetchBundle: BundleFetcher;
+  /** A bundle's own source, for effects not fetched by item (a world's). */
+  private readonly sources = new Map<string, () => Promise<Uint8Array>>();
+  private measurer: EffectMeasurer | undefined;
 
   constructor(renderer: THREE.WebGPURenderer, fetchBundle: BundleFetcher) {
     this.renderer = renderer;
     this.fetchBundle = fetchBundle;
+  }
+
+  /** A world's effect: measured here first (the host's numbers are not taken), then played at its
+   *  marker for the world. Resolves with its id, or undefined when it was refused. */
+  async wearWorld(e: BuiltEffect, marker: THREE.Object3D, bytes: Uint8Array): Promise<number | undefined> {
+    // Loaded when a world first has effects: the measuring worker carries the WebGL build inlined.
+    this.measurer ??= new (await import('./effects-measure')).EffectMeasurer();
+    let run;
+    try {
+      run = await this.measurer.measure(bytes, e.scale);
+    } catch {
+      this.stats.refused += 1;
+      return undefined;
+    }
+    const fit: EffectFit = { file: e.file, bytes: bytes.length, version: 0, peak: run.peak, frames: run.frames, textures: 0, texturePixels: 0, models: 0, distortion: false, sounds: 0, scale: e.scale, updateUs: run.updateUs };
+    // Its peaks decide here. Its time is judged on this machine while it plays (the watches): the
+    // dry run's update limit is for the converter's machine, and a weak laptop is slower. One
+    // update the dry run saw take a tenth of a second would freeze the view as long, so that refuses.
+    if (run.missing.length || run.slowestUs > WORLD_HITCH_US || effectFitProblems({ ...fit, updateUs: 0 }, 'world').length) {
+      this.stats.refused += 1;
+      return undefined;
+    }
+    this.sources.set(e.file, async () => bytes);
+    return this.wear('world', e.file, fit, marker);
   }
 
   wear(owner: Owner, item: string, fit: EffectFit, marker: THREE.Object3D): number {
@@ -200,7 +237,7 @@ export class EffectsLayer implements EffectSink {
     const f = entry;
     f.loading = (async () => {
       try {
-        f.bundle ??= readBundle(await this.fetchBundle(w.item));
+        f.bundle ??= readBundle(await (this.sources.get(w.fit.file)?.() ?? this.fetchBundle(w.item)));
         const images = runtime.backend === 'webgl' ? await decodeImages(f.bundle) : undefined;
         if (runtime !== this.runtime || runtime.isSpent) return undefined;
         f.effect = runtime.load(f.bundle, { scale: w.fit.scale, ...(images ? { images } : {}), sounds: false });
@@ -240,11 +277,13 @@ export class EffectsLayer implements EffectSink {
     if (!runtime || runtime.isSpent) {
       if (runtime?.isSpent) this.respawn();
       this.stats.playing = 0;
+      this.stats.world = 0;
       this.stats.instances = 0;
       return;
     }
     const playing = [...this.worn.values()].filter((w) => w.handle !== undefined);
     this.stats.playing = playing.length;
+    this.stats.world = playing.filter((w) => w.owner === 'world').length;
     if (playing.length === 0) {
       this.stats.instances = 0;
       return;
@@ -325,6 +364,7 @@ export class EffectsLayer implements EffectSink {
   dispose(): void {
     for (const w of this.worn.values()) this.release(w);
     this.worn.clear();
+    this.measurer?.dispose();
     this.drawer?.dispose();
     this.runtime?.dispose();
     this.runtime = undefined;

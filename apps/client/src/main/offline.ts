@@ -70,8 +70,15 @@ export class OfflineHost {
     const newest = readdirSync(folder, { recursive: true }).reduce((t, f) => Math.max(t, statSync(join(folder, String(f))).mtimeMs), 0);
     const out = join(this.cache, createHash('sha256').update(`${folder}\n${newest}`).digest('hex').slice(0, 24));
     if (!existsSync(join(out, 'world.json'))) {
-      const { convertWorld, readFolder, writeBuilt } = await import('@flatchat/converter');
-      const { out: files } = await convertWorld(readFolder(folder), { ktx2: false });
+      // A world folder's effects are dry-run as the host tool does (S6.01), in a worker thread: the
+      // main process is bundled, so the worker comes bundled too (electron-vite's `?nodeWorker`),
+      // with the runtime's WebAssembly beside it (`?asset`). Imported here, when a folder converts.
+      const [{ convertWorld, readFolder, writeBuilt }, { default: dryRunWorker }, { default: effekseerWasm }] = await Promise.all([
+        import('@flatchat/converter'),
+        import('@flatchat/converter/dry-run-worker?nodeWorker'),
+        import('@flatchat/effects/runtime/wasm/effekseer-webgl-native.wasm?asset'),
+      ]);
+      const { out: files } = await convertWorld(readFolder(folder), { ktx2: false, dryRunner: { worker: dryRunWorker, wasm: new Uint8Array(readFileSync(effekseerWasm)) } });
       writeBuilt(out, files);
     }
     return out;

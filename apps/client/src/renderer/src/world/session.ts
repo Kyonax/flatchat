@@ -291,7 +291,7 @@ export class WorldSession {
       emote: '',
       emoting: false,
       emoteSounds: 0,
-      effects: { playing: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false },
+      effects: { playing: 0, world: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false },
     });
   }
 
@@ -1096,6 +1096,18 @@ export class WorldSession {
       const group = await loadScene(this.renderer!, files.get(scene.glb)!);
       this.scene?.add(group);
       this.pickables.push(group);
+    }
+    // The world's effects (S6.01): each at its marker, measured here before it plays.
+    for (const e of world.scenes.flatMap((sc) => sc.effects)) {
+      const bytes = files.get(e.file);
+      if (!bytes || !this.effects || !this.scene) continue;
+      const marker = new THREE.Object3D();
+      marker.name = 'flatchat-world-effect';
+      marker.matrixAutoUpdate = false;
+      marker.matrix.fromArray(e.matrix);
+      this.scene.add(marker);
+      marker.updateMatrixWorld(true);
+      void this.effects.wearWorld(e, marker, bytes);
     }
     // The base library's parts, drawn from the client's own definitions (S2.05).
     const parts = world.scenes.flatMap((sc) => sc.parts);
