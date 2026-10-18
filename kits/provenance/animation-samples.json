@@ -1,0 +1,7 @@
+{
+  "files": ["tools/converter/test/fixtures/animation/*"],
+  "title": "The animation converter's sample motion as an FBX and as the GLB Blender reads it into (S5.07 golden files)",
+  "creator": "the FlatChat contributors",
+  "licence": "CC0-1.0",
+  "made": "node tools/converter/scripts/animation-samples.ts (the motion made in code, tools/converter/src/animation/samples.ts), then tools/blender/animation/make-sample-fbx.py (wave.fbx) and tools/blender/animation/fbx2glb.py (wave-fbx.glb) in Blender 5.2.2 LTS"
+}
