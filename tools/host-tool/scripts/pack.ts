@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Packages the host tool for Linux (S2.02, DR-15): the tool, the world server with its entry-rule
-// plugins (S3.05), the converter, the shared packages and the world templates, with their production dependencies and, unless
-// --no-node, Node.js itself, in one folder and one .tar.gz:
+// plugins (S3.05), the converter, the shared packages (the effects runtime's WebAssembly with them,
+// for the converter's dry run, S6.01) and the world templates, with their production dependencies
+// and, unless --no-node, Node.js itself, in one folder and one .tar.gz:
 //
 //   node tools/host-tool/scripts/pack.ts [--no-node] [--out release/host]
 //
@@ -25,12 +26,12 @@ const NAME = `flatchat-host-${VERSION}-linux-x64`;
 const out = join(values.out, NAME);
 const app = join(out, 'app');
 
-const WORKSPACES = ['packages/protocol', 'packages/sim', 'packages/content', 'apps/world-server', 'tools/converter', 'tools/host-tool'];
+const WORKSPACES = ['packages/protocol', 'packages/sim', 'packages/content', 'packages/effects', 'apps/world-server', 'tools/converter', 'tools/host-tool'];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
 for (const ws of WORKSPACES) {
-  for (const part of ['package.json', 'LICENSE', 'README.md', 'src', 'plugins']) {
+  for (const part of ['package.json', 'LICENSE', 'README.md', 'src', 'plugins', 'third_party']) {
     const from = join(ROOT, ws, part);
     if (existsSync(from)) cpSync(from, join(app, ws, part), { recursive: true });
   }
