@@ -32,7 +32,7 @@
 // built-in ones, a chat line starting with `/` is a command for them (never shown to everyone),
 // and they hear joins, leaves, zones entered and left, and every tick.
 import { performance } from 'node:perf_hooks';
-import { ADJUST_LIMITS, type BuiltPortal, type BuiltZone, insideBox } from '@flatchat/content';
+import { type BuiltPortal, type BuiltZone, fitWornAdjust, insideBox } from '@flatchat/content';
 import {
   type Channel,
   checkVersion,
@@ -243,21 +243,16 @@ export function fitProportions(p: Proportions | undefined): Proportions {
 const OUTFIT_EVERY_MS = 1000;
 type Worn = MessageOf<'outfit'>['items'][number];
 /** An outfit as the world keeps it (S5.05): each item once, in the order worn, and each prop's
- *  adjustment within the platform's limits (packages/content's ADJUST_LIMITS: 10 cm, 45°, 0.8 to
- *  1.25), whatever the client sent. */
+ *  adjustment within the platform's limits (packages/content's WORN_LIMITS: 10 cm, 45°, 80 to 125
+ *  percent), whatever the client sent. */
 export function fitOutfit(items: readonly Worn[]): Worn[] {
-  const cm = Math.round(ADJUST_LIMITS.offset * 100);
-  const deg = Math.round((ADJUST_LIMITS.rotation * 180) / Math.PI);
-  const [lo, hi] = ADJUST_LIMITS.scale.map((s) => Math.round(s * 100)) as [number, number];
-  const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, Math.round(v)));
   const seen = new Set<string>();
   const out: Worn[] = [];
   for (const w of items) {
     const key = Array.from(w.item, (b) => b.toString(16).padStart(2, '0')).join('');
     if (seen.has(key)) continue;
     seen.add(key);
-    const a = w.adjust;
-    out.push(a ? { item: w.item, adjust: { x: clamp(a.x, -cm, cm), y: clamp(a.y, -cm, cm), z: clamp(a.z, -cm, cm), rx: clamp(a.rx, -deg, deg), ry: clamp(a.ry, -deg, deg), rz: clamp(a.rz, -deg, deg), scale: clamp(a.scale, lo, hi) } } : { item: w.item });
+    out.push(w.adjust ? { item: w.item, adjust: fitWornAdjust(w.adjust) } : { item: w.item });
   }
   return out;
 }
