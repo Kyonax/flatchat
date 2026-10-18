@@ -19,7 +19,7 @@
 //
 // One JSON line: { event: 'e2e', ok, steps, server } ; exit 0 when every step passed.
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -32,6 +32,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
 const SERVER_MAIN = join(ROOT, 'apps', 'world-server', 'src', 'main.ts');
 const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts');
+const HOSTILE = join(ROOT, 'tools', 'converter', 'scripts', 'hostile-effects.ts');
 const TEE = join(ROOT, 'kits', 'items', 'test-tee', 'test-tee.glb');
 const EMAIL = 'e2e@example.org';
 const PASSWORD = 'an end-to-end password';
@@ -106,6 +107,10 @@ try {
   const garden = await register('E2E Garden');
   // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
   await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect']);
+  // The garden's host does not play fair (S6.01): six broken effects beside its tornado, put into
+  // the built world past the converter, with made-up numbers. The client must refuse every one.
+  await run([process.execPath, HOSTILE, join(dir, 'travel', 'b.built')]);
+  const gardenEffectBytes = (JSON.parse(readFileSync(join(dir, 'travel', 'b.built', 'world.json'), 'utf8')) as { files: Array<{ size: number; kind: string }> }).files.filter((f) => f.kind === 'effect').reduce((n, f) => n + f.size, 0);
   const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
     const [icePort, signalPort] = [await freePort(), await freePort()];
     const s = await start(
@@ -392,6 +397,13 @@ try {
       .waitFor({ state: 'attached', timeout: 60_000 })
       .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
       .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
+    // The garden's broken effects (scripts/hostile-effects.ts): each refused by the client's own
+    // check and dry run, the slowest when its measuring worker is ended at the deadline.
+    steps['hostileRefused'] = await page
+      .locator('[data-test=effects][data-refused="6"]')
+      .waitFor({ state: 'attached', timeout: 90_000 })
+      .then(() => 6)
+      .catch(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '-1')));
     await page.waitForTimeout(500);
     await snap('3-travelled');
   } finally {
@@ -452,7 +464,10 @@ try {
     /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
     Number(steps['worldEffect']) > 0 &&
-    (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
+    steps['hostileRefused'] === 6 &&
+    (steps['pageErrors'] as string[]).length === 0 &&
+    // The park sends its plan and its effects, never geometry.
+    (gardenSent['chunk']?.bytes ?? Infinity) - gardenEffectBytes < 64 * 1024;
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);
