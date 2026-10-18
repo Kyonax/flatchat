@@ -15,7 +15,8 @@
     "./avatar": "./src/avatar/convert.ts",
     "./item-samples": "./src/item/samples.ts",
     "./animation-samples": "./src/animation/samples.ts",
-    "./format-samples": "./src/source/samples.ts"
+    "./format-samples": "./src/source/samples.ts",
+    "./effect-samples": "./src/effect/samples.ts"
   },
   "scripts": {
     "convert": "node src/cli.ts",
@@ -24,11 +25,13 @@
   },
   "dependencies": {
     "@flatchat/content": "*",
+    "@flatchat/effects": "*",
     "@flatchat/sim": "*",
     "@gltf-transform/core": "4.5.1",
     "@gltf-transform/extensions": "4.5.1",
     "@gltf-transform/functions": "4.5.1",
     "assimpjs": "0.0.10",
+    "fflate": "0.8.3",
     "gltf-validator": "2.0.0-dev.3.10",
     "jpeg-js": "0.4.4",
     "ktx2-encoder": "0.6.0",
