@@ -63,6 +63,22 @@ describe('the licence gate', () => {
     expect(checkAssets(root, list)).toEqual([expect.stringContaining('licence "CC-BY-NC-4.0" is not one the project accepts')]);
   });
 
+  it('takes the SIL Open Font License for a font, and for nothing else (S6.07)', () => {
+    const font = { title: 'A font', creator: 'A foundry', licence: 'OFL-1.1', source: 'https://example.org/font', retrieved: '2026-10-18', changes: 'none', licencePage: { url: 'https://example.org/ofl', archived: 'kits/provenance/archive/ofl.txt' } };
+    const ok = repo({
+      'apps/client/fonts/A-Regular.woff2': 'x',
+      'kits/provenance/archive/ofl.txt': 'SIL Open Font License 1.1',
+      'kits/provenance/font.json': record({ ...font, files: ['apps/client/fonts/*.woff2'] }),
+    });
+    expect(checkAssets(ok.root, ok.list)).toEqual([]);
+    const not = repo({
+      'kits/a.png': 'x',
+      'kits/provenance/archive/ofl.txt': 'SIL Open Font License 1.1',
+      'kits/provenance/a.json': record({ ...font, files: ['kits/a.png'] }),
+    });
+    expect(checkAssets(not.root, not.list)).toEqual([expect.stringContaining('the OFL-1.1 is accepted for fonts only, not kits/a.png')]);
+  });
+
   it('refuses another\'s work without its archived licence page, and a CC BY one without its credit line', () => {
     const { root, list } = repo({
       'kits/wear/shirt/a.glb': 'x',

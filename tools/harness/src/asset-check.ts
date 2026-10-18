@@ -2,7 +2,8 @@
 // Provenance and the licence gate (Track P's P.07, rr-014). Every asset in the repository (a
 // model, an image, a sound, a font, an animation) has a provenance record in kits/provenance/,
 // and the record says where it came from under a licence the project accepts: CC0, CC BY, or the
-// owner's own. An asset made by others also names the archived copy of its licence page, and a
+// owner's own; for fonts also the SIL Open Font License (S6.07: the Kyonax design system's Space
+// Mono, Q-E7). An asset made by others also names the archived copy of its licence page, and a
 // CC BY one has its credit line in CREDITS.md. Anything else fails, so an unlicensed or
 // uncredited file never ships.
 //
@@ -10,7 +11,7 @@
 //   files        repository paths, * and ** allowed: the files it covers
 //   title        what they are
 //   creator      the person or group who made them (never the platform they were found on)
-//   licence      CC0-1.0, CC-BY-4.0, CC-BY-3.0 or LicenseRef-Owner (the owner's own)
+//   licence      CC0-1.0, CC-BY-4.0, CC-BY-3.0 or LicenseRef-Owner (the owner's own); OFL-1.1 for fonts
 //   made         for the project's own work: the script or the act that made it, or
 //   source       for others' work: the URL it came from, with
 //   retrieved    the date it was fetched (YYYY-MM-DD),
@@ -30,7 +31,10 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 export const PROVENANCE_DIR = 'kits/provenance';
-export const LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'LicenseRef-Owner'] as const;
+export const LICENCES = ['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'LicenseRef-Owner', 'OFL-1.1'] as const;
+/** Licences accepted for fonts alone: the SIL Open Font License travels with the font it covers. */
+export const FONT_ONLY_LICENCES: ReadonlySet<string> = new Set(['OFL-1.1']);
+const FONT = /\.(ttf|otf|woff2?)$/i;
 /** What counts as an asset: models, animations, effects, images, textures, sounds, fonts and video. */
 export const ASSET_EXTENSIONS = new Set([
   'glb', 'gltf', 'vrm', 'vrma', 'bin', 'blend', 'fbx', 'obj', 'mtl', 'dae', 'bvh', 'usd', 'usda', 'usdz',
@@ -107,10 +111,12 @@ export function checkAssets(root: string, files: readonly string[]): string[] {
     const at = `${PROVENANCE_DIR}/${name}`;
     const patterns = Array.isArray(r['files']) ? r['files'].filter(str) : [];
     if (patterns.length === 0) problems.push(`${at}: no files`);
+    const mine: string[] = [];
     for (const p of patterns) {
       const re = patternToRegExp(p);
       const hits = assets.filter((a) => re.test(a));
       if (hits.length === 0) problems.push(`${at}: "${p}" matches no asset`);
+      mine.push(...hits);
       for (const h of hits) {
         const before = covered.get(h);
         if (before && before !== name) problems.push(`${h}: covered by both ${PROVENANCE_DIR}/${before} and ${at}`);
@@ -120,6 +126,7 @@ export function checkAssets(root: string, files: readonly string[]): string[] {
     for (const field of ['title', 'creator']) if (!str(r[field])) problems.push(`${at}: no ${field}`);
     const licence = r['licence'];
     if (!(LICENCES as readonly unknown[]).includes(licence)) problems.push(`${at}: licence ${JSON.stringify(licence)} is not one the project accepts (${LICENCES.join(', ')})`);
+    else if (FONT_ONLY_LICENCES.has(licence as string) && mine.some((a) => !FONT.test(a))) problems.push(`${at}: the ${String(licence)} is accepted for fonts only, not ${mine.find((a) => !FONT.test(a))}`);
     const own = str(r['made']);
     const theirs = str(r['source']);
     if (own === theirs) problems.push(`${at}: give either "made" (the project's own work) or "source" (others' work), not ${own ? 'both' : 'neither'}`);
