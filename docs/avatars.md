@@ -46,6 +46,10 @@ Every viewer chooses the lowest rank they draw in full; the rest show at a light
 
 Everyone sees the avatar you wear: the world learns it from your connect token (the core vouches you own it), and each client fetches it from FlatChat by its hash and keeps it in its cache. The nearest few are drawn in full, the next ones lighter (LOD1, LOD2), everyone else as their impostor; an avatar below your minimum rank is never drawn in full. Everyone shares one walk, run, jump and sit (Stage 4's stand-in for the default animations to come), retargeted onto each body. Your voice moves your mouth; keys 1 to 5 make your face happy, angry, sad, relaxed or surprised (press again for neutral) and R changes your hands' pose. Spring bones (hair, clothes) move on the nearest six.
 
+## Your screen, your choice
+
+What renders on your screen is yours to decide (Settings, "Other people's avatars"; the People panel). On your first visit to a world FlatChat measures this computer for a few seconds and sets how many avatars it draws in full and the worst rank it draws in full (light: 4 and Good; medium: 8 and Medium; strong: 12 and Poor); you can change both, and measure again. Hide any person's avatar from the People panel: they show as their impostor. Shield yourself from strangers: below the trust level you choose, a person who is not your friend shows as their impostor. While the frame rate drops under 30, fewer avatars are drawn in full until it recovers (turn it off if you prefer).
+
 ## Converting on your own PC
 
 ```sh
