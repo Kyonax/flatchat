@@ -2,7 +2,7 @@
 title: Items — Clothes for the Three Bodies, Slots, Hide-Mask Regions, the Item Converter and the No-Clipping Check
 impact: HIGH
 impactDescription: A region cut where no garment ends leaves a hole or skin through cloth; a fit made on another body floats or sinks; a clipping check that reads the wrong bind pose or counts a thigh below a hem refuses good items, and one that skips covered skin passes bad ones; a fit with a foreign bone or extension is refused by the client after the core called it ready.
-tags: items, clothes, garments, S5.02, S5.01, dp-001, dp-002, cl-004, item format, flatchat_item, flatchat_fit, BODY_KITS, BodyKit, KIT_BONES, REGIONS, regionOfBone, chest, belly, hips, SLOTS, SLOT_REPLACES, caps, ItemDeclaration, readItemDeclaration, ItemFormatError, ItemManifest, checkItemManifest, checkItemFit, ITEM_EXTENSIONS, convertItem, ItemError, ITEM_CONVERTER_VERSION, clipping, clippingOf, REFERENCE_POSES, poseMatrices, Turn, kitBody, skeletonOffset, bind pose, edge zone, test tee, make-test-item, kits/items, skin layers, S5.03, compositeSkin, LAYER_KINDS, LayerError, SkinLayer, RgbaImage, tattoo, makeup, underwear layer, ORM, multiply, attachment points, S5.04, ATTACH_POINTS, AttachPoint, attachBone, attachMatrix, fitAdjustment, ADJUST_LIMITS, attachment slot, prop, convertProp, checkItemProp, attach_ markers
+tags: items, clothes, garments, outfits, outfitProblems, WORN_LIMITS, WornAdjust, fitWornAdjust, wornAdjustment, sampleProp, item-samples, S5.02, S5.01, dp-001, dp-002, cl-004, item format, flatchat_item, flatchat_fit, BODY_KITS, BodyKit, KIT_BONES, REGIONS, regionOfBone, chest, belly, hips, SLOTS, SLOT_REPLACES, caps, ItemDeclaration, readItemDeclaration, ItemFormatError, ItemManifest, checkItemManifest, checkItemFit, ITEM_EXTENSIONS, convertItem, ItemError, ITEM_CONVERTER_VERSION, clipping, clippingOf, REFERENCE_POSES, poseMatrices, Turn, kitBody, skeletonOffset, bind pose, edge zone, test tee, make-test-item, kits/items, skin layers, S5.03, compositeSkin, LAYER_KINDS, LayerError, SkinLayer, RgbaImage, tattoo, makeup, underwear layer, ORM, multiply, attachment points, S5.04, ATTACH_POINTS, AttachPoint, attachBone, attachMatrix, fitAdjustment, ADJUST_LIMITS, attachment slot, prop, convertProp, checkItemProp, attach_ markers
 ---
 
 Items are made for the three standard bodies (rule `body-kits`). Each carries one fitted mesh per body it fits, refitted between the bodies while it is made (shared topology), never at runtime (dp-001; Roblox's cage-fitting patents, cl-004). It fills one fixed slot and hides whole regions of the body (dp-002). Creators' guide: `docs/items.md`.
@@ -43,6 +43,16 @@ Items are made for the three standard bodies (rule `body-kits`). Each carries on
 
 An attachment item is `slot: attachment` with `attach`: one rigid mesh, no skin, worn on any avatar (`convertProp` in item/convert.ts, `checkItemProp`, `manifest.prop`). `tools/converter/test/attach.test.ts` checks that the computed points land within 5 cm of every kit marker, that every point finds a bone and lands on the free-shape robot and the VRM reference avatar, and that a prop converts while a skinned one or one with no point is refused.
 
+## Outfits (S5.05)
+
+| Part | Where |
+|---|---|
+| Wearable together | `outfitProblems` (packages/content item.ts): one item to a slot, one prop to a point, a `full` item with no `top` or `bottom` beside it. The client keeps a toggle within it (the new item takes the place of the one it conflicts with); the core refuses a saved outfit that breaks it |
+| A prop's adjustment in the protocol's units | `WornAdjust`, `WORN_LIMITS` (10 cm, 45 degrees, 80 to 125 percent, from `ADJUST_LIMITS`), `fitWornAdjust` (round and clamp: the world's `fitOutfit`), `wornAdjustment` (to metres and radians for `attachMatrix`) in attach.ts |
+| In the world | Protocol version 9: the `outfit` message and each roster player's `outfit` (rule `protocol-and-codecs`); the world fits it and takes one change a second |
+| Uploads, saved outfits, the standard bodies | The core (rule `core-service`: `src/items.ts`, `item-cli.ts` in the sandbox with `kits/bodies/`, `POST /api/v1/avatars/kit`, an avatar of a kit's exact bytes marked `kit`) |
+| A sample prop | `sampleProp(declare, skinned?)` in `tools/converter/src/item/samples.ts` (`@flatchat/converter/item-samples`), for the converter's and the core's tests |
+
 ## Not Yet
 
-The world already carries outfits (protocol version 9, S5.05a: the `outfit` message and each roster player's `outfit`, fitted by the world; rule `protocol-and-codecs`). Item uploads through the core and saved outfits are S5.05b; the client wearing them (a fit on a kit body by bone names, regions hidden, props at their points, the skin composited at an outfit change, the outfits menu) is S5.05c; the gallery and licence fields are S5.06.
+The client wearing them (a fit on a kit body by bone names, regions hidden, props at their points, the skin composited at an outfit change, the outfits menu) is S5.05c; the gallery and licence fields are S5.06.

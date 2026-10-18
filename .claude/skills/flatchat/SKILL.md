@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.33.0"
+  version: "1.34.0"
   verified: "2026-10-18"
 ---
 
@@ -74,7 +74,8 @@ Reference these guidelines when:
 | Worlds as files: world.toml, glTF scenes and their markers, limits, the validator | `rules/world-format.md` + `rules/security-untrusted-input.md` |
 | Avatar uploads: the converter (VRM 0.x/1.0, GLB), VRM inside glTF-Transform, levels, impostors, ranks, the manifest, the sandboxed CLI | `rules/avatar-converter.md` + `rules/security-untrusted-input.md` |
 | The three standard bodies: making or changing the body kits, headless Blender with MPFB and the VRM add-on, `kits/bodies/` | `rules/body-kits.md` + `rules/avatar-converter.md` |
-| Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check | `rules/items.md` + `rules/body-kits.md` |
+| Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check, outfits and what can be worn together | `rules/items.md` + `rules/body-kits.md` |
+| Item uploads, saved outfits, the standard bodies as avatars (`POST /api/v1/avatars/kit`), the converters' sandbox | `rules/core-service.md` + `rules/items.md` + `rules/security-untrusted-input.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
 | World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
 | Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
