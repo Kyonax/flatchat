@@ -5,7 +5,7 @@
 // could slip in a newer editor's file, material files, which are creator shaders, or a texture
 // bigger than any client should decode). Reading only: no runtime, no Node.
 import { bundlePathOf, editorVersion, EFFECT_LIMITS, EFFECT_RUNTIME, type EffectBundle, type EffectFile, effectFiles, EffectFormatError, readEffectFile } from './effect.ts';
-import { imageSize } from './validate.ts';
+import { imageSize } from './image-size.ts';
 
 const PNG = (b: Uint8Array): boolean => b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 

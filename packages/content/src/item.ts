@@ -7,6 +7,7 @@
 import { ATTACH_POINTS, type AttachPoint } from './attach.ts';
 import type { ModelFrom } from './avatar.ts';
 import { checkEffectFit, EFFECT_LIMITS, type EffectFit } from './effect.ts';
+import { checkOverlayFit, type HudPoint, OVERLAY_AUDIENCES, OVERLAY_LIMITS, type OverlayAudience, type OverlayFit, type OverlayMotion, readOverlayLook } from './overlay.ts';
 
 /** The manifest's format: the converter's output for this version of the platform. */
 export const ITEM_FORMAT = 1;
@@ -75,15 +76,20 @@ export const SLOTS = {
   /** An effect at an attachment point (S6.01): an Effekseer effect, measured by the dry run and
    *  held to an avatar's effect budget (EFFECT_LIMITS.avatar), its models' triangles here. */
   effect: { triangles: EFFECT_LIMITS.avatar.triangles, materials: 0, textureSide: EFFECT_LIMITS.textureSide },
+  /** An overlay at a screen point (S6.02): a still image on the wearer's screen, and on others'
+   *  with their consent (packages/content/src/overlay.ts). */
+  overlay: { triangles: 0, materials: 0, textureSide: OVERLAY_LIMITS.side },
 } as const satisfies Record<string, { triangles: number; materials: number; textureSide: number }>;
 export type Slot = keyof typeof SLOTS;
 /** The slots worn at a point rather than on the body: a prop, an effect. */
 export const POINT_SLOTS: readonly Slot[] = ['attachment', 'effect'];
-/** The slots a model upload fills: every one but the effect's. */
-export const MODEL_SLOTS = (Object.keys(SLOTS) as Slot[]).filter((s) => s !== 'effect');
+/** The slots a model upload fills: every one but the effect's and the overlay's. */
+export const MODEL_SLOTS = (Object.keys(SLOTS) as Slot[]).filter((s) => s !== 'effect' && s !== 'overlay');
 
-/** The key one item takes in an outfit: its slot, or for a prop or an effect its point. */
-function wornKey(w: { slot: Slot; attach?: AttachPoint | undefined }): string {
+/** The key one item takes in an outfit: its slot, for a prop or an effect its point, for an
+ *  overlay its screen point. */
+function wornKey(w: { slot: Slot; attach?: AttachPoint | undefined; hud?: HudPoint | undefined }): string {
+  if (w.slot === 'overlay') return `overlay at ${w.hud ?? '?'}`;
   return POINT_SLOTS.includes(w.slot) ? `${w.slot} at ${w.attach ?? '?'}` : w.slot;
 }
 /** Slots worn instead of others: a full outfit (a dress, a jumpsuit) takes the top and the bottom. */
@@ -95,7 +101,7 @@ export const SLOT_REPLACES: Partial<Record<Slot, readonly Slot[]>> = { full: ['t
  *  given). The client keeps an outfit within these when a toggle puts an item on (it takes the
  *  place of the one it conflicts with); the core refuses a saved outfit that breaks them. Empty
  *  when they can be worn. */
-export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: AttachPoint | undefined; effect?: Pick<EffectFit, 'peak'> | undefined }>): string[] {
+export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: AttachPoint | undefined; hud?: HudPoint | undefined; effect?: Pick<EffectFit, 'peak'> | undefined }>): string[] {
   const problems: string[] = [];
   const taken = new Map<string, number>();
   for (const w of worn) {
@@ -107,6 +113,8 @@ export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: Attach
     if (!taken.has(slot)) continue;
     for (const r of replaced) if (taken.has(r)) problems.push(`a ${slot} item takes the ${r} slot too`);
   }
+  const overlays = worn.filter((w) => w.slot === 'overlay').length;
+  if (overlays > OVERLAY_LIMITS.worn) problems.push(`${overlays} overlays; ${OVERLAY_LIMITS.worn} at most`);
   const sum = { instances: 0, quads: 0, triangles: 0 };
   for (const w of worn) {
     if (w.slot !== 'effect' || !w.effect) continue;
@@ -123,7 +131,7 @@ export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: Attach
 
 /** An outfit made wearable (S5.05): where items conflict (outfitProblems), the one worn later wins,
  *  as a toggle that puts an item on takes the place of the one it conflicts with. Keeps the order. */
-export function resolveOutfit<T extends { slot: Slot; attach?: AttachPoint | undefined }>(worn: readonly T[]): T[] {
+export function resolveOutfit<T extends { slot: Slot; attach?: AttachPoint | undefined; hud?: HudPoint | undefined }>(worn: readonly T[]): T[] {
   const kept: T[] = [];
   const taken = new Set<string>();
   const replacedBy = (slot: Slot): Slot[] => Object.entries(SLOT_REPLACES).flatMap(([s, rs]) => ((rs as readonly Slot[]).includes(slot) ? [s as Slot] : []));
@@ -150,6 +158,12 @@ export interface ItemDeclaration {
   attach?: AttachPoint;
   /** For the effect slot: the scale it plays at (0.01 to 100; 1 when not given). */
   scale?: number;
+  /** For the overlay slot (S6.02): its screen point, size, opacity and motion, and who sees it. */
+  hud?: HudPoint;
+  size?: number;
+  opacity?: number;
+  motion?: OverlayMotion;
+  audience?: OverlayAudience;
 }
 
 /** A file's own declaration (its glTF JSON's): extras.flatchat_item on its scene or on the file;
@@ -195,6 +209,13 @@ export function readItemDeclaration(value: unknown): ItemDeclaration {
   const scale = d['scale'];
   if (scale !== undefined && slot !== 'effect') problems.push('only an effect has a scale');
   else if (scale !== undefined && (typeof scale !== 'number' || !(scale >= 0.01 && scale <= 100))) problems.push("an effect's scale is 0.01 to 100");
+  const overlay = slot === 'overlay' ? readOverlayLook(d, 'item') : undefined;
+  const audience = d['audience'] ?? 'self';
+  if (overlay) {
+    problems.push(...overlay.problems);
+    if (hides.length) problems.push('an overlay hides nothing of the body');
+    if (typeof audience !== 'string' || !(OVERLAY_AUDIENCES as readonly string[]).includes(audience)) problems.push(`an overlay's audience is ${OVERLAY_AUDIENCES.join(' or ')}`);
+  } else if (['hud', 'size', 'opacity', 'motion', 'audience'].some((k) => d[k] !== undefined)) problems.push('only an overlay has a screen point, a size, an opacity, a motion or an audience');
   if (problems.length) throw new ItemFormatError(problems);
   return {
     name,
@@ -203,6 +224,7 @@ export function readItemDeclaration(value: unknown): ItemDeclaration {
     authors,
     ...(atPoint ? { attach: attach as AttachPoint } : {}),
     ...(slot === 'effect' ? { scale: typeof scale === 'number' ? scale : 1 } : {}),
+    ...(overlay ? { ...overlay.look, audience: audience as OverlayAudience } : {}),
   };
 }
 
@@ -245,6 +267,8 @@ export interface ItemManifest {
   prop?: ItemFit;
   /** For the effect slot (S6.01): its bundle and what the dry run measured. */
   effect?: EffectFit;
+  /** For the overlay slot (S6.02): its image and its look. */
+  overlay?: OverlayFit;
   warnings: string[];
 }
 
@@ -252,7 +276,19 @@ export interface ItemManifest {
 export function checkItemManifest(value: unknown): ItemManifest {
   const m = value as ItemManifest;
   if (typeof m !== 'object' || m === null || m.format !== ITEM_FORMAT || m.kind !== 'item') throw new Error('not an item manifest of this format');
-  readItemDeclaration({ name: m.name, slot: m.slot, hides: m.hides, authors: m.authors, ...(m.attach ? { attach: m.attach } : {}), ...(m.slot === 'effect' && m.effect ? { scale: m.effect.scale } : {}) });
+  readItemDeclaration({
+    name: m.name,
+    slot: m.slot,
+    hides: m.hides,
+    authors: m.authors,
+    ...(m.attach ? { attach: m.attach } : {}),
+    ...(m.slot === 'effect' && m.effect ? { scale: m.effect.scale } : {}),
+    ...(m.slot === 'overlay' && m.overlay ? { hud: m.overlay.hud, size: m.overlay.size, opacity: m.overlay.opacity, motion: m.overlay.motion, audience: m.overlay.audience } : {}),
+  });
+  if (m.slot === 'overlay') {
+    checkOverlayFit(m.overlay);
+    return m;
+  }
   if (m.slot === 'effect') {
     checkEffectFit(m.effect);
     return m;

@@ -3,6 +3,8 @@
 // every problem out. It reads only what the folder holds, decodes no image (sizes come from the
 // headers) and runs no code from the world (an effect is read, never played: the converter's dry
 // run plays it).
+import { imageSize } from './image-size.ts';
+import { OVERLAY_LIMITS, overlayImageProblems } from './overlay.ts';
 import { editorVersion, EFFECT_RUNTIME, type EffectFile, effectFiles, EffectFormatError, effectPath, readEffectFile } from './effect.ts';
 import { parseManifest, type Problem, type Severity, type WorldManifest } from './manifest.ts';
 import { inspectScene, LIMITS, readGltf, type SceneInfo } from './scene.ts';
@@ -18,32 +20,7 @@ export interface WorldReport {
   bytes: number;
 }
 
-/** Width and height from a PNG, JPEG or WebP file's header, if it is one. */
-export function imageSize(b: Uint8Array): { width: number; height: number } | undefined {
-  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return { width: v.getUint32(16), height: v.getUint32(20) };
-  if (b.length >= 30 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) {
-    const kind = String.fromCharCode(b[12]!, b[13]!, b[14]!, b[15]!);
-    if (kind === 'VP8X') return { width: 1 + (b[24]! | (b[25]! << 8) | (b[26]! << 16)), height: 1 + (b[27]! | (b[28]! << 8) | (b[29]! << 16)) };
-    if (kind === 'VP8L') {
-      const bits = v.getUint32(21, true);
-      return { width: 1 + (bits & 0x3fff), height: 1 + ((bits >> 14) & 0x3fff) };
-    }
-    if (kind === 'VP8 ') return { width: v.getUint16(26, true) & 0x3fff, height: v.getUint16(28, true) & 0x3fff };
-  }
-  if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8) {
-    let i = 2;
-    while (i + 9 < b.length) {
-      if (b[i] !== 0xff) return undefined;
-      const marker = b[i + 1]!;
-      const length = v.getUint16(i + 2);
-      // SOF0 to SOF15, except DHT (C4), JPG (C8) and DAC (CC).
-      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return { width: v.getUint16(i + 7), height: v.getUint16(i + 5) };
-      i += 2 + length;
-    }
-  }
-  return undefined;
-}
+export { imageSize } from './image-size.ts';
 
 export function validateWorld(files: ReadonlyMap<string, Uint8Array>): WorldReport {
   const problems: Problem[] = [];
@@ -129,6 +106,12 @@ export function validateWorld(files: ReadonlyMap<string, Uint8Array>): WorldRepo
   }
   if (scenes[0] && scenes[0].spawns.length === 0 && manifest.scenes[0]?.file === scenes[0].file) {
     problems.push({ code: 'no-spawn', severity: 'error', file: scenes[0].file, at: 'nodes', message: 'the first scene needs at least one OMI_spawn_point' });
+  }
+  // Screen overlays (S6.02): each image a PNG in the folder, within a world overlay's size.
+  for (const [i, o] of (manifest.overlays ?? []).entries()) {
+    const data = files.get(o.image);
+    if (!data) problems.push({ code: 'file-missing', severity: 'error', file: 'world.toml', at: `overlays[${i}].image`, message: `${o.image} is not in the folder` });
+    else for (const m of overlayImageProblems(data, OVERLAY_LIMITS.world.side)) problems.push({ code: 'overlay-image', severity: 'error', file: o.image, at: '', message: m });
   }
   // Several scenes may each pass and still be too much together.
   const total = scenes.reduce((n, s) => n + s.triangles, 0);

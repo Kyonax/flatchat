@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // FlatChat's content formats: the world format (docs/world-format.md), its validator, the built
 // world, the solids' binary format and the base library's parts.
-export { type Problem, parseManifest, plainText, safePath, type SceneEntry, type Severity, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
+export { type Problem, parseManifest, plainText, safePath, type SceneEntry, type Severity, WORLD_FORMAT, type WorldManifest, type WorldOverlayEntry } from './manifest.ts';
 export {
   type Body,
   type Emitter,
@@ -36,6 +36,7 @@ export {
   type BuiltEmitter,
   type BuiltFile,
   type BuiltKind,
+  type BuiltOverlay,
   type BuiltPart,
   type BuiltPortal,
   type BuiltScene,
@@ -126,3 +127,22 @@ export {
   writeBundle,
 } from './effect.ts';
 export { checkEffectBundle, type EffectCheck } from './effect-check.ts';
+export {
+  checkOverlayFit,
+  DEFAULT_OVERLAY_SETTINGS,
+  HUD_POINTS,
+  type HudPoint,
+  OVERLAY_AUDIENCES,
+  OVERLAY_LIMITS,
+  OVERLAY_MOTIONS,
+  type OverlayAudience,
+  type OverlayFit,
+  overlayImageProblems,
+  type OverlayLook,
+  type OverlayMotion,
+  type OverlaySettings,
+  overlayShown,
+  overlayVisible,
+  type OverlayWhose,
+  readOverlayLook,
+} from './overlay.ts';

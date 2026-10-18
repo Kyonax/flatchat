@@ -2,6 +2,7 @@
 // A world's world.toml (docs/world-format.md): parsed, checked field by field, and turned into a
 // manifest. Every problem names its file and field; an unknown key is a warning, never used.
 import { parse, TomlError } from 'smol-toml';
+import { OVERLAY_LIMITS, type OverlayLook, readOverlayLook } from './overlay.ts';
 
 export const WORLD_FORMAT = 1;
 
@@ -21,6 +22,11 @@ export interface SceneEntry {
   file: string;
 }
 
+/** A world's screen overlay (S6.02): its image, a PNG in the folder, and its look. */
+export interface WorldOverlayEntry extends OverlayLook {
+  image: string;
+}
+
 export interface WorldManifest {
   format: number;
   name: string;
@@ -31,6 +37,8 @@ export interface WorldManifest {
   avatars: { minHeight: number; maxHeight: number };
   voice: { range: number };
   scenes: SceneEntry[];
+  /** Its screen overlays, when it has any (S6.02): on for every visitor until they switch them off. */
+  overlays?: WorldOverlayEntry[];
 }
 
 /** Plain text: no control, format or direction characters. */
@@ -46,13 +54,14 @@ export function safePath(path: string): boolean {
 }
 
 const KNOWN: Record<string, readonly string[]> = {
-  '': ['format', 'name', 'description', 'capacity', 'persistence', 'movement', 'avatars', 'voice', 'scenes'],
+  '': ['format', 'name', 'description', 'capacity', 'persistence', 'movement', 'avatars', 'voice', 'scenes', 'overlays'],
   capacity: ['recommended', 'maximum'],
   persistence: ['mode'],
   movement: ['flying'],
   avatars: ['min_height', 'max_height'],
   voice: ['range'],
   scenes: ['id', 'file'],
+  overlays: ['image', 'hud', 'size', 'opacity', 'motion'],
 };
 
 type Table = Record<string, unknown>;
@@ -70,7 +79,7 @@ export function parseManifest(text: string, file = 'world.toml'): { manifest?: W
     return { problems };
   }
   for (const [table, keys] of Object.entries(KNOWN)) {
-    const sections = table === '' ? [doc] : table === 'scenes' ? (Array.isArray(doc['scenes']) ? (doc['scenes'] as unknown[]).filter(isTable) : []) : isTable(doc[table]) ? [doc[table] as Table] : [];
+    const sections = table === '' ? [doc] : table === 'scenes' || table === 'overlays' ? (Array.isArray(doc[table]) ? (doc[table] as unknown[]).filter(isTable) : []) : isTable(doc[table]) ? [doc[table] as Table] : [];
     for (const section of sections) {
       for (const key of Object.keys(section)) {
         if (!keys.includes(key)) add('field-unknown', table ? `${table}.${key}` : key, `unknown key ${key}: this version ignores it`, 'warning');
@@ -126,6 +135,20 @@ export function parseManifest(text: string, file = 'world.toml'): { manifest?: W
     scenes.push({ id, file: f });
   });
 
+  // Screen overlays (S6.02): each a PNG in the folder at a screen point.
+  const overlays: WorldOverlayEntry[] = [];
+  const rawOverlays = doc['overlays'] === undefined ? [] : Array.isArray(doc['overlays']) ? (doc['overlays'] as unknown[]) : (add('field', 'overlays', 'overlays are [[overlays]] entries'), []);
+  if (rawOverlays.length > OVERLAY_LIMITS.world.count) add('too-big', 'overlays', `a world has ${OVERLAY_LIMITS.world.count} overlays at most`);
+  rawOverlays.slice(0, OVERLAY_LIMITS.world.count).forEach((o, i) => {
+    const at = `overlays[${i}]`;
+    if (!isTable(o)) return add('field', at, 'each [[overlays]] entry is a table');
+    const image = o['image'];
+    if (typeof image !== 'string' || !safePath(image) || !/\.png$/i.test(image)) return add('path-unsafe', `${at}.image`, "an overlay's image is a PNG, a relative path inside the world folder");
+    const { look, problems: wrong } = readOverlayLook(o, 'world');
+    for (const w of wrong) add('field', at, w);
+    if (!wrong.length) overlays.push({ image, ...look });
+  });
+
   if (problems.some((p) => p.severity === 'error')) return { problems };
   return {
     manifest: {
@@ -138,6 +161,7 @@ export function parseManifest(text: string, file = 'world.toml'): { manifest?: W
       avatars: { minHeight, maxHeight },
       voice: { range },
       scenes,
+      ...(overlays.length ? { overlays } : {}),
     },
     problems,
   };

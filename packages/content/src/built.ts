@@ -4,11 +4,12 @@
 // files, each named by its SHA-256 (the visual GLB, the collision file, the navigation mesh, the
 // sounds). Clients download it from strangers' servers, so `parseBuiltWorld` checks every field.
 import { plainText, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
+import { OVERLAY_LIMITS, type OverlayLook, readOverlayLook } from './overlay.ts';
 import { isPart, MAX_PARTS } from './parts.ts';
 
 export const BUILT_FORMAT = 1;
 
-export type BuiltKind = 'scene' | 'collision' | 'navmesh' | 'audio' | 'effect';
+export type BuiltKind = 'scene' | 'collision' | 'navmesh' | 'audio' | 'effect' | 'overlay';
 
 export interface BuiltFile {
   hash: string;
@@ -72,6 +73,13 @@ export interface BuiltPart {
 
 /** A world's effect (S6.01): its bundle, where it plays (a column-major 4×4), its scale, and what the
  *  host tool's dry run measured. Clients measure it again themselves: a host is not trusted. */
+/** A world's screen overlay (S6.02): its image (re-encoded by the converter) and its look. */
+export interface BuiltOverlay extends OverlayLook {
+  file: string;
+  width: number;
+  height: number;
+}
+
 export interface BuiltEffect {
   file: string;
   matrix: number[];
@@ -104,6 +112,8 @@ export interface BuiltWorld {
   /** The world's bounds in x and z, for the server's clamp. */
   bounds: { min: V3; max: V3 };
   files: BuiltFile[];
+  /** Its screen overlays, when it has any (S6.02). */
+  overlays?: BuiltOverlay[];
 }
 
 const LIMIT = { scenes: 16, files: 4096, markers: 1000, fileSize: 256 * 1024 * 1024 };
@@ -156,7 +166,7 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
     const files = list(j['files'], 'files', LIMIT.files, (f, at) => {
       if (!isObj(f)) return fail(at, 'an object');
       const kind = f['kind'];
-      if (kind !== 'scene' && kind !== 'collision' && kind !== 'navmesh' && kind !== 'audio' && kind !== 'effect') fail(`${at}.kind`, 'scene, collision, navmesh, audio or effect');
+      if (kind !== 'scene' && kind !== 'collision' && kind !== 'navmesh' && kind !== 'audio' && kind !== 'effect' && kind !== 'overlay') fail(`${at}.kind`, 'scene, collision, navmesh, audio, effect or overlay');
       return { hash: hash(f['hash'], `${at}.hash`), size: num(f['size'], `${at}.size`, 0, LIMIT.fileSize), kind: kind as BuiltKind };
     });
     const known = new Set(files.map((f) => f.hash));
@@ -239,6 +249,16 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
         ...(j['navmesh'] !== undefined ? { navmesh: listed(hash(j['navmesh'], 'navmesh'), 'navmesh') } : {}),
         bounds: { min: v3(bounds['min'], 'bounds.min'), max: v3(bounds['max'], 'bounds.max') },
         files,
+        ...(j['overlays'] !== undefined
+          ? {
+              overlays: list(j['overlays'], 'overlays', OVERLAY_LIMITS.world.count, (o, a) => {
+                if (!isObj(o)) return fail(a, 'an object');
+                const { look, problems } = readOverlayLook(o, 'world');
+                if (problems.length) fail(a, problems[0]!);
+                return { file: listed(hash(o['file'], `${a}.file`), `${a}.file`), width: num(o['width'], `${a}.width`, 1, OVERLAY_LIMITS.world.side), height: num(o['height'], `${a}.height`, 1, OVERLAY_LIMITS.world.side), ...look };
+              }),
+            }
+          : {}),
       },
     };
   } catch (err) {

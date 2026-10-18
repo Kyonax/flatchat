@@ -17,7 +17,7 @@ export const BLENDER_FORMATS: readonly ModelFrom[] = ['fbx', 'obj', 'blend'];
 /** Each format as a sentence names it ("the FBX file"). */
 export const MODEL_FORMAT_NAMES: Record<ModelFrom, string> = { fbx: 'FBX', obj: 'OBJ', dae: 'DAE', blend: '.blend' };
 
-export type UploadFormat = 'gltf' | ModelFrom | 'effect' | 'unknown';
+export type UploadFormat = 'gltf' | ModelFrom | 'effect' | 'image' | 'unknown';
 
 /** The names in a zip's central directory, read from its end (nothing is inflated); empty when it
  *  does not read as a zip. */
@@ -52,6 +52,8 @@ export function uploadFormat(bytes: Uint8Array): UploadFormat {
   if (bytes.length >= 12 && head.startsWith('glTF')) return 'gltf';
   if (head.startsWith('EFKE') || head.startsWith('SKFE') || head.startsWith('FCFX')) return 'effect';
   if (head.startsWith('PK\x03\x04') && zipNames(bytes).some((n) => /\.(efkefc|efk)$/i.test(n) || n === 'metafile.json')) return 'effect';
+  // A PNG: an overlay's image (S6.02).
+  if (bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => bytes[i] === v)) return 'image';
   if (head.startsWith('Kaydara FBX Binary') || /^\s*;\s*FBX/.test(head)) return 'fbx';
   // .blend: "BLENDER", or compressed (zstd since Blender 3.0, gzip before).
   if (head.startsWith('BLENDER') || (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) || (bytes[0] === 0x1f && bytes[1] === 0x8b)) return 'blend';
