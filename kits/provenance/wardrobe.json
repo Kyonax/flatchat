@@ -1,0 +1,28 @@
+{
+ "files": [
+  "kits/items/white-tee-and-jeans/white-tee-and-jeans.glb",
+  "kits/items/striped-shirt-and-jeans/striped-shirt-and-jeans.glb",
+  "kits/items/jacket-and-jeans/jacket-and-jeans.glb",
+  "kits/items/dark-suit/dark-suit.glb",
+  "kits/items/overalls/overalls.glb",
+  "kits/items/brown-shoes/brown-shoes.glb",
+  "kits/items/black-boots/black-boots.glb",
+  "kits/items/grey-fedora/grey-fedora.glb"
+ ],
+ "title": "The starter wardrobe (Track P's P.08): eight garments, each fitted on all three bodies",
+ "creator": "the FlatChat contributors",
+ "licence": "CC-BY-4.0",
+ "made": "node tools/converter/scripts/make-wardrobe.ts: tools/blender/wardrobe/fit.py fits MakeHuman's garments on the three bodies with MPFB 2.0.18 in Blender 5.2.2 LTS (the body kits' pinned tools), then tools/converter/src/item/wardrobe.ts gives each fit the weights of the skin under it, pushes it out where skin still came through, simplifies the denser ones under their slot's caps, keeps one base colour texture each and paints MakeHuman's logo out of the white tee; what each measured is in kits/items/wardrobe.json",
+ "derivedFrom": [
+  {
+   "what": "MakeHuman's system assets: the garments male_casualsuit06, male_casualsuit03, male_casualsuit05, male_elegantsuit01, male_worksuit01, shoes01, shoes03 and fedora01, with their textures",
+   "creator": "the MakeHuman team (Data Collection AB, Joel Palmius, Jonas Hauquier)",
+   "source": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+   "licence": "CC0-1.0",
+   "licencePage": {
+    "url": "https://static.makehumancommunity.org/about/license.html",
+    "archived": "kits/provenance/archive/makehuman-system-assets-pack.json"
+   }
+  }
+ ]
+}

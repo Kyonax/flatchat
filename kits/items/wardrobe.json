@@ -1,0 +1,516 @@
+{
+ "made": "node tools/converter/scripts/make-wardrobe.ts",
+ "checked": {
+  "poses": 7,
+  "shapes": [
+   {
+    "width": 1,
+    "arms": 1,
+    "legs": 1,
+    "head": 1
+   },
+   {
+    "width": 0.8,
+    "arms": 0.8,
+    "legs": 0.8,
+    "head": 0.8
+   },
+   {
+    "width": 1.25,
+    "arms": 1.25,
+    "legs": 1.25,
+    "head": 1.25
+   }
+  ]
+ },
+ "items": [
+  {
+   "id": "white-tee-and-jeans",
+   "name": "White tee and jeans",
+   "from": "male_casualsuit06",
+   "slot": "full",
+   "hides": [
+    "belly",
+    "hips",
+    "lower_leg_l",
+    "lower_leg_r",
+    "upper_leg_l",
+    "upper_leg_r"
+   ],
+   "file": "white-tee-and-jeans/white-tee-and-jeans.glb",
+   "sha256": "f66c019386dd4d3be94fed26f9f9c050ff3f8a195ecfdc3c2d563108a140b3ef",
+   "bytes": 854596,
+   "fits": {
+    "feminine": {
+     "triangles": 7168,
+     "pushed": {
+      "vertices": 17,
+      "largestMm": 6
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 28376,
+      "through": 0,
+      "worstMm": 1
+     }
+    },
+    "masculine": {
+     "triangles": 7168,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 29077,
+      "through": 0,
+      "worstMm": 2.3
+     }
+    },
+    "neutral": {
+     "triangles": 7168,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 28496,
+      "through": 0,
+      "worstMm": 2.1
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "striped-shirt-and-jeans",
+   "name": "Striped shirt and jeans",
+   "from": "male_casualsuit03",
+   "slot": "full",
+   "hides": [
+    "belly",
+    "hips",
+    "lower_leg_l",
+    "lower_leg_r",
+    "upper_arm_l",
+    "upper_arm_r",
+    "upper_leg_l",
+    "upper_leg_r"
+   ],
+   "file": "striped-shirt-and-jeans/striped-shirt-and-jeans.glb",
+   "sha256": "b558c0c0eefffea288b2d39e548d5bfebfde779510115a04675f31a67f9f935e",
+   "bytes": 783816,
+   "fits": {
+    "feminine": {
+     "triangles": 4800,
+     "pushed": {
+      "vertices": 3,
+      "largestMm": 6.5
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 30146,
+      "through": 0,
+      "worstMm": 2.7
+     }
+    },
+    "masculine": {
+     "triangles": 4800,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 29746,
+      "through": 0,
+      "worstMm": 2.5
+     }
+    },
+    "neutral": {
+     "triangles": 4800,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 29823,
+      "through": 0,
+      "worstMm": 2.4
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "jacket-and-jeans",
+   "name": "Jacket and jeans",
+   "from": "male_casualsuit05",
+   "slot": "full",
+   "hides": [
+    "belly",
+    "hips",
+    "lower_arm_l",
+    "lower_arm_r",
+    "lower_leg_l",
+    "lower_leg_r",
+    "upper_arm_l",
+    "upper_arm_r",
+    "upper_leg_l",
+    "upper_leg_r"
+   ],
+   "file": "jacket-and-jeans/jacket-and-jeans.glb",
+   "sha256": "ee5dcfdf9414c4b23f9915510a9267a64fca01553981d32c8d42895bc6df3c3b",
+   "bytes": 808856,
+   "fits": {
+    "feminine": {
+     "triangles": 5996,
+     "pushed": {
+      "vertices": 19,
+      "largestMm": 6.5
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 14895,
+      "through": 0,
+      "worstMm": 2.2
+     }
+    },
+    "masculine": {
+     "triangles": 5996,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 15029,
+      "through": 0,
+      "worstMm": 1.5
+     }
+    },
+    "neutral": {
+     "triangles": 5996,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 14965,
+      "through": 0,
+      "worstMm": 1
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "dark-suit",
+   "name": "Dark suit",
+   "from": "male_elegantsuit01",
+   "slot": "full",
+   "hides": [
+    "belly",
+    "chest",
+    "hips",
+    "lower_leg_l",
+    "lower_leg_r",
+    "upper_arm_l",
+    "upper_arm_r",
+    "upper_leg_l",
+    "upper_leg_r"
+   ],
+   "file": "dark-suit/dark-suit.glb",
+   "sha256": "22c3930e62b85113648bc8dd53b6f503c0d8fa03739865ec115e278f4181d036",
+   "bytes": 1513652,
+   "fits": {
+    "feminine": {
+     "triangles": 13300,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 8583,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "masculine": {
+     "triangles": 13300,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 8434,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "neutral": {
+     "triangles": 13300,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 8554,
+      "through": 0,
+      "worstMm": 0
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "overalls",
+   "name": "Overalls",
+   "from": "male_worksuit01",
+   "slot": "full",
+   "hides": [
+    "belly",
+    "hips",
+    "lower_leg_l",
+    "lower_leg_r",
+    "upper_leg_l",
+    "upper_leg_r"
+   ],
+   "file": "overalls/overalls.glb",
+   "sha256": "54ae03bf0b37401b6643250866eab31325caf73d1333c00c40d859bab1993d3f",
+   "bytes": 941452,
+   "fits": {
+    "feminine": {
+     "triangles": 6986,
+     "pushed": {
+      "vertices": 44,
+      "largestMm": 10.9
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 11524,
+      "through": 0,
+      "worstMm": 2
+     }
+    },
+    "masculine": {
+     "triangles": 6986,
+     "pushed": {
+      "vertices": 3,
+      "largestMm": 7.6
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 13091,
+      "through": 0,
+      "worstMm": 0.6
+     }
+    },
+    "neutral": {
+     "triangles": 6986,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 12611,
+      "through": 0,
+      "worstMm": 0.1
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "brown-shoes",
+   "name": "Brown shoes",
+   "from": "shoes01",
+   "slot": "shoes",
+   "hides": [
+    "foot_l",
+    "foot_r"
+   ],
+   "file": "brown-shoes/brown-shoes.glb",
+   "sha256": "1aa3fe7f58b4657b7ca4d9459b4aa0bfa5b1a944301f942bee943ddc49f04b09",
+   "bytes": 588348,
+   "fits": {
+    "feminine": {
+     "triangles": 3320,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1260,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "masculine": {
+     "triangles": 3320,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 2394,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "neutral": {
+     "triangles": 3320,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 2058,
+      "through": 0,
+      "worstMm": 0
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "black-boots",
+   "name": "Black boots",
+   "from": "shoes03",
+   "slot": "shoes",
+   "hides": [
+    "foot_l",
+    "foot_r"
+   ],
+   "file": "black-boots/black-boots.glb",
+   "sha256": "4f9f43c962be3d3fc03b082ce188f0c23b221ff4e8b0c8d82ac5c05970932afe",
+   "bytes": 569240,
+   "fits": {
+    "feminine": {
+     "triangles": 3800,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1260,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "masculine": {
+     "triangles": 3800,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1932,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "neutral": {
+     "triangles": 3800,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1722,
+      "through": 0,
+      "worstMm": 0
+     }
+    }
+   },
+   "minutesByHand": 0
+  },
+  {
+   "id": "grey-fedora",
+   "name": "Grey fedora",
+   "from": "fedora01",
+   "slot": "hat",
+   "hides": [],
+   "file": "grey-fedora/grey-fedora.glb",
+   "sha256": "8963cc21c7ce3047b1d55c71345018f0b2c9262b18728fb25aae0654a18e4ab9",
+   "bytes": 513068,
+   "fits": {
+    "feminine": {
+     "triangles": 1244,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1442,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "masculine": {
+     "triangles": 1244,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1841,
+      "through": 0,
+      "worstMm": 0
+     }
+    },
+    "neutral": {
+     "triangles": 1244,
+     "pushed": {
+      "vertices": 0,
+      "largestMm": 0
+     },
+     "clipping": {
+      "poses": 21,
+      "checked": 1442,
+      "through": 0,
+      "worstMm": 0
+     }
+    }
+   },
+   "minutesByHand": 0
+  }
+ ],
+ "leftOut": [
+  {
+   "from": "male_casualsuit02, male_casualsuit04, female_casualsuit01, female_casualsuit02",
+   "why": "MakeHuman's logo is printed on each of their tees: a trademark, which CC0 does not waive (the white tee of male_casualsuit06 is kept, its logo painted out)"
+  },
+  {
+   "from": "shoes05, shoes06",
+   "why": "photographed from branded sneakers (three stripes and a maker's logo on the sole; a swoosh)"
+  },
+  {
+   "from": "female_elegantsuit01",
+   "why": "the thighs come through the skirt when the body is seated (up to 29 mm on the three bodies), which skinning alone cannot follow"
+  },
+  {
+   "from": "female_sportsuit01",
+   "why": "the leggings' low waist: the hips come through at the sliders' ends and when seated (up to 27 mm)"
+  },
+  {
+   "from": "male_casualsuit01",
+   "why": "16,672 triangles, over the full slot's 14,000: simplified under it, the knee came through the jeans when seated (up to 9 mm)"
+  }
+ ]
+}

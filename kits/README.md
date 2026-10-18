@@ -3,7 +3,7 @@
 The three body kits and the sources of the base library: free to use anywhere, with credit.
 
 - Licence: CC BY 4.0 ([LICENSE](LICENSE)); third-party parts keep theirs, listed in [CREDITS.md](../CREDITS.md)
-- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)), and the default clips in [animations/](animations/) (Track P's P.05). The base library's sources come later.
+- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)), the starter wardrobe in [items/](items/) (Track P's P.08), and the default clips in [animations/](animations/) (Track P's P.05). The base library's sources come later.
 
 ## The three bodies
 
@@ -36,6 +36,14 @@ They come from two CC0 libraries, Mesh2Motion's human clips (Scott Petrovic and 
 
 ```sh
 node tools/converter/scripts/default-animations.ts
+```
+
+## The starter wardrobe
+
+[items/](items/) holds eight items fitted on the three bodies: five full outfits (white tee and jeans, striped shirt and jeans, jacket and jeans, dark suit, overalls), brown shoes, black boots and a grey fedora. They are MakeHuman's CC0 garments (the MakeHuman team), fitted by MPFB in Blender, then made into items by the converter: the skin's weights, a small push where skin came through, one texture each, and MakeHuman's logo painted out of the white tee. On each body no skin comes through any of them in the seven reference poses, as made and at both ends of the proportion sliders. [items/wardrobe.json](items/wardrobe.json) lists each one, what it hides and what it measured, and the garments left out and why. [items/fingerprints.json](items/fingerprints.json) holds their fingerprints, so a starter item is never taken for a copy. To make them again:
+
+```sh
+node tools/converter/scripts/make-wardrobe.ts
 ```
 
 - Provenance: [provenance/](provenance/) holds one record for each asset in the whole repository, with saved copies of others' licence pages in `provenance/archive/`. The fields are listed at the top of `tools/harness/src/asset-check.ts`, and `npm run harness` checks every record.
