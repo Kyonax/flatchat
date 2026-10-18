@@ -59,6 +59,13 @@ export interface BotOptions {
 
 export type BotState = 'new' | 'connecting' | 'joined' | 'refused' | 'failed' | 'closed';
 
+/** An item a player wears, as the roster gives it (S5.05): its manifest's SHA-256 in hex, and a
+ *  prop's adjustment (centimetres, degrees, percent) as the world fitted it. */
+export interface WornItem {
+  item: string;
+  adjust?: { x: number; y: number; z: number; rx: number; ry: number; rz: number; scale: number };
+}
+
 export interface Counters {
   down: Record<string, number>;
   downMessages: Record<string, number>;
@@ -121,8 +128,8 @@ export class Bot {
   heldMute: string | undefined;
   /** How the world removed the bot, when it did (kicked, banned, closing). */
   removed: { reason: string; detail: string } | undefined;
-  /** Who is in the world, by account: their entities, roles and worn avatars (the roster). */
-  readonly people = new Map<string, { entity: number; role: string; avatar: string | undefined }>();
+  /** Who is in the world, by account: their entities, roles, worn avatars and outfits (the roster). */
+  readonly people = new Map<string, { entity: number; role: string; avatar: string | undefined; outfit: WornItem[] }>();
   /** Where the server placed the bot at its join. */
   spawnAt: { x: number; z: number } | undefined;
   private joinedAt = 0;
@@ -355,7 +362,10 @@ export class Bot {
         break;
       case 'roster':
         if (m.full) this.people.clear();
-        for (const p of m.players) this.people.set(p.account, { entity: p.entity, role: p.role, avatar: p.avatar ? Buffer.from(p.avatar).toString('hex') : undefined });
+        for (const p of m.players) {
+          const outfit = p.outfit.map((w) => ({ item: Buffer.from(w.item).toString('hex'), ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
+          this.people.set(p.account, { entity: p.entity, role: p.role, avatar: p.avatar ? Buffer.from(p.avatar).toString('hex') : undefined, outfit });
+        }
         for (const gone of m.left) for (const [account, p] of this.people) if (p.entity === gone) this.people.delete(account);
         break;
       case 'hidden':
