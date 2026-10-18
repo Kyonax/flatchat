@@ -4,11 +4,15 @@
 // the world server running in the client's own main process. Two runs of the packaged client, each
 // with a fresh profile: the park built into the app (drawn from the base library, a chat line
 // answered by the world), then a world folder given with --offline-world, which the client
-// converts with the host tool's converter before playing it.
+// converts with the host tool's converter before playing it: make-travel's second world, the park
+// with Effekseer's tornado (S6.01), so the conversion dry-runs an effect in the client's own
+// bundled worker and the world view measures and plays it.
 //
 //   node tools/bots/src/offline-check.ts -- CLIENT [--shots DIR]
 //
 // One JSON line: { event: 'offline-check', ok, steps } ; exit 0 when both runs passed.
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,7 +21,7 @@ import { parseArgs } from 'node:util';
 import { _electron as electron, type Page } from 'playwright-core';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const PLAZA_FOLDER = join(ROOT, 'kits', 'worlds', 'plaza');
+const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts');
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { shots: { type: 'string' } } });
 const client = positionals[0];
 if (!client) {
@@ -26,6 +30,9 @@ if (!client) {
 }
 
 const steps: Record<string, unknown> = {};
+const worlds = mkdtempSync(join(tmpdir(), 'fcoffline-worlds-'));
+execFileSync(process.execPath, [MAKE_TRAVEL, worlds, '--worlds', `${randomUUID()},${randomUUID()}`, '--names', 'Offline Plaza,Offline Garden', '--kits', 'plaza,park', '--effect'], { stdio: 'ignore' });
+const FOLDER = join(worlds, 'b');
 
 /** One run: a fresh profile, an unreachable core, then `play` on the offline screen. */
 async function visit(label: string, worldId: string, check: (page: Page) => Promise<void>): Promise<void> {
@@ -33,7 +40,7 @@ async function visit(label: string, worldId: string, check: (page: Page) => Prom
   const app = await electron.launch({
     executablePath: client!,
     // Port 9 (discard) on this machine: nothing answers, so the client cannot sign in.
-    args: ['--core=http://127.0.0.1:9', `--offline-world=${PLAZA_FOLDER}`, ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
+    args: ['--core=http://127.0.0.1:9', `--offline-world=${FOLDER}`, ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
     env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config') },
     timeout: 60_000,
   });
@@ -62,10 +69,16 @@ try {
   });
   await visit('folder', 'folder:0', async (page) => {
     steps['folderWorld'] = await page.locator('.whud.top strong').textContent({ timeout: 10_000 });
+    steps['folderEffect'] = await page
+      .locator('[data-test=effects][data-world="1"]')
+      .waitFor({ state: 'attached', timeout: 60_000 })
+      .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
+      .catch(async () => `refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
   });
-  ok = Number(steps['parkParts']) > 60 && steps['chat'] === true && steps['folderWorld'] === 'The Plaza';
+  ok = Number(steps['parkParts']) > 60 && steps['chat'] === true && steps['folderWorld'] === 'Offline Garden' && Number(steps['folderEffect']) > 0;
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message.split('\n')[0] : String(err);
 }
+rmSync(worlds, { recursive: true, force: true });
 process.stdout.write(`${JSON.stringify({ event: 'offline-check', ok, steps })}\n`);
 process.exit(ok ? 0 : 1);

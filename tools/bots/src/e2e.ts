@@ -105,7 +105,7 @@ try {
   const plaza = await register('E2E Plaza');
   const garden = await register('E2E Garden');
   // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
-  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park']);
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect']);
   const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
     const [icePort, signalPort] = [await freePort(), await freePort()];
     const s = await start(
@@ -386,6 +386,12 @@ try {
       .waitFor({ state: 'attached', timeout: 45_000 })
       .then(() => true)
       .catch(() => false);
+    // The garden's own effect (S6.01): measured by the client first, then played for the world.
+    steps['worldEffect'] = await page
+      .locator('[data-test=effects][data-world="1"]')
+      .waitFor({ state: 'attached', timeout: 60_000 })
+      .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
+      .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
     await page.waitForTimeout(500);
     await snap('3-travelled');
   } finally {
@@ -445,6 +451,7 @@ try {
     steps['emoteStopped'] === true &&
     /^R-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(String(steps['report'])) &&
     Number(steps['gardenParts']) > 60 &&
+    Number(steps['worldEffect']) > 0 &&
     (gardenSent['chunk']?.bytes ?? Infinity) < 64 * 1024;
   await stop(core.proc);
 } catch (err) {
