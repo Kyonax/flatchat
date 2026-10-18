@@ -42,7 +42,7 @@ interface FlatchatItemDeclaration {
 interface FlatchatAvatar {
   id: string;
   name: string;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   rank: string | null;
   problems: string[];
   manifest: string | null;
@@ -59,7 +59,7 @@ interface FlatchatAvatar {
 interface FlatchatItem {
   id: string;
   name: string;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   slot: import('@flatchat/content').Slot | null;
   fits: Array<import('@flatchat/content').BodyKit>;
   problems: string[];

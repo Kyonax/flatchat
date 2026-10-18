@@ -35,7 +35,7 @@ export default {
     uploading: 'Uploading…',
     none: 'No avatars yet. Upload a VRM (from VRoid Studio or Blender), a GLB, an FBX, an OBJ, a DAE or a .blend.',
     untitled: 'Untitled',
-    status: { uploading: 'uploading…', converting: 'converting…', ready: 'ready', refused: 'refused', failed: 'could not be converted' },
+    status: { uploading: 'uploading…', converting: 'converting…', ready: 'ready', refused: 'refused', failed: 'could not be converted', removed: 'taken down' },
     rank: { excellent: 'Excellent', good: 'Good', medium: 'Medium', poor: 'Poor', veryPoor: 'Very Poor' },
     wear: 'Wear',
     wearing: 'wearing',

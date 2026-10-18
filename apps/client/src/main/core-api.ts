@@ -99,7 +99,8 @@ export interface MyReport {
 export interface AvatarItem {
   id: string;
   name: string;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  /** `removed`: taken down from FlatChat (S5.09); its problems say why. */
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   rank: string | null;
   problems: string[];
   /** The converted avatar's manifest hash (what others fetch it by). */
@@ -113,7 +114,7 @@ export interface AvatarItem {
   fromGallery: string | null;
 }
 
-const STATUSES = new Set(['uploading', 'converting', 'ready', 'refused', 'failed']);
+const STATUSES = new Set(['uploading', 'converting', 'ready', 'refused', 'failed', 'removed']);
 const HEX64 = /^[0-9a-f]{64}$/;
 const isKit = (v: unknown): v is BodyKit => typeof v === 'string' && (BODY_KITS as readonly string[]).includes(v);
 const UUID = /^[0-9a-f-]{36}$/;

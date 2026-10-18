@@ -39,7 +39,7 @@ const es: Shape<typeof en> = {
     uploading: 'Subiendo…',
     none: 'Aún no tienes avatares. Sube un VRM (de VRoid Studio o Blender), un GLB, un FBX, un OBJ, un DAE o un .blend.',
     untitled: 'Sin nombre',
-    status: { uploading: 'subiendo…', converting: 'convirtiendo…', ready: 'listo', refused: 'rechazado', failed: 'no se pudo convertir' },
+    status: { uploading: 'subiendo…', converting: 'convirtiendo…', ready: 'listo', refused: 'rechazado', failed: 'no se pudo convertir', removed: 'retirado' },
     rank: { excellent: 'Excelente', good: 'Bueno', medium: 'Medio', poor: 'Pobre', veryPoor: 'Muy pobre' },
     wear: 'Usar',
     wearing: 'en uso',
