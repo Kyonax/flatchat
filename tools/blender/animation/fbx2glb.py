@@ -2,13 +2,14 @@
 """An FBX animation into a GLB for the animation converter (S5.07, DR-15).
 
 The core runs this in headless Blender 5.2 LTS as a separate process (factory settings, no audio,
-scripts in files never run, no network, a time limit) on every FBX emote or dance a player
+scripts in files never run: -Y, never -y, which turns auto-run on; offline; no network; a time
+limit) on every FBX emote or dance a player
 uploads. It imports the FBX, keeps the armature and its animation, drops everything else (an FBX
 dance usually carries its character, which the converter does not want) and writes a GLB with
 the armature's bones as nodes and the motion sampled on every frame. The TypeScript converter
 (tools/converter/src/animation/) then retargets it into VRMA like any GLB clip.
 
-    blender -b --factory-startup -noaudio -y --python fbx2glb.py -- IN.fbx OUT.glb
+    blender -b --factory-startup -noaudio -Y --offline-mode --python fbx2glb.py -- IN.fbx OUT.glb
 
 Exit 0 when OUT.glb was written; 1 with one line on stderr saying why not.
 """

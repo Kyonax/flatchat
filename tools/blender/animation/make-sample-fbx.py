@@ -5,7 +5,7 @@ Reads the GLB clip sample (tools/converter/src/animation/samples.ts, written out
 tools/converter/scripts/animation-samples.ts) and writes it as FBX the way Blender's exporter
 writes a character's animation for other tools: our own motion, so the fixture is ours to publish.
 
-    blender -b --factory-startup -noaudio -y --python make-sample-fbx.py -- IN.glb OUT.fbx
+    blender -b --factory-startup -noaudio -Y --offline-mode --python make-sample-fbx.py -- IN.glb OUT.fbx
 """
 
 import sys
