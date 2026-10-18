@@ -7,11 +7,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ATTACH_POINTS, type AttachPoint, attachBone, attachMatrix, BODY_KITS, checkItemProp, readGltf } from '@flatchat/content';
-import { Document, NodeIO } from '@gltf-transform/core';
 import { describe, expect, it } from 'vitest';
 import { convertAvatar, readAvatarLevel } from '../src/avatar/convert.ts';
 import { sampleAvatar } from '../src/avatar/samples.ts';
 import { convertItem, ItemError } from '../src/item/convert.ts';
+import { sampleProp } from '../src/item/samples.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const POINTS = Object.keys(ATTACH_POINTS) as AttachPoint[];
@@ -72,33 +72,16 @@ describe('attachment points on other avatars', () => {
   }
 });
 
-async function prop(declare: Record<string, unknown>, skinned = false): Promise<Uint8Array> {
-  const doc = new Document();
-  const buffer = doc.createBuffer();
-  const s = 0.1;
-  const positions = new Float32Array([-s, -s, -s, s, -s, -s, s, s, -s, -s, s, -s, -s, -s, s, s, -s, s, s, s, s, -s, s, s]);
-  const indices = new Uint16Array([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 6, 2, 3, 7, 6, 1, 2, 6, 1, 6, 5, 0, 4, 7, 0, 7, 3]);
-  const prim = doc.createPrimitive().setMaterial(doc.createMaterial('cap').setBaseColorFactor([0.8, 0.2, 0.2, 1])).setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(positions).setBuffer(buffer)).setIndices(doc.createAccessor().setType('SCALAR').setArray(indices).setBuffer(buffer));
-  const node = doc.createNode('cap').setMesh(doc.createMesh('cap').addPrimitive(prim));
-  if (skinned) {
-    const joint = doc.createNode('head');
-    prim.setAttribute('JOINTS_0', doc.createAccessor().setType('VEC4').setArray(new Uint16Array(32)).setBuffer(buffer)).setAttribute('WEIGHTS_0', doc.createAccessor().setType('VEC4').setArray(new Float32Array(32).map((_, i) => (i % 4 === 0 ? 1 : 0))).setBuffer(buffer));
-    node.setSkin(doc.createSkin('cap').addJoint(joint));
-    doc.createScene('scene').addChild(node).addChild(joint).setExtras({ flatchat_item: declare });
-  } else doc.createScene('scene').addChild(node).setExtras({ flatchat_item: declare });
-  return new NodeIO().writeBinary(doc);
-}
-
 describe('attachments', () => {
   it('convert into one prop worn at their point', async () => {
-    const r = await convertItem(await prop({ name: 'Test cap', slot: 'attachment', attach: 'head_top' }), { ktx2: false });
+    const r = await convertItem(await sampleProp({ name: 'Test cap', slot: 'attachment', attach: 'head_top' }), { ktx2: false });
     expect(r.manifest).toMatchObject({ slot: 'attachment', attach: 'head_top', hides: [], fits: {} });
     expect(r.manifest.prop!.triangles).toBe(12);
     expect(() => checkItemProp(readGltf(r.files.get(r.manifest.prop!.file)!, 'prop.glb').json as unknown as Record<string, unknown>)).not.toThrow();
   });
 
   it('are refused skinned, or without their point', async () => {
-    await expect(convertItem(await prop({ name: 'Cap', slot: 'attachment', attach: 'head_top' }, true), { ktx2: false })).rejects.toThrow(/rigid meshes, no skin/);
-    await expect(convertItem(await prop({ name: 'Cap', slot: 'attachment' }), { ktx2: false })).rejects.toBeInstanceOf(ItemError);
+    await expect(convertItem(await sampleProp({ name: 'Cap', slot: 'attachment', attach: 'head_top' }, true), { ktx2: false })).rejects.toThrow(/rigid meshes, no skin/);
+    await expect(convertItem(await sampleProp({ name: 'Cap', slot: 'attachment' }), { ktx2: false })).rejects.toBeInstanceOf(ItemError);
   });
 });

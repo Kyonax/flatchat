@@ -12,7 +12,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./samples": "./src/avatar/samples.ts",
-    "./avatar": "./src/avatar/convert.ts"
+    "./avatar": "./src/avatar/convert.ts",
+    "./item-samples": "./src/item/samples.ts"
   },
   "scripts": {
     "convert": "node src/cli.ts",
