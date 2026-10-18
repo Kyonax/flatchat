@@ -116,3 +116,16 @@ describe('a body', () => {
     expect(fading.bones['leftUpperLeg']).not.toEqual(jogging);
   });
 });
+
+describe('the built-in gestures', () => {
+  it('are the greeting and the dance, named by their files’ SHA-256, which the client carries', async () => {
+    const { BUILT_IN_EMOTES, builtInEmote } = await import('../src/renderer/src/world/clips');
+    expect(BUILT_IN_EMOTES.map((b) => [b.name, b.use])).toEqual([['greeting', 'emote'], ['dance', 'dance']]);
+    for (const b of BUILT_IN_EMOTES) {
+      const own = builtInEmote(b.anim)!;
+      const digest = await crypto.subtle.digest('SHA-256', own.bytes.slice());
+      expect(Buffer.from(digest).toString('hex')).toBe(b.anim);
+    }
+    expect(builtInEmote('0'.repeat(64))).toBeUndefined();
+  });
+});

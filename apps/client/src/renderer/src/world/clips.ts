@@ -189,3 +189,21 @@ export function defaultClips(): Map<string, ClipData> {
   }
   return library;
 }
+
+/** A gesture every player has (P.05's greeting and dance): played like an uploaded emote, named by
+ *  its VRMA's SHA-256, which every client carries, so none is fetched. */
+export interface BuiltInEmote {
+  name: string;
+  anim: string;
+  use: 'emote' | 'dance';
+  duration: number;
+}
+
+export const BUILT_IN_EMOTES: readonly BuiltInEmote[] = clips.clips.filter((c) => c.kind === 'gesture').map((c) => ({ name: c.name, anim: c.sha256, use: c.loop ? 'dance' : 'emote', duration: c.seconds }));
+
+/** A built-in gesture's file, by its SHA-256. */
+export function builtInEmote(anim: string): (BuiltInEmote & { bytes: Uint8Array }) | undefined {
+  const e = BUILT_IN_EMOTES.find((b) => b.anim === anim);
+  const url = e ? FILES[e.name] : undefined;
+  return e && url ? { ...e, bytes: bytesOf(url) } : undefined;
+}

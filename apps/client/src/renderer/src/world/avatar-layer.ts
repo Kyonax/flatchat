@@ -34,6 +34,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three/webgpu';
 import { disposeLevel, parseAnimation, parseItemFile, parseLevel } from './avatar-loader';
 import { type BoneAngles, type Expression, handPose, type HandPose, mouthShapes } from './avatar-pose';
+import { builtInEmote } from './clips';
 import { Motion } from './motion';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 
@@ -181,7 +182,7 @@ export class AvatarLayer {
   private readonly props = new Map<string, Promise<THREE.Object3D>>();
   private readonly pendingOutfits = new Map<number, Worn[]>();
   private readonly fetchAnimation: AnimationFetcher | undefined;
-  private readonly animations = new Map<string, Promise<{ animation: VRMAnimation; manifest: AnimationManifest }>>();
+  private readonly animations = new Map<string, Promise<{ animation: VRMAnimation; manifest: Pick<AnimationManifest, 'use' | 'duration' | 'mouth'> }>>();
   private readonly pendingEmotes = new Map<number, string | undefined>();
   /** Emotes that could not be played. */
   emoteFailures = 0;
@@ -215,11 +216,14 @@ export class AvatarLayer {
     e.playing = undefined;
   }
 
-  /** The emote's VRMA, parsed once and shared by every avatar playing it. */
-  private animation(hash: string): Promise<{ animation: VRMAnimation; manifest: AnimationManifest }> {
+  /** The emote's VRMA, parsed once and shared by every avatar playing it: a built-in gesture
+   *  (P.05) from the client itself, any other from the core. */
+  private animation(hash: string): Promise<{ animation: VRMAnimation; manifest: Pick<AnimationManifest, 'use' | 'duration' | 'mouth'> }> {
     let a = this.animations.get(hash);
     if (!a) {
       a = (async () => {
+        const own = builtInEmote(hash);
+        if (own) return { animation: await parseAnimation(this.renderer, own.bytes.slice().buffer), manifest: { use: own.use, duration: own.duration, mouth: false } };
         const got = await this.fetchAnimation!(hash);
         return { animation: await parseAnimation(this.renderer, got.bytes), manifest: got.manifest };
       })();
@@ -233,7 +237,7 @@ export class AvatarLayer {
   private readyEmote(e: Entry): void {
     const vrm = e.vrm;
     const anim = e.emote;
-    if (!vrm || !anim || !this.fetchAnimation || e.emoteTried === anim || (e.playing && e.playing.anim === anim && e.playing.vrm === vrm)) return;
+    if (!vrm || !anim || (!this.fetchAnimation && !builtInEmote(anim)) || e.emoteTried === anim || (e.playing && e.playing.anim === anim && e.playing.vrm === vrm)) return;
     if (e.playing) this.stopPlaying(e);
     e.emoteTried = anim;
     void this.animation(anim)

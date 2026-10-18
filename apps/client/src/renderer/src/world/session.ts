@@ -33,6 +33,7 @@ import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
+import { builtInEmote } from './clips';
 import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
 import { PathWalker } from './walker';
@@ -348,6 +349,8 @@ export class WorldSession {
       const animationFile = bridge?.animationFile;
       if (animationFile) {
         this.emoteSounds = new EmoteSounds(this.sounds.ctx, this.settings.sound.emotes, async (anim) => {
+          // The built-in gestures carry no sound.
+          if (builtInEmote(anim)) return undefined;
           const r = await animationFile(anim, 'audio');
           return r.ok ? { bytes: r.bytes, loop: r.manifest.use === 'dance' } : undefined;
         });
