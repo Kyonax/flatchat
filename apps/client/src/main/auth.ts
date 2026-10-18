@@ -6,8 +6,8 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type ItemEntry, type JoinTicket, type MyReport, type OutfitEntry, type Person, type ReportBody, type WornEntry, type WorldSummary } from './core-api';
-import type { BodyKit } from '@flatchat/content';
+import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type GalleryEntry, type ItemEntry, type JoinTicket, type MyReport, type OutfitEntry, type Person, type ReportBody, type WornEntry, type WorldSummary } from './core-api';
+import type { BodyKit, Licence } from '@flatchat/content';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -254,6 +254,23 @@ export class Auth {
 
   async deleteOutfit(id: string): Promise<void> {
     return this.api.deleteOutfit(await this.access(), id);
+  }
+
+  // The free gallery (S5.06).
+  async gallery(q: { kind?: string; slot?: string; body?: string; q?: string; before?: string }): Promise<{ entries: GalleryEntry[]; next: string | null }> {
+    return this.api.gallery(await this.access(), q);
+  }
+
+  async publish(req: { kind: 'avatar' | 'item'; id: string; name: string; licence: Licence; affirm: boolean }): Promise<GalleryEntry> {
+    return this.api.publish(await this.access(), req);
+  }
+
+  async take(id: string): Promise<{ kind: 'avatar' | 'item'; id: string }> {
+    return this.api.take(await this.access(), id);
+  }
+
+  async withdraw(id: string): Promise<void> {
+    return this.api.withdraw(await this.access(), id);
   }
 
   async file(url: string): Promise<Uint8Array> {

@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AvatarsPanel from './AvatarsPanel.vue';
 import ItemsPanel from './ItemsPanel.vue';
+import GalleryPanel from './GalleryPanel.vue';
 import WorldRow from './WorldRow.vue';
 
 // The world browser (S2.09, Q-L4, Q-L11): join by a world's ID, the account's favourites, and the
@@ -17,6 +18,8 @@ const WORLD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 const worlds = ref<FlatchatWorld[] | undefined>(undefined);
 const favourites = ref<FlatchatWorld[]>([]);
 const listError = ref('');
+/** Bumped when the gallery hands the account a copy: the avatars and items panels load again (S5.06). */
+const shelf = ref(0);
 const byId = ref('');
 const byIdError = ref('');
 const looking = ref(false);
@@ -286,8 +289,9 @@ onMounted(load);
           {{ friends.map((p) => p.name).join(', ') }}
         </p>
       </template>
-      <AvatarsPanel />
-      <ItemsPanel />
+      <AvatarsPanel :key="`avatars-${shelf}`" />
+      <ItemsPanel :key="`items-${shelf}`" />
+      <GalleryPanel @taken="shelf += 1" />
       <template v-if="reports.length > 0">
         <h2>{{ t('home.reports') }}</h2>
         <ul

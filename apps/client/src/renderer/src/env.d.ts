@@ -41,6 +41,9 @@ interface FlatchatAvatar {
   wearing: boolean;
   /** The standard body it is (S5.05). */
   kit: import('@flatchat/content').BodyKit | null;
+  /** Its gallery entry when published, or the entry it was taken from (S5.06). */
+  published: string | null;
+  fromGallery: string | null;
 }
 
 /** One of the account's items (S5.05). */
@@ -54,6 +57,26 @@ interface FlatchatItem {
   warnings: string[];
   manifest: string | null;
   createdAt: string;
+  published: string | null;
+  fromGallery: string | null;
+}
+
+/** One entry of the free gallery (S5.06). */
+interface FlatchatGalleryEntry {
+  id: string;
+  kind: 'avatar' | 'item';
+  name: string;
+  authors: string[];
+  licence: import('@flatchat/content').Licence;
+  slot: import('@flatchat/content').Slot | null;
+  fits: Array<import('@flatchat/content').BodyKit>;
+  rank: string | null;
+  takes: number;
+  publishedAt: string;
+  publisher: string;
+  manifest: string;
+  mine: boolean;
+  taken: boolean;
 }
 
 /** A worn item: its manifest's SHA-256, and a prop's adjustment (cm, degrees, percent). */
@@ -123,6 +146,11 @@ interface FlatchatBridge {
   outfits(): Promise<FlatchatResult<{ outfits: FlatchatOutfit[] }>>;
   saveOutfit(id: string | null, name: string, items: FlatchatWorn[]): Promise<FlatchatResult<{ outfit: FlatchatOutfit }>>;
   deleteOutfit(id: string): Promise<FlatchatResult<object>>;
+  // The free gallery (S5.06).
+  gallery(q: { kind?: string; slot?: string; body?: string; q?: string; before?: string }): Promise<FlatchatResult<{ entries: FlatchatGalleryEntry[]; next: string | null }>>;
+  publish(req: { kind: 'avatar' | 'item'; id: string; name: string; licence: import('@flatchat/content').Licence; affirm: boolean }): Promise<FlatchatResult<{ entry: FlatchatGalleryEntry }>>;
+  take(id: string): Promise<FlatchatResult<{ kind: 'avatar' | 'item'; id: string }>>;
+  withdraw(id: string): Promise<FlatchatResult<object>>;
   // Appeals against a world's ban (S3.07).
   appealBan(worldId: string, reason: string, text: string): Promise<FlatchatResult<object>>;
   banAppeal(worldId: string): Promise<FlatchatResult<{ appeal: { status: 'pending' | 'upheld' | 'reversed'; note: string } | null }>>;

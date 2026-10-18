@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import PublishForm from './PublishForm.vue';
 
 // The account's items and outfits (S5.05): upload a GLB made on the body kits (the main process
 // opens the file dialog, reads the file and sends it; the page never holds the file or the token),
@@ -12,6 +13,8 @@ const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
 const uploading = ref(false);
 const error = ref('');
+/** The item being published to the gallery (S5.06). */
+const publishing = ref('');
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load(): Promise<void> {
@@ -41,6 +44,17 @@ async function upload(): Promise<void> {
 async function remove(i: FlatchatItem): Promise<void> {
   const r = await window.flatchat?.deleteItem(i.id);
   if (r && !r.ok) error.value = failure(r.error);
+  await load();
+}
+
+async function withdraw(i: FlatchatItem): Promise<void> {
+  const r = i.published ? await window.flatchat?.withdraw(i.published) : undefined;
+  if (r && !r.ok) error.value = failure(r.error);
+  await load();
+}
+
+async function published(): Promise<void> {
+  publishing.value = '';
   await load();
 }
 
@@ -104,6 +118,32 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
           <span class="muted"> · {{ fitsText(i) }}</span>
         </template>
         <span v-else>{{ t(`avatars.status.${i.status}`) }}</span>
+        <span
+          v-if="i.fromGallery"
+          class="muted small"
+        > · {{ t('gallery.fromGallery') }}</span>
+        <template v-else-if="i.status === 'ready'">
+          <template v-if="i.published">
+            <span
+              class="muted small"
+              data-test="item-published"
+            > · {{ t('gallery.inGallery') }}</span>
+            <button
+              type="button"
+              @click="withdraw(i)"
+            >
+              {{ t('gallery.withdraw') }}
+            </button>
+          </template>
+          <button
+            v-else
+            type="button"
+            data-test="publish-item"
+            @click="publishing = publishing === i.id ? '' : i.id"
+          >
+            {{ t('publish.open') }}
+          </button>
+        </template>
         <button
           v-if="i.status !== 'converting' && i.status !== 'uploading'"
           type="button"
@@ -111,6 +151,14 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         >
           {{ t('items.delete') }}
         </button>
+        <PublishForm
+          v-if="publishing === i.id"
+          :id="i.id"
+          kind="item"
+          :name="i.name"
+          @done="published"
+          @cancel="publishing = ''"
+        />
         <ul
           v-if="(i.status !== 'ready' && i.problems.length > 0) || i.warnings.length > 0"
           class="muted small"

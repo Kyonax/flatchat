@@ -13,7 +13,7 @@
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { AVATAR_SOURCE_LIMIT, BODY_KITS, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS } from '@flatchat/content';
+import { AVATAR_SOURCE_LIMIT, BODY_KITS, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -435,6 +435,50 @@ ipcMain.handle('flatchat:outfits:save', async (_event, id: unknown, name: unknow
   if ((id !== null && typeof id !== 'string') || typeof name !== 'string' || !name.trim() || !auth) return { ok: false, error: 'bad-request' };
   try {
     return { ok: true, outfit: await auth.saveOutfit(id, { name, items: cleanWorn(items) }) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+// The free gallery (S5.06): browsing, publishing one of the account's own under a licence,
+// taking an entry (the account's own copy), withdrawing one.
+ipcMain.handle('flatchat:gallery', async (_event, q: unknown) => {
+  if (!auth) return { ok: false, error: 'signed-out' };
+  const v = (q && typeof q === 'object' ? q : {}) as Record<string, unknown>;
+  const s = (k: string): string | undefined => (typeof v[k] === 'string' ? (v[k] as string) : undefined);
+  try {
+    const query: { kind?: string; slot?: string; body?: string; q?: string; before?: string } = {};
+    for (const k of ['kind', 'slot', 'body', 'q', 'before'] as const) {
+      const x = s(k);
+      if (x) query[k] = x;
+    }
+    return { ok: true, ...(await auth.gallery(query)) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:gallery:publish', async (_event, req: unknown) => {
+  const v = (req && typeof req === 'object' ? req : {}) as Record<string, unknown>;
+  if ((v['kind'] !== 'avatar' && v['kind'] !== 'item') || typeof v['id'] !== 'string' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    const licence = readLicence(v['licence']);
+    return { ok: true, entry: await auth.publish({ kind: v['kind'], id: v['id'], name: typeof v['name'] === 'string' ? v['name'] : '', licence, affirm: v['affirm'] === true }) };
+  } catch (err) {
+    return err instanceof LicenceError ? { ok: false, error: 'bad-request' } : failure(err);
+  }
+});
+ipcMain.handle('flatchat:gallery:take', async (_event, id: unknown) => {
+  if (typeof id !== 'string' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    return { ok: true, ...(await auth.take(id)) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:gallery:withdraw', async (_event, id: unknown) => {
+  if (typeof id !== 'string' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.withdraw(id);
+    return { ok: true };
   } catch (err) {
     return failure(err);
   }

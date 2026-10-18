@@ -158,6 +158,7 @@ onMounted(load);
     >
       <input
         v-model="name"
+        type="text"
         class="grow"
         maxlength="64"
         data-test="outfit-name"

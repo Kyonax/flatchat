@@ -3,6 +3,7 @@
 import { BODY_KITS, type BodyKit } from '@flatchat/content';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import PublishForm from './PublishForm.vue';
 
 // The account's avatars (S4.01): upload a VRM or a GLB (the main process opens the file dialog,
 // reads the file and sends it; the page never holds the file or the token), watch it convert, see
@@ -14,6 +15,8 @@ const uploading = ref(false);
 const error = ref('');
 /** A standard body taken and still converting: worn once it is ready. */
 const preparing = ref<string | undefined>(undefined);
+/** The avatar being published to the gallery (S5.06). */
+const publishing = ref('');
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load(): Promise<void> {
@@ -66,6 +69,17 @@ async function upload(): Promise<void> {
 async function wear(a: FlatchatAvatar | null): Promise<void> {
   const r = await window.flatchat?.wearAvatar(a?.id ?? null);
   if (r && !r.ok) error.value = failure(r.error);
+  await load();
+}
+
+async function withdraw(a: FlatchatAvatar): Promise<void> {
+  const r = a.published ? await window.flatchat?.withdraw(a.published) : undefined;
+  if (r && !r.ok) error.value = failure(r.error);
+  await load();
+}
+
+async function published(): Promise<void> {
+  publishing.value = '';
   await load();
 }
 
@@ -170,6 +184,29 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
             {{ t('avatars.wear') }}
           </button>
         </template>
+        <span
+          v-if="a.fromGallery"
+          class="muted small"
+        > · {{ t('gallery.fromGallery') }}</span>
+        <template v-else-if="a.status === 'ready' && !a.kit">
+          <template v-if="a.published">
+            <span class="muted small"> · {{ t('gallery.inGallery') }}</span>
+            <button
+              type="button"
+              @click="withdraw(a)"
+            >
+              {{ t('gallery.withdraw') }}
+            </button>
+          </template>
+          <button
+            v-else
+            type="button"
+            data-test="publish-avatar"
+            @click="publishing = publishing === a.id ? '' : a.id"
+          >
+            {{ t('publish.open') }}
+          </button>
+        </template>
         <button
           v-if="a.status !== 'converting' && a.status !== 'uploading'"
           type="button"
@@ -177,6 +214,14 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         >
           {{ t('avatars.delete') }}
         </button>
+        <PublishForm
+          v-if="publishing === a.id"
+          :id="a.id"
+          kind="avatar"
+          :name="a.name"
+          @done="published"
+          @cancel="publishing = ''"
+        />
         <ul
           v-if="a.problems.length > 0 && a.status !== 'ready'"
           class="muted small"

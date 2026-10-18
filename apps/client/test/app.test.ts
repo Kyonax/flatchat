@@ -5,10 +5,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { STRICT_LICENCE } from '@flatchat/content';
 import { PLAZA } from '@flatchat/sim';
 import { describe, expect, it } from 'vitest';
 import { Auth, pkcePair, type TokenStore } from '../src/main/auth';
-import { cleanAvatars, cleanIceServers, cleanItems, cleanOutfits, cleanWorlds, cleanWorn, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
+import { cleanAvatars, cleanGallery, cleanIceServers, cleanItems, cleanOutfits, cleanWorlds, cleanWorn, CoreApi, coreBase, CoreError, type Fetch } from '../src/main/core-api';
 import { listenForCallback } from '../src/main/loopback';
 import { listOffline } from '../src/main/offline';
 import en from '../src/renderer/src/i18n/en';
@@ -247,8 +248,8 @@ describe('avatars on the client side (S4.01, S4.04)', () => {
         { id, name: 7, status: 'refused', problems: ['no humanoid', 3], manifest: 'not-a-hash', kit: 'robot' },
       ]),
     ).toEqual([
-      { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true, kit: 'feminine' },
-      { id, name: '', status: 'refused', rank: null, problems: ['no humanoid'], manifest: null, createdAt: '', wearing: false, kit: null },
+      { id, name: 'Mine', status: 'ready', rank: 'good', problems: [], manifest: 'a'.repeat(64), createdAt: '2026-10-17T00:00:00Z', wearing: true, kit: 'feminine', published: null, fromGallery: null },
+      { id, name: '', status: 'refused', rank: null, problems: ['no humanoid'], manifest: null, createdAt: '', wearing: false, kit: null, published: null, fromGallery: null },
     ]);
   });
 
@@ -257,17 +258,23 @@ describe('avatars on the client side (S4.01, S4.04)', () => {
     const hash = 'b'.repeat(64);
     expect(
       cleanItems([
-        { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'robot', 'neutral'], problems: [], warnings: ['2 points near the hem', 4], manifest: hash, createdAt: 'x' },
+        { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'robot', 'neutral'], problems: [], warnings: ['2 points near the hem', 4], manifest: hash, createdAt: 'x', published: id, fromGallery: 'nope' },
         { id, status: 'ready', slot: 'cape' },
         { id: 'nope', status: 'ready' },
       ]),
     ).toEqual([
-      { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'neutral'], problems: [], warnings: ['2 points near the hem'], manifest: hash, createdAt: 'x' },
-      { id, name: '', status: 'ready', slot: null, fits: [], problems: [], warnings: [], manifest: null, createdAt: '' },
+      { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'neutral'], problems: [], warnings: ['2 points near the hem'], manifest: hash, createdAt: 'x', published: id, fromGallery: null },
+      { id, name: '', status: 'ready', slot: null, fits: [], problems: [], warnings: [], manifest: null, createdAt: '', published: null, fromGallery: null },
     ]);
     expect(cleanWorn([{ item: hash, adjust: { x: 40, y: 0, z: 0, rx: 90, ry: 0, rz: 0, scale: 300 } }, { item: hash }, { item: 'not-a-hash' }, 'junk'])).toEqual([{ item: hash, adjust: { x: 10, y: 0, z: 0, rx: 45, ry: 0, rz: 0, scale: 125 } }]);
     expect(cleanWorn(Array.from({ length: 20 }, (_, i) => ({ item: i.toString(16).padStart(64, '0') })))).toHaveLength(16);
     expect(cleanOutfits([{ id, name: 'Day', items: [{ item: hash }], updatedAt: 't' }, { id, name: 3 }])).toEqual([{ id, name: 'Day', items: [{ item: hash }], updatedAt: 't' }]);
+  });
+
+  it('keeps only gallery entries whose licence reads (S5.06)', () => {
+    const id = '00000000-0000-4000-8000-0000000000cc';
+    const entry = { id, kind: 'item', name: 'Tee', authors: ['Maker', 7], licence: STRICT_LICENCE, slot: 'top', fits: ['neutral'], rank: null, takes: 3, publishedAt: 't', publisher: 'maker', manifest: 'c'.repeat(64), mine: false, taken: true };
+    expect(cleanGallery([entry, { ...entry, licence: { ...STRICT_LICENCE, creditNotation: 'maybe' } }, { ...entry, kind: 'effect' }, { ...entry, manifest: 'x' }])).toEqual([{ ...entry, authors: ['Maker'] }]);
   });
 
   it('uploads to the slot the core gives, follows only the core’s own links, and takes files only within their size', async () => {

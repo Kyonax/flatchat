@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('flatchat', {
   outfits: (): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits'),
   saveOutfit: (id: string | null, name: string, items: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:save', id, name, items),
   deleteOutfit: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:delete', id),
+  // The free gallery (S5.06).
+  gallery: (q: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery', q),
+  publish: (req: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery:publish', req),
+  take: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery:take', id),
+  withdraw: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery:withdraw', id),
   banAppeal: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:ban-appeal', worldId),
   // Offline mode (S2.13): a world in the main process, its messages over IPC.
   offlineWorlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:offline-worlds'),

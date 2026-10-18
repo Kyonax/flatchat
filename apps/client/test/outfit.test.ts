@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { ATTACH_POINTS, type Region } from '@flatchat/content';
 import { convertItem } from '@flatchat/converter';
 import { avatarIO, convertAvatar } from '@flatchat/converter/avatar';
+// trap-lint: allow T11 because the test reads the converter's own output to measure it, never a creator's file
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three/webgpu';

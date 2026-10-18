@@ -3,7 +3,7 @@
 // sign-out, the account, the world browser (the public list, a world by its id, favourites) and
 // connect tokens; avatars, the standard bodies, items and outfits. Only the main process talks to the
 // core; the page never holds an account token. `fetch` is injected so tests need no network.
-import { BODY_KITS, type BodyKit, fitWornAdjust, type Slot, SLOTS, type WornAdjust } from '@flatchat/content';
+import { BODY_KITS, type BodyKit, fitWornAdjust, type Licence, LicenceError, readLicence, type Slot, SLOTS, type WornAdjust } from '@flatchat/content';
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -108,11 +108,16 @@ export interface AvatarItem {
   wearing: boolean;
   /** The standard body it is (S5.05), when it is one. */
   kit: BodyKit | null;
+  /** Its gallery entry when the account published it, or the entry it was taken from (S5.06). */
+  published: string | null;
+  fromGallery: string | null;
 }
 
 const STATUSES = new Set(['uploading', 'converting', 'ready', 'refused', 'failed']);
 const HEX64 = /^[0-9a-f]{64}$/;
 const isKit = (v: unknown): v is BodyKit => typeof v === 'string' && (BODY_KITS as readonly string[]).includes(v);
+const UUID = /^[0-9a-f-]{36}$/;
+const uuidOrNull = (v: unknown): string | null => (typeof v === 'string' && UUID.test(v) ? v : null);
 const lines = (v: unknown, n = 10): string[] => (Array.isArray(v) ? v.filter((p): p is string => typeof p === 'string').slice(0, n).map((p) => p.slice(0, 300)) : []);
 
 /** One of the account's items (S5.05). */
@@ -127,6 +132,8 @@ export interface ItemEntry {
   warnings: string[];
   manifest: string | null;
   createdAt: string;
+  published: string | null;
+  fromGallery: string | null;
 }
 
 /** Keeps only well-formed items from the core's answer. */
@@ -146,6 +153,60 @@ export function cleanItems(raw: unknown): ItemEntry[] {
         warnings: lines(v['warnings']),
         manifest: typeof v['manifest'] === 'string' && HEX64.test(v['manifest']) ? v['manifest'] : null,
         createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
+        published: uuidOrNull(v['published']),
+        fromGallery: uuidOrNull(v['fromGallery']),
+      },
+    ];
+  });
+}
+
+/** One entry of the free gallery (S5.06). */
+export interface GalleryEntry {
+  id: string;
+  kind: 'avatar' | 'item';
+  name: string;
+  authors: string[];
+  licence: Licence;
+  slot: Slot | null;
+  fits: BodyKit[];
+  rank: string | null;
+  takes: number;
+  publishedAt: string;
+  publisher: string;
+  manifest: string;
+  mine: boolean;
+  taken: boolean;
+}
+
+/** Keeps only well-formed gallery entries, each with a licence that reads. */
+export function cleanGallery(raw: unknown): GalleryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 100).flatMap((e): GalleryEntry[] => {
+    const v = (e ?? {}) as Record<string, unknown>;
+    if (typeof v['id'] !== 'string' || !UUID.test(v['id']) || (v['kind'] !== 'avatar' && v['kind'] !== 'item') || typeof v['manifest'] !== 'string' || !HEX64.test(v['manifest'])) return [];
+    let licence: Licence;
+    try {
+      licence = readLicence(v['licence']);
+    } catch (err) {
+      if (err instanceof LicenceError) return [];
+      throw err;
+    }
+    return [
+      {
+        id: v['id'],
+        kind: v['kind'],
+        name: typeof v['name'] === 'string' ? v['name'].slice(0, 64) : '',
+        authors: lines(v['authors']).map((a) => a.slice(0, 80)),
+        licence,
+        slot: typeof v['slot'] === 'string' && v['slot'] in SLOTS ? (v['slot'] as Slot) : null,
+        fits: Array.isArray(v['fits']) ? v['fits'].filter(isKit) : [],
+        rank: typeof v['rank'] === 'string' ? v['rank'].slice(0, 16) : null,
+        takes: typeof v['takes'] === 'number' && Number.isInteger(v['takes']) && v['takes'] >= 0 ? v['takes'] : 0,
+        publishedAt: typeof v['publishedAt'] === 'string' ? v['publishedAt'] : '',
+        publisher: typeof v['publisher'] === 'string' ? v['publisher'].slice(0, 64) : '',
+        manifest: v['manifest'],
+        mine: v['mine'] === true,
+        taken: v['taken'] === true,
       },
     ];
   });
@@ -206,6 +267,8 @@ export function cleanAvatars(raw: unknown): AvatarItem[] {
         createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
         wearing: v['wearing'] === true,
         kit: isKit(v['kit']) ? v['kit'] : null,
+        published: uuidOrNull(v['published']),
+        fromGallery: uuidOrNull(v['fromGallery']),
       },
     ];
   });
@@ -537,6 +600,37 @@ export class CoreApi {
   async deleteOutfit(access: string, id: string): Promise<void> {
     if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an outfit id');
     await this.call('DELETE', `/api/v1/outfits/${id}`, undefined, access);
+  }
+
+  // ---------------------------------------------------------------- the free gallery (S5.06)
+
+  /** A page of the gallery: by kind, slot, body and words; `before` is the last page's `next`. */
+  async gallery(access: string, q: { kind?: string; slot?: string; body?: string; q?: string; before?: string }): Promise<{ entries: GalleryEntry[]; next: string | null }> {
+    const params = new URLSearchParams(Object.entries(q).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== '').map(([k, v]) => [k, v.slice(0, 80)]));
+    const r = await this.call<{ entries?: unknown; next?: unknown }>('GET', `/api/v1/gallery${params.size > 0 ? `?${params}` : ''}`, undefined, access);
+    return { entries: cleanGallery(r.entries), next: typeof r.next === 'string' ? r.next.slice(0, 80) : null };
+  }
+
+  /** Puts one of the account's own ready avatars or items in the gallery, under a licence. */
+  async publish(access: string, req: { kind: 'avatar' | 'item'; id: string; name: string; licence: Licence; affirm: boolean }): Promise<GalleryEntry> {
+    if (!/^[0-9a-f-]{36}$/.test(req.id)) throw new CoreError(400, 'bad-request', 'not an id');
+    const r = await this.call<unknown>('POST', '/api/v1/gallery', { kind: req.kind, id: req.id, name: req.name.slice(0, 64), licence: req.licence, affirm: req.affirm === true }, access);
+    const e = cleanGallery([r])[0];
+    if (!e) throw new CoreError(502, 'bad-answer', 'the core sent no entry');
+    return e;
+  }
+
+  /** Takes a gallery entry: the account's own ready copy. */
+  async take(access: string, id: string): Promise<{ kind: 'avatar' | 'item'; id: string }> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an entry id');
+    const r = await this.call<{ kind?: unknown; id?: unknown }>('POST', `/api/v1/gallery/${id}/take`, undefined, access);
+    if ((r.kind !== 'avatar' && r.kind !== 'item') || typeof r.id !== 'string' || !UUID.test(r.id)) throw new CoreError(502, 'bad-answer', 'the core sent no copy');
+    return { kind: r.kind, id: r.id };
+  }
+
+  async withdraw(access: string, id: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an entry id');
+    await this.call('DELETE', `/api/v1/gallery/${id}`, undefined, access);
   }
 
   /** A file through a signed link, at most FILE_MAX bytes. */
