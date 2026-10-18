@@ -4,7 +4,7 @@
 // sealed under the core's secret). To join, a signed-in client asks for a connect token: the
 // account's facts sealed for that one world for 60 seconds (sf-001, docs/protocol.md), which the
 // world server opens without calling the core.
-import { newWorldKey, sealToken, type TokenClaims } from '@flatchat/protocol';
+import { fromHex, newWorldKey, sealToken, type TokenClaims } from '@flatchat/protocol';
 import { type Account, accountById } from './accounts.ts';
 import { isMinor } from './age.ts';
 import type { Db, Sql } from './db.ts';
@@ -221,6 +221,14 @@ export async function connectToken(
     [account.id, today],
   );
   const social = { ...(await tokenLists(db, account.id, minor)), ...(supervision ? { contact: supervision.contact } : {}) };
-  const token = await sealToken(claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }, social), { key, world: row.id, expiresAt });
+  const claims = claimsFor(counted ? { ...account, activeDays: counted.active_days } : account, now, rules, { ownerId: row.owner_id }, social);
+  // The avatar the account wears (S4.05), by its manifest's SHA-256: the core vouches for it, so a
+  // world shows only what the account owns.
+  const [worn] = await db.query<{ manifest_sha256: string | null }>(
+    "select v.manifest_sha256 from accounts a join avatars v on v.id = a.avatar_id where a.id = $1 and v.status = 'ready' and v.deleted_at is null",
+    [account.id],
+  );
+  if (worn?.manifest_sha256) claims.avatar = fromHex(worn.manifest_sha256);
+  const token = await sealToken(claims, { key, world: row.id, expiresAt });
   return { ok: true, token, address: row.address, expiresAt };
 }
