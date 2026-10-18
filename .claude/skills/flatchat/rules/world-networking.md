@@ -93,7 +93,7 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 
 ## Avatars and Faces (`src/server.ts`, S4.05, S4.07)
 
-The roster's player carries the worn avatar's manifest hash from the connect token (`claims.avatar`) and a face (neutral, both hands relaxed at the join). `wear` opens a fresh token with the world's key, refuses a replayed nonce or another account's token, and replaces the roster's `avatar` (one every `WEAR_EVERY_MS`, 2 s); `face` sets the roster's face (one every `FACE_EVERY_MS`, 125 ms, and only when it changes); both are announced as a roster change. The world never fetches an avatar: clients do, from the core.
+The roster's player carries the worn avatar's manifest hash from the connect token (`claims.avatar`) and a face (neutral, both hands relaxed at the join). `wear` opens a fresh token with the world's key, refuses a replayed nonce or another account's token, and replaces the roster's `avatar` (one every `WEAR_EVERY_MS`, 2 s); `face` sets the roster's face (one every `FACE_EVERY_MS`, 125 ms, and only when it changes); both are announced as a roster change. Proportions (S4.10) come with `hello` and `appearance`, fitted by `fitProportions` (80 to 125, as made when left out) into the roster; an `appearance` that changes nothing is not announced. The world never fetches an avatar: clients do, from the core. Tests: `test/avatars.test.ts`.
 
 ## Portals (`src/server.ts`, S2.11)
 
