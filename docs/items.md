@@ -52,6 +52,8 @@ An attachment is a prop worn at a point: a hat on the head's top, glasses on the
 
 A standard body carries each point as a marker (its `attach_*` nodes). On any other avatar a point is its bone's place plus an offset scaled by the avatar's height, and it moves with the bone. A player may move a prop up to 10 cm from its point, turn it up to 45° on each axis and size it from 0.8 to 1.25 (`packages/content/src/attach.ts`). An attachment may have up to 3,000 triangles, one material and a 512 px texture.
 
+An effect (S6.01) is worn at a point too: an Effekseer effect, in the slot `effect`, uploaded with its declaration (its name, its point and a scale). It is held to an avatar's effect budget by its dry run rather than to a mesh's caps, and one effect may share a point with a prop. [effects.md](effects.md) has the rules.
+
 ## Skin layers
 
 Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV space, 1,024 px like `kits/bodies/<name>/<name>-skin.png`, transparent where they leave the skin alone. Whenever an outfit changes, the platform composites a body's layers into one texture, the same bytes on every machine (`compositeSkin` in `packages/content/src/layers.ts`). They stack as skin, then tattoos, then makeup, then underwear on top, which covers what lies under it. Each layer can blend normally or multiply (ink), at an opacity. It can also bring a roughness and metalness image (glTF's ORM), composited beside the colour, so a shiny or metallic layer stays so. A standard body is never shown without its underwear layer.
@@ -86,7 +88,7 @@ Upload an item from the client's home screen (Upload an item: a `.glb`, a `.blen
 
 To wear clothes, wear a standard body: any account can take one of the three on the home screen (Wear the feminine, masculine or neutral body), with no upload. An avatar uploaded from a kit's own `.vrm` file, unchanged, counts as that body too. An edited copy is a new avatar, and the kit's items don't fit it. Attachments go on any avatar.
 
-An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop to an attachment point, and a `full` item with no top or bottom beside it. In a world, press O for the outfits menu: your saved outfits, your items to put on and take off (an item you put on takes the place of one it conflicts with), and Save what you wear. When you put an outfit on, everyone in the world sees the change, and the next world you join gets it too. Clothes show on the nearest players, as far as their avatars are drawn in full or lighter (LOD1, LOD2); farther away, as impostors, players show without them. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
+An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop and one effect to an attachment point, effects that fit an avatar's budget together, and a `full` item with no top or bottom beside it. In a world, press O for the outfits menu: your saved outfits, your items to put on and take off (an item you put on takes the place of one it conflicts with), and Save what you wear. When you put an outfit on, everyone in the world sees the change, and the next world you join gets it too. Clothes show on the nearest players, as far as their avatars are drawn in full or lighter (LOD1, LOD2); farther away, as impostors, players show without them. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
 
 ## The starter wardrobe
 

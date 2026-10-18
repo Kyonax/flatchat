@@ -20,6 +20,32 @@ The editor saves an effect as an `.efkefc` (Effekseer 1.5 and later; the older `
 
 The platform keeps an effect as one bundle (FCFX: the effect and the files it uses, by path), named by its SHA-256 like every converted file, so a client fetches one file per effect.
 
+## Uploading an effect
+
+An effect is an item worn at an attachment point (the slot `effect`), uploaded the way any item is (`POST /api/v1/items`, then the file to its slot's link). An effect file keeps no declaration of its own, so the upload carries one: the effect's name, its point, the scale it plays at (0.01 to 100; 1 when not given) and its authors. An upload is one of these:
+
+- **One effect file.** An `.efkefc` or an older `.efk` that names no other files.
+- **An Effekseer package.** An `.efkpkg`, the editor's export, with every file the effect uses.
+- **A zip.** One effect and its files at the paths the effect names, relative to it, at any depth.
+- **The platform's bundle.** An FCFX bundle may carry its declaration, as a GLB carries its own; the starter effects are made so.
+
+The converter (`tools/converter/src/effect/`) checks the effect, bundles exactly the files it names and dry-runs it. Everything a client will ever load of the effect is in its bundle.
+
+| Rule | Why |
+|---|---|
+| The effect's version is at most 1810 (Effekseer 1.8) | The runtime refuses a newer editor's files; the refusal names the editor the file came from |
+| No material files (`.efkmat`) | They are creator shaders (S6.03) |
+| Every file the effect names is in the upload | Nothing it names can be missing or swapped later |
+| Textures are PNGs, 1024 px a side at most, 24 at most and 4 million pixels together | PNG is what both builds of the runtime read; memory on integrated graphics |
+| At most 8 models and 48 files | |
+| Within an avatar's budget, by the dry run (below) | |
+
+- **Warnings, not refusals.** An avatar's effect brings no sounds (they stay out of its bundle) and its distortion parts do not draw; the item's warnings say so.
+- **In the core.** The core runs the converter sandboxed, which allows no threads, so an effect's whole conversion has 60 seconds; past that the effect is refused as too slow to play.
+- **No fingerprint.** Effects' textures are soft dots and streaks shared by many effects, so a match on them would be no evidence of a copy; takedowns still remove an effect by its manifest.
+- **The starters.** [kits/effects/starters.json](../kits/effects/starters.json) lists the starter effects any account takes with no upload, as it takes a starter item: the aura (at the hips) and the shield (at the chest), two of Effekseer's CC0 samples. The core bundles each with its declaration when it starts.
+- **In an outfit.** One effect to a point (a prop may share it), and the outfit's effects fit an avatar's budget together, by their dry runs; the core refuses an outfit that does not. An effect takes an adjustment like a prop.
+
 ## The dry run
 
 Before anyone sees an effect, it is played in the pinned runtime (`packages/effects`' `measure`; in Node, the converter's `dryRun` and `DryRunner`, `tools/converter/src/effect/dry-run.ts`). It runs the WebGL build in Node over a WebGL context that draws nothing and counts what it would have drawn. It plays the effect from the start with three random seeds, frame by frame at 60 a second, for up to ten seconds each, and keeps:
