@@ -33,6 +33,7 @@ Stage 6's S6.02 (Q-M13, T-14, G-20): images on the screen, not in the world. The
 | The client checks a world overlay's PNG header (`overlayImageProblems(bytes, OVERLAY_LIMITS.world.side)`) before making a blob URL | A world comes from its host: a 20,000 px PNG would be decoded into gigabytes |
 | Safe mode clears all overlays (the viewer's own too), everyone else's effects and the world's, and shows every other avatar as its impostor; the key works whatever is open | T-14 and Stage 6's acceptance: the safe-mode key returns everything to fallbacks at once |
 | Shift+Esc is fixed, not a rebindable action | A panic key must not be lost to a rebinding |
+| A pointer released within half a second of Shift+Esc does not open the menu (`safeKeyAt`, `lockMenuAt` in `WorldView.vue`), whichever came first | The browser always frees a captured pointer on Esc; the e2e found the menu open over the world after the safe-mode key and its next steps stuck |
 | The policy pass runs without an avatar layer too (`tunePolicy` no longer returns early) | Offline worlds and the overlays' ten-second expiry depend on it |
 | Starter overlays keep their declaration in the item row (`StarterFile.declaration`) | A PNG cannot carry one; the conversion passes the row's declaration as `--declare` |
 | `uploadFormat` says `image` by the PNG signature's bytes, never by decoded text | `TextDecoder('latin1')` is windows-1252: byte 0x89 decodes to '‰' |
