@@ -17,7 +17,7 @@ let webgl: WebGLBuild | undefined;
 export async function webglBuild(): Promise<WebGLBuild> {
   webgl ??= {
     factory: ((await import('@flatchat/effects/runtime/effekseer-webgl-native.js')) as { default: NativeFactory }).default,
-    wasm: new Uint8Array(readFileSync(fileURLToPath(import.meta.resolve('@flatchat/effects/runtime/effekseer-webgl-native.wasm')))),
+    wasm: new Uint8Array(readFileSync(fileURLToPath(import.meta.resolve('@flatchat/effects/runtime/wasm/effekseer-webgl-native.wasm')))),
   };
   return webgl;
 }
