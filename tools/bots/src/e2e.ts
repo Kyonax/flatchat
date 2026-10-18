@@ -283,6 +283,8 @@ try {
     await page.waitForTimeout(1000);
     await page.keyboard.press('Space');
     await page.keyboard.up('KeyW');
+    // The walk sounded: the default footsteps (P.06), one a stride.
+    steps['footsteps'] = Number(await page.locator('[data-test=sounds]').getAttribute('data-footsteps', { timeout: 10_000 }).catch(() => '0'));
     steps['emoteStopped'] = await page
       .locator('[data-test=emote][data-playing="0"][data-anim=""]')
       .waitFor({ state: 'attached', timeout: 10_000 })
@@ -374,6 +376,7 @@ try {
     (events['leave:travel']?.messages ?? 0) === 1 &&
     (garden2['join']?.messages ?? 0) === 1 &&
     steps['sounds'] === '1' &&
+    Number(steps['footsteps']) > 0 &&
     steps['people'] === 'owner' &&
     steps['avatar'] === 'worn' &&
     steps['avatarDrawn'] === true &&
