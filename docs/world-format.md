@@ -65,6 +65,7 @@ Markers use the open extensions of the [OMI group](https://github.com/omigroup/g
 | Sound | `KHR_audio_emitter` (document: `audio`, `sources`, `emitters`; node: `{ emitter }`) | Ambience, music, positional sounds (Q-H1). The sound file sits beside the scene (`uri`), in a format the client's browser engine decodes (MP3, Ogg, WAV, FLAC). Emitters with `autoPlay` start when a player arrives, positional ones from their node's place with the emitter's `refDistance` and `maxDistance`; the others wait for plugins (Stage 3). At most 64 play at once |
 | Portal | `FLATCHAT_world`: `{ portal: { world, spawn?, size: [x,y,z] } }` | Walking into the box (`size` in metres, centred on the node) takes a player to another world (Q-L11): `world` is its id, `spawn` an optional spawn group there. The world server checks the player's feet, so let the box reach a little below the floor |
 | Zone | `FLATCHAT_world`: `{ zone: { kind, size: [x,y,z], range?, gain? } }` | A box where voice changes, applied by the world server (S3.08): `kind` is `voice` (`range` in metres, 1 to 200, and `gain`, 0 to 4, for everyone inside: a stage carries farther and louder, and listeners hear it fade over the same range), `quiet` (no voice heard or sent: Q-L18), or `private` (voice only among those inside); a minor's voice keeps the world's range and gain; reverb and screen effects come in Stage 6 |
+| Effect | `FLATCHAT_world`: `{ effect: { uri, scale? } }` | A particle effect made in Effekseer's editor (S6.01) that loops at the node, seen by everyone in the world: `uri` is its `.efkefc` file (or an older `.efk`), a relative path inside the world folder, with the textures, models and sounds it names at their paths beside it; `scale` is 0.01 to 100 (1 by default). It plays in the platform's runtime, Effekseer 1.8, with Effekseer's own materials (no material files yet) and PNG textures; its sounds are kept but do not play yet. The converter and every client play it before it is used, and the world's effects together have a budget ([effects](effects.md)) |
 
 A scene may use any other extension the converter accepts (`KHR_materials_*`, `KHR_texture_transform`, `KHR_mesh_quantization`, `EXT_meshopt_compression`, `KHR_texture_basisu`); one listed in `extensionsRequired` that FlatChat does not know refuses the world.
 
@@ -77,12 +78,12 @@ A scene may use any other extension the converter accepts (`KHR_materials_*`, `K
 | Triangles in view-independent total | 2,000,000 per world; a warning above 1,000,000 | The weak-laptop floor draws 0.5 to 1 million at 30 fps (BUDGETs) |
 | Texture size | 4096 px a side; a warning above 2048 | Memory on integrated graphics |
 | Nodes | 65,536 | |
-| Markers | 1,000 spawn points, 1,000 seats, 256 portals, 256 zones, 256 sound emitters | |
+| Markers | 1,000 spawn points, 1,000 seats, 256 portals, 256 zones, 256 sound emitters, 64 effects (each per scene) | |
 | Names | 128 characters, plain text | Shown to players |
 
 ## What the validator reports
 
-Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`.
+Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`; an effect marker adds `effect-invalid` (not an Effekseer file), `effect-too-new` (saved by an editor newer than the runtime), `effect-materials` (it uses material files), `effect-file-missing` (a texture or model it names is not beside it; a missing sound is a warning) and `effect-texture` (a texture that is not PNG). The validator reads an effect and never plays it.
 
 ## The base library (S2.05)
 
@@ -107,8 +108,8 @@ At most 10,000 parts in a world.
 
 ## What the converter makes of it
 
-The host tool's converter ([tools/converter](../tools/converter/README.md)) turns a folder that passes into a built world: `world.json` (the markers in world space, the files by their SHA-256) and the files themselves. Each scene becomes one GLB with meshopt-compressed geometry and KTX2 textures; a mesh of 2,000 triangles or more gets two simpler copies, its levels of detail, which the client switches to with distance, so a detailed world stays drawable on a weak laptop; the solids become `collision.bin`, and a navigation mesh is built for click-to-move. Nothing in the folder needs to change for this.
+The host tool's converter ([tools/converter](../tools/converter/README.md)) turns a folder that passes into a built world: `world.json` (the markers in world space, the files by their SHA-256) and the files themselves. Each scene becomes one GLB with meshopt-compressed geometry and KTX2 textures; a mesh of 2,000 triangles or more gets two simpler copies, its levels of detail, which the client switches to with distance, so a detailed world stays drawable on a weak laptop; the solids become `collision.bin`, and a navigation mesh is built for click-to-move. Each effect is played in the pinned runtime for 600 frames, three times, over a context that draws nothing (the dry run, [effects](effects.md)), then packed with exactly the files it names into one file of kind `effect`; the built world lists it by scene with its place, scale and the most it ever drew. An effect that does not play, or that is over a world's limits for one effect, refuses the world (`effect-refused`), and so do effects that together could draw more than a world may (`effects-over-budget`: 2,000 particles, 8,000 quads and 100,000 model triangles, the same effect counted once per marker). Nothing in the folder needs to change for this.
 
 ## Versions
 
-Version 1 (Stage 2, S2.01): the folder, `world.toml`, the markers above. A change that older tools would misread raises `format`.
+Version 1 (Stage 2, S2.01): the folder, `world.toml`, the markers above. The effect marker came in Stage 6 (S6.01); a tool from before it leaves effects out and builds the rest. A change that older tools would misread raises `format`.

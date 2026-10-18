@@ -9,7 +9,7 @@ Effects play in **Effekseer 1.80.7**, in EffekseerForWeb's runtime ([packages/ef
 - **Two builds.** The client draws with three.js's WebGPU renderer, so the runtime records into the client's own WebGPU render pass; where the renderer falls back to WebGL2, the WebGL build draws into the same context. Both builds come from one commit.
 - **Built from source.** EffekseerForWeb has no release yet, so it is built here with Emscripten 6.0.7. Without FlatChat's patch the build equals upstream's own CI build, byte for byte; with it, the files in the repository. `build.sh` does both.
 - **The patch.** Each playing effect's particle count, spawning off for one effect, and the GPU timer; ES module output; a 1 GB memory ceiling.
-- **Never on.** GPU particles (the runtime never makes their system), distortion (it draws over a copy of the frame, which the client never hands over) and an avatar's effect sounds (Q-H1). A world's effect sounds play at the "high" tier.
+- **Never on.** GPU particles (the runtime never makes their system), distortion (it draws over a copy of the frame, which the client never hands over) and an avatar's effect sounds (Q-H1). A world's effect sounds are kept in its bundle, and stay off until the client plays sound in 3D (S6.06).
 
 ## Effect files
 
@@ -93,7 +93,15 @@ The world view plays effects through its effects layer (`apps/client/src/rendere
 - **The guard.** Admission, trimming and the watches above. An effect's first five frames after it starts are left out of the watches: a procedural mesh is made or a pipeline compiled then, once.
 - **A runtime that gives up.** It is replaced, the effect that did it is blocked for the visit, and the rest play again.
 - **The starters' size.** Effekseer's samples are authored large: the starter aura and shield play at 0.12 of it.
-- **Checked end to end.** The end-to-end test takes the starter aura at home, puts it on beside the tee in a world, and checks it plays (118 particles on WebGPU, drawn with the scene's depth, nothing stopped), then takes it off.
+- **Checked end to end.** The end-to-end test takes the starter aura at home, puts it on beside the tee in a world, and checks it plays (118 particles on WebGPU here, 125 on WebGL2 in CI's software renderer; drawn with the scene's depth, nothing stopped), then takes it off. The second world it travels to has a tornado by its arrival point, and it checks that plays too (about a thousand particles once it has built up). The offline check plays the same world as a folder, converted by the client itself, and checks the tornado plays there.
+
+## In a world
+
+A world places effects with a marker in its scenes (`FLATCHAT_world`: `{ effect: { uri, scale? } }`, [the world format](world-format.md)): an `.efkefc` beside the scene, with the files it names, played where the node is, looping, for everyone in the world. The tool's `make-travel` script can put Effekseer's tornado in a generated world (`--effect`).
+
+- **The validator** reads each effect without playing it: the version, no material files, every texture and model it names beside it (a missing sound is a warning), and PNG textures.
+- **The converter** dry-runs each one for a world (sounds are kept; the world's limits for one effect), packs it with exactly its files into one file of kind `effect`, and lists it by scene with its place, scale and peaks. An effect used by several markers at one scale is measured once. Then the world's effects are added up, each marker once, and a world whose effects together could pass the world's budget is refused (`effects-over-budget`), as one that does not play is (`effect-refused`). The host tool runs the dry runs in a worker thread with the 20-second deadline. So does the client's main process for a world folder played offline: its code is bundled, so the worker thread comes bundled with it and the runtime's WebAssembly sits beside it.
+- **The client** does not take the host's numbers: a world comes from its host, and a host is not trusted. When a world loads, each of its effects is measured again on the viewer's machine, one at a time in a worker that is ended past the deadline, and only its own peaks decide: one over a world's limits, or with an update of over a tenth of a second (a freeze), is refused. Time otherwise is judged while it plays, by the watches, because the dry run's 2 ms is for the converter's machine and a weak laptop is slower. The world's effects then share the world's budget in the guard, as an avatar's share an avatar's.
 
 ## Fuzzing
 
