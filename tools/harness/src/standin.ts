@@ -7,6 +7,7 @@
 //
 //   npm run standin -- plan   --target iris-xe [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query]
 //                             [--crowd DIR [--full N] [--lod N] [--present N]]   (spike S0.09: the crowd bench on DIR's avatars)
+//                             [--converted [--in-view 55] [--tier low|medium|high]]   (S4.12: DIR holds converted avatars)
 //   npm run standin -- run    --target iris-xe [the same options]
 //   npm run standin -- status        the card's clocks now (read-only)
 //   npm run standin -- reset         the two reset lines alone, through sudo
@@ -259,6 +260,9 @@ async function main(): Promise<number> {
         full: { type: 'string' },
         lod: { type: 'string' },
         present: { type: 'string' },
+        converted: { type: 'boolean' },
+        'in-view': { type: 'string' },
+        tier: { type: 'string' },
       },
     });
   } catch (err) {
@@ -281,7 +285,7 @@ async function main(): Promise<number> {
     return code;
   }
   if (command !== 'plan' && command !== 'run') {
-    console.error('usage: standin plan|run --target NAME [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query] [--crowd DIR [--full N] [--lod N] [--present N]]\n       standin status | reset');
+    console.error('usage: standin plan|run --target NAME [--profile FILE] [--seconds 60] [--client PATH] [--out DIR] [--no-query] [--crowd DIR [--full N] [--lod N] [--present N] [--converted [--in-view N] [--tier T]]]\n       standin status | reset');
     return 2;
   }
   const seconds = Number(values.seconds);
@@ -305,7 +309,13 @@ async function main(): Promise<number> {
   const clientPath = resolve(values.client ?? DEFAULT_CLIENT);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const count = (v: string | undefined): number | undefined => (v === undefined ? undefined : Number(v));
-  const crowd = values.crowd ? { avatars: resolve(values.crowd), full: count(values.full), lod: count(values.lod), present: count(values.present) } : undefined;
+  if (values.tier !== undefined && !['low', 'medium', 'high'].includes(values.tier)) {
+    console.error(`standin: --tier must be low, medium or high, got ${values.tier}`);
+    return 2;
+  }
+  const crowd = values.crowd
+    ? { avatars: resolve(values.crowd), full: count(values.full), lod: count(values.lod), present: count(values.present), converted: values.converted === true, inView: count(values['in-view']), ...(values.tier ? { tier: values.tier } : {}) }
+    : undefined;
   const plan = planRun({ profile, target, clientPath, seconds, outDir: resolve(values.out ?? DEFAULT_OUT), stamp, gpuIndex, ...(crowd ? { crowd } : {}) });
   const checks = preflight(profile, plan, clientPath, !values['no-query'], gpuIndex);
   printPlan(plan, file, profile, checks);

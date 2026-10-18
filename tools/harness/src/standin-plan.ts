@@ -135,8 +135,10 @@ export interface PlanOptions {
   outDir: string;
   stamp: string;
   gpuIndex?: number;
-  /** Spike S0.09: run the crowd bench on this folder of VRM avatars instead of the blank scene. */
-  crowd?: { avatars: string; full?: number; lod?: number; present?: number };
+  /** Spike S0.09: run the crowd bench on this folder of VRM avatars instead of the blank scene. With
+   *  `converted` (S4.12) the folder holds converted avatars (tools/bots/src/avatar-bench.ts) and the
+   *  world's own avatar layer draws them, `inView` of them in view, with a `tier`'s policy. */
+  crowd?: { avatars: string; full?: number; lod?: number; present?: number; converted?: boolean; inView?: number; tier?: string };
 }
 
 export const CHECK_SECONDS = 4;
@@ -161,6 +163,9 @@ export function planRun(o: PlanOptions): Plan {
           ...(c.full !== undefined ? [`--crowd-full=${c.full}`] : []),
           ...(c.lod !== undefined ? [`--crowd-lod=${c.lod}`] : []),
           ...(c.present !== undefined ? [`--crowd-present=${c.present}`] : []),
+          ...(c.converted ? ['--crowd-converted=1'] : []),
+          ...(c.converted && c.inView !== undefined ? [`--crowd-in-view=${c.inView}`] : []),
+          ...(c.converted && c.tier !== undefined ? [`--crowd-tier=${c.tier}`] : []),
         ]
       : bench(seconds, file);
   const plan: Plan = {

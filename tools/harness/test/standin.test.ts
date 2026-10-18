@@ -84,6 +84,13 @@ describe('the plan', () => {
   });
 });
 
+describe('the converted crowd plan (S4.12)', () => {
+  it('runs the world\'s avatar layer on converted avatars, with the plan\'s in-view count and a tier', () => {
+    const p = planRun({ profile: PROFILE, target: 'iris-xe', clientPath: '/opt/flatchat', seconds: 60, outDir: '/tmp/out', stamp: 'S', crowd: { avatars: '/converted', present: 200, converted: true, inView: 55, tier: 'medium' } });
+    expect(p.client).toEqual(expect.arrayContaining(['--crowd=60', '--avatars=/converted', '--crowd-present=200', '--crowd-converted=1', '--crowd-in-view=55', '--crowd-tier=medium']));
+  });
+});
+
 describe('the crowd plan (spike S0.09)', () => {
   it('runs the crowd bench instead of the blank scene, with the target\'s headroom', () => {
     const p = planRun({ profile: PROFILE, target: 'iris-xe', clientPath: '/opt/flatchat', seconds: 300, outDir: '/tmp/out', stamp: 'S', crowd: { avatars: '/avatars', full: 8 } });
