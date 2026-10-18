@@ -5,7 +5,7 @@ impactDescription: VRM materials left as exported (15 to 17 a VRoid avatar, abou
 tags: avatars, crowd, crowds, VRM, VRM 0.x, VRM 1.0, three-vrm, @pixiv/three-vrm, MToon, MToonNodeMaterial, MToonMaterialLoaderPlugin, VRMUtils, combineSkeletons, rotateVRM0, spring bones, springBoneManager, expressions, humanoid, normalized bones, GLTFLoader, meshoptimizer, simplify, simplifySloppy, level of detail, LOD, proxy, impostor, atlas, material merge, draw calls, texture budget, KTX2, BC7, Source, initTexture, compileAsync, crowd bench, --crowd, --avatars, flatchat-avatar, avatar-files, crowd-pass, stand-in crowd, S0.09, S-AVATAR, kill line, VRoid, 100Avatars
 ---
 
-This rule governs `apps/client/src/renderer/src/crowd/` (spike S0.09's crowd bench) and what it taught about drawing many VRM avatars on three.js's WebGPU renderer. The converter (Stage 4) will turn uploads into the platform's own format; until then the bench does the parts of its job that decide the cost, and says which.
+This rule governs `apps/client/src/renderer/src/crowd/` (spike S0.09's crowd bench) and what it taught about drawing many VRM avatars on three.js's WebGPU renderer. Stage 4 made those lessons real: the converter (rule `avatar-converter`) merges materials and fits textures for the lighter levels, and the world draws players' avatars with `world/avatar-layer.ts` (rule `client-app`, "Avatars in the World"); the bench still measures crowds and its loader is what `avatar-loader.ts` reuses (`shareTextures`).
 
 ## The Files
 

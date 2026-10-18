@@ -91,6 +91,10 @@ The client's side is `WorldConnection` (`apps/client/src/renderer/src/net/connec
 | The answer | `placed`, accepted or not, with where the player is. `World.place` moves the player, updates the cell and resets the pose clock, so a pose the client sent from the old place is corrected back to the new one. Events `teleport:placed`, `teleport:refused`, `appearance` |
 | Typing | The world server's tsconfig uses Bundler resolution, like the converter's: recast-navigation's declarations use extensionless imports |
 
+## Avatars and Faces (`src/server.ts`, S4.05, S4.07)
+
+The roster's player carries the worn avatar's manifest hash from the connect token (`claims.avatar`) and a face (neutral, both hands relaxed at the join). `wear` opens a fresh token with the world's key, refuses a replayed nonce or another account's token, and replaces the roster's `avatar` (one every `WEAR_EVERY_MS`, 2 s); `face` sets the roster's face (one every `FACE_EVERY_MS`, 125 ms, and only when it changes); both are announced as a roster change. The world never fetches an avatar: clients do, from the core.
+
 ## Portals (`src/server.ts`, S2.11)
 
 After each applied `pose` the server checks the player's position against the portal boxes (`insideBox` from `packages/content`: a box turned about y). Entering one sends `portal` (the world id and the spawn group, cut to 32 bytes) once; the player must leave the box before the next. A player who spawns inside a portal starts as already in it, so arrivals are never bounced straight back. The world never hands out a connect token for the other world: the client asks the core (`client-app`). A player arriving with a spawn group skips a persistent world's remembered place. Events `portal` and `leave:travel` count it.
