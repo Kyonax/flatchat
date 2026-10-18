@@ -143,5 +143,28 @@ describe('avatars, faces and proportions in the roster', () => {
     a.send({ type: 'outfit', items: [] });
     await until('the outfit off', () => b.player(a.entity)!.outfit.length === 0);
   });
+
+  it('plays an emote for everyone with the tick it started at, and stops it (S5.07)', async () => {
+    const udp = await start();
+    const a = await enter(udp, randomUUID());
+    const b = await enter(udp, randomUUID());
+    await until('b sees a', () => b.player(a.entity) !== undefined);
+    expect(b.player(a.entity)!.emote).toBeUndefined();
+    const dance = new Uint8Array(32).fill(0x5d);
+    a.send({ type: 'emote', anim: dance });
+    await until('the dance', () => b.player(a.entity)?.emote !== undefined);
+    const first = b.player(a.entity)!.emote!;
+    expect(first.anim).toEqual(dance);
+    // Two changes a second: a stop at once is dropped, one after the pace lands.
+    a.send({ type: 'emote' });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(b.player(a.entity)!.emote).toBeDefined();
+    await new Promise((r) => setTimeout(r, 400));
+    a.send({ type: 'emote', anim: dance });
+    await until('the dance restarted', () => (b.player(a.entity)?.emote?.tick ?? 0) > first.tick);
+    await new Promise((r) => setTimeout(r, 550));
+    a.send({ type: 'emote' });
+    await until('the dance stopped', () => b.player(a.entity)!.emote === undefined);
+  });
 });
 

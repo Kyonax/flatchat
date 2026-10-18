@@ -195,6 +195,7 @@ interface Conn {
   wearAt: number;
   faceAt: number;
   outfitAt: number;
+  emoteAt: number;
   /** The connect token's facts. */
   claims?: Claims;
   /** Silenced by a moderator or a plugin: the world forwards none of this player's voice. */
@@ -241,6 +242,8 @@ export function fitProportions(p: Proportions | undefined): Proportions {
 }
 /** What a player wears (S5.05): at most one change a second. */
 const OUTFIT_EVERY_MS = 1000;
+/** Emotes and dances (S5.07): at most two changes a second. */
+const EMOTE_EVERY_MS = 500;
 type Worn = MessageOf<'outfit'>['items'][number];
 /** An outfit as the world keeps it (S5.05): each item once, in the order worn, and each prop's
  *  adjustment within the platform's limits (packages/content's WORN_LIMITS: 10 cm, 45°, 80 to 125
@@ -443,6 +446,7 @@ export class WorldServer implements PluginWorld {
       wearAt: -Infinity,
       faceAt: -Infinity,
       outfitAt: -Infinity,
+      emoteAt: -Infinity,
       forceMuted: false,
       role: 'visitor',
       voiceRange: this.voice.config.rangeM,
@@ -538,6 +542,9 @@ export class WorldServer implements PluginWorld {
         break;
       case 'outfit':
         this.outfit(conn, message.items, now);
+        break;
+      case 'emote':
+        this.emote(conn, message.anim, now);
         break;
       case 'teleport':
         this.events.add(`teleport:${this.teleport(conn, message, now)}`, 0);
@@ -754,6 +761,20 @@ export class WorldServer implements PluginWorld {
     player.outfit = fitted;
     this.joinedThisTick.push(player);
     this.events.add('outfit', 0);
+  }
+
+  /** An emote or a dance (S5.07): kept in the roster with the tick it started at, so every client
+   *  plays it in step, and announced as a change; none stops it. Starting the same one again
+   *  restarts it. */
+  private emote(conn: Conn, anim: Uint8Array | undefined, now: number): void {
+    if (conn.entity === undefined || now - conn.emoteAt < EMOTE_EVERY_MS) return;
+    const player = this.roster.get(conn.entity);
+    if (!player || (!anim && !player.emote)) return;
+    conn.emoteAt = now;
+    if (anim) player.emote = { anim, tick: this.tickNo };
+    else delete player.emote;
+    this.joinedThisTick.push(player);
+    this.events.add('emote', 0);
   }
 
   /** Puts the player on a seat or a clicked spot when the world's rules allow it, and answers
