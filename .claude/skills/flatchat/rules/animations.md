@@ -39,4 +39,4 @@ Every emote and dance becomes VRMA on VRM 1.0's normalized humanoid (S5.07, ad-0
 
 ## Not Yet
 
-Uploads through the core and Blender on the core (S5.07 part b); the `emote` protocol message and its world forwarding (part c); the client's three-vrm-animation playback and emote menu (part d); audio and Rhubarb mouth tracks (part e).
+The core takes uploads since part b (rule `core-service`: `src/animations.ts`, `runBlender`; `-Y` disables auto-run, `-y` would enable it). Still to come: the `emote` protocol message and its world forwarding (part c); the client's three-vrm-animation playback and emote menu (part d); audio and Rhubarb mouth tracks (part e).
