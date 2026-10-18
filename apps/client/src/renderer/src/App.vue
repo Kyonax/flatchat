@@ -60,6 +60,9 @@ const num = (name: string, fallback: number): number => {
   return params.has(name) && Number.isFinite(n) ? n : fallback;
 };
 
+// The converted crowd's tier (S4.12): that tier's viewer policy as it ships.
+const tierParam = params.get('tier');
+
 // Spike S0.08's voice lounge: ?lounge=URL&token=HEX shows the lounge instead of the scene.
 const loungeUrl = params.get('lounge');
 const loungeToken = params.get('token');
@@ -80,6 +83,7 @@ onMounted(async () => {
       full: num('full', 12),
       lower: num('lod', 20),
       springs: num('springs', 6),
+      ...(tierParam === 'low' || tierParam === 'medium' || tierParam === 'high' ? { tier: tierParam } : {}),
       onProgress: (line) => {
         crowdLine.value = line;
       },

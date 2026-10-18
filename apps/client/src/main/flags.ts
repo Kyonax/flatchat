@@ -32,9 +32,11 @@
 //           [--crowd-springs=6] [--crowd-swap=15] [--crowd-texture-mb=16] [--crowd-lod-ratio=0.3] [--crowd-merge=1]
 //           [--crowd-headroom=1] [--crowd-out=FILE] [--crowd-shot=FILE.png] [--bench-size=WxH]
 //                                                    spike S0.09: a crowd of the folder's VRM avatars
-//           [--crowd-converted=1 [--crowd-in-view=55]]
+//           [--crowd-converted=1 [--crowd-in-view=55] [--crowd-tier=low|medium|high]]
 //                                                    S4.05/S4.12: the folder holds converted avatars
 //                                                    (tools/bots/src/avatar-bench.ts), drawn by the world's own avatar layer
+//                                                    (with --crowd-tier: that tier's policy as it ships,
+//                                                    its lowest rank drawn in full included)
 //                                                    on the low preset, no frame-rate cap; reports
 //                                                    frame times, loads, memory and the pass lines
 
@@ -98,6 +100,9 @@ export interface CrowdFlags {
   /** Converted avatars drawn by the world's avatar layer (S4.12), and how many stand in view. */
   converted: boolean;
   inView: number;
+  /** A tier's viewer policy as it ships (its counts and its lowest rank drawn in full), in place of
+   *  --crowd-full, --crowd-lod and --crowd-springs with every rank allowed in full. */
+  tier?: 'low' | 'medium' | 'high';
 }
 
 export const DEFAULT_BENCH_SIZE: Size = { width: 1280, height: 720 };
@@ -227,6 +232,9 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
       converted: number('crowd-converted', 0, 0, 1) === 1,
       inView: number('crowd-in-view', Math.min(55, present), 0, 1000),
     };
+    const tier = value(argv, 'crowd-tier');
+    if (tier === 'low' || tier === 'medium' || tier === 'high') flags.crowd.tier = tier;
+    else if (tier !== undefined) errors.push(`--crowd-tier must be low, medium or high, got ${tier}`);
     const out = value(argv, 'crowd-out');
     if (out) flags.crowd.out = out;
     const shot = value(argv, 'crowd-shot');
@@ -259,7 +267,7 @@ export function rendererQuery(flags: ClientFlags): Record<string, string> {
       texturemb: String(c.textureMB),
       lodratio: String(c.lodRatio),
       merge: c.merge ? '1' : '0',
-      ...(c.converted ? { converted: '1', inview: String(c.inView) } : {}),
+      ...(c.converted ? { converted: '1', inview: String(c.inView), ...(c.tier ? { tier: c.tier } : {}) } : {}),
     };
   }
   if (flags.bench !== undefined) {

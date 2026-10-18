@@ -7,10 +7,11 @@
 // walk, spring bones on the nearest. `present` players stand around the camera, `inView` of them in
 // a wedge in front of it (the plan's 55 in view, 200 present); after every wanted level has loaded,
 // the measured run keeps every frame time, at 1280×720 with no frame-rate cap.
-import type { AvatarManifest, Level } from '@flatchat/content';
+import { type AvatarManifest, type Level, rankIndex } from '@flatchat/content';
 import * as THREE from 'three/webgpu';
 import { summarizeFrames } from '../frame-stats';
 import { AvatarLayer, type AvatarState } from '../world/avatar-layer';
+import { TIER_POLICY } from '../world/avatar-policy';
 
 export interface ConvertedOptions {
   seconds: number;
@@ -21,6 +22,8 @@ export interface ConvertedOptions {
   full: number;
   lower: number;
   springs: number;
+  /** A tier's policy as it ships, in place of full, lower and springs with every rank in full. */
+  tier?: keyof typeof TIER_POLICY;
   onProgress: (line: string) => void;
 }
 
@@ -62,24 +65,39 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
       if (!r.ok) throw new Error(`${folder} ${level}: ${r.status}`);
       return { bytes: await r.arrayBuffer(), manifest: m };
     });
-    layer.policy = { full: o.full, lower: o.lower, springs: o.springs, minRank: 'veryPoor' };
+    const policy = o.tier ? { ...TIER_POLICY[o.tier] } : { full: o.full, lower: o.lower, springs: o.springs, minRank: 'veryPoor' as const };
+    layer.policy = policy;
+    report['policy'] = { tier: o.tier ?? null, ...policy };
     scene.add(layer.group);
 
-    // Where everyone stands: `inView` in a wedge in front of the camera, the rest all around. The
-    // first `full` of them within the 8 m the layer draws in full, so the run is the worst the
-    // policy allows: its whole full quota at LOD0, its lower quota at LOD1 and LOD2, impostors after.
+    // Where everyone stands, the worst the policy allows: `inView` in a wedge in front of the camera,
+    // the rest around it but out of its view (beyond 75° either side: the camera sees 46°, the walks
+    // and bodies need the rest). Nearest, within the 8 m the layer draws in full, the policy's full
+    // quota, the heaviest avatars (by LOD0 triangles) it draws in full (every rank without a tier; a
+    // tier's lowest rank and better with one); then its lower quota within 9 to 13 m, the heaviest
+    // of all (LOD1 has no rank gate); the rest of those in view farther off, as impostors.
+    const fullOk = (f: string): boolean => rankIndex(manifests.get(f)!.rank) <= rankIndex(policy.minRank);
+    const byWeight = (a: string, b: string): number => manifests.get(b)!.levels.lod0.triangles - manifests.get(a)!.levels.lod0.triangles;
+    const heaviest = [...folders].sort(byWeight);
+    const heaviestFull = heaviest.filter(fullOk);
+    const nearCount = Math.min(policy.full, o.inView);
+    const lowerCount = Math.min(policy.lower, o.inView - nearCount);
     let seed = 20_261_017;
     const random = (): number => ((seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0) / 0xffffffff);
     const people = Array.from({ length: o.present }, (_, i) => {
       const inView = i < o.inView;
-      const near = i < Math.min(o.full, o.inView);
-      const angle = inView ? -Math.PI / 2 + (random() - 0.5) * (Math.PI / 3) : random() * Math.PI * 2;
-      const d = near ? 3 + random() * 3.5 : inView ? 9 + Math.pow(random(), 0.8) * 25 : 12 + random() * 50;
+      const near = i < nearCount;
+      const lower = !near && i < nearCount + lowerCount;
+      const angle = inView ? -Math.PI / 2 + (random() - 0.5) * (Math.PI / 3) : -Math.PI / 2 + (Math.PI * 5) / 12 + random() * ((Math.PI * 7) / 6);
+      const d = near ? 3 + random() * 3.5 : lower ? 9 + random() * 4 : inView ? 21 + random() * 13 : 12 + random() * 50;
       const walks = i % 3 !== 0;
       const r = walks ? (near ? 0.5 + random() * 0.5 : 1 + random() * 2) : 0;
-      return { entity: i + 1, folder: folders[i % folders.length]!, cx: Math.cos(angle) * d, cz: Math.sin(angle) * d, r, phase: random() * Math.PI * 2 };
+      const folder = near && heaviestFull.length > 0 ? heaviestFull[i % heaviestFull.length]! : heaviest[(near ? i : i - nearCount) % heaviest.length]!;
+      return { entity: i + 1, folder, cx: Math.cos(angle) * d, cz: Math.sin(angle) * d, r, phase: random() * Math.PI * 2 };
     });
     for (const p of people) layer.wear(p.entity, p.folder);
+    // The pass line's count in full: the near ones the policy draws in full.
+    report['fullExpected'] = people.slice(0, Math.min(policy.full, o.inView)).filter((p) => fullOk(p.folder)).length;
     const neutral = { expression: 'neutral' as const, left: 'relaxed' as const, right: 'relaxed' as const };
     const states = (t: number): AvatarState[] =>
       people.map((p) => {
@@ -102,6 +120,8 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
 
     // Load, warm up, measure.
     const frames: number[] = [];
+    const updateMs: number[] = [];
+    const renderMs: number[] = [];
     const started = performance.now();
     let last = started;
     let loadedAt = 0;
@@ -112,8 +132,11 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
         const now = performance.now();
         const dt = (now - last) / 1000;
         last = now;
+        const u0 = performance.now();
         layer.update(states((now - started) / 1000), camera, dt, now);
+        const u1 = performance.now();
         renderer.render(scene, camera);
+        const u2 = performance.now();
         const c = layer.counts();
         const loaded = c.lod0 + c.lod1 + c.lod2 + c.impostor;
         if (!loadedAt && (loaded >= o.present || now - started > LOAD_LIMIT_MS)) {
@@ -124,8 +147,12 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
         if (loadedAt && !measuring && now - loadedAt > WARMUP_MS) {
           measuring = true;
           measureFrom = now;
+          // --crowd-shot: a picture of the crowd a second into the measured run.
+          setTimeout(() => void window.flatchat?.crowdShot(), 1000);
         } else if (measuring) {
           frames.push(dt * 1000);
+          updateMs.push(u1 - u0);
+          renderMs.push(u2 - u1);
           if (now - measureFrom >= o.seconds * 1000) {
             void renderer.setAnimationLoop(null);
             resolve();
@@ -137,6 +164,10 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
     report['summary'] = summarizeFrames(frames);
     report['framesOver50'] = frames.filter((f) => f > 50).length;
     report['framesOver100'] = frames.filter((f) => f > 100).length;
+    // The main thread's share of a frame: the avatar layer's update, and the render call (its CPU side).
+    const median = (a: number[]): number => Math.round(([...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0) * 100) / 100;
+    report['cpuMs'] = { update: median(updateMs), render: median(renderMs) };
+    report['inView'] = layer.inView;
     report['tiers'] = { full: { count: counts.lod0 }, lod: { count: counts.lod1 + counts.lod2 }, proxy: { count: counts.impostor } };
     report['levels'] = counts;
     report['render'] = { drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles };

@@ -14,6 +14,8 @@ export interface CrowdForPass {
   summary?: { p95Ms?: number; maxMs?: number; frames?: number };
   framesOver100?: number;
   tiers?: { full?: { count?: number } };
+  /** How many the run should draw in full (the converted crowd: its policy's quota); 8 when unset. */
+  fullExpected?: number;
 }
 
 const round = (n: number): number => Math.round(n * 10) / 10;
@@ -22,13 +24,14 @@ export function crowdPass(report: CrowdForPass, memoryPeakMB: number, headroom =
   const p95 = report.summary?.p95Ms ?? Number.POSITIVE_INFINITY;
   const worst = report.summary?.maxMs ?? Number.POSITIVE_INFINITY;
   const full = report.tiers?.full?.count ?? 0;
+  const wantFull = report.fullExpected ?? 8;
   const p95Limit = 33.3 / headroom;
   const spikeLimit = 100 / headroom;
   const measured = (report.summary?.frames ?? 0) > 0;
   return [
     { what: 'frame time p95 over the measured run', limit: `≤ ${round(p95Limit)} ms`, value: `${round(p95)} ms`, ok: measured && p95 <= p95Limit },
     { what: 'the worst frame after the warm-up, avatar loads included', limit: `≤ ${round(spikeLimit)} ms`, value: `${round(worst)} ms`, ok: measured && worst <= spikeLimit },
-    { what: 'avatars drawn in full', limit: '≥ 8', value: String(full), ok: full >= 8 },
+    { what: 'avatars drawn in full', limit: `≥ ${wantFull}`, value: String(full), ok: full >= wantFull },
     { what: 'memory of every FlatChat process together (resident)', limit: '≤ 2,048 MB', value: `${Math.round(memoryPeakMB)} MB`, ok: memoryPeakMB > 0 && memoryPeakMB <= 2048 },
   ];
 }

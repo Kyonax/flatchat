@@ -4,7 +4,8 @@
 // hash (the main process fetches and caches the files); the layer picks a level for each by
 // distance and the viewer's policy (S4.09): the nearest few in full (LOD0), the next at LOD1 or
 // LOD2, everyone else as the impostor. Work is paced: one level fetched and parsed at a time, and a
-// level switches only after the wish to switch has held for a moment.
+// level switches only after the wish to switch has held for a moment. Only avatars in view are
+// posed and drawn (the layer culls each one's holder: three.js culls no groups).
 //
 // Proportions (S4.10) move joints, not scales: the elbows, wrists, knees and ankles along their
 // bones, the shoulders and hips apart, the head's size; skinning stretches each segment, and an
@@ -122,6 +123,12 @@ export class AvatarLayer {
   private readonly entries = new Map<number, Entry>();
   private readonly templates = new Map<string, Promise<Template>>();
   private busy = false;
+  private readonly frustum = new THREE.Frustum();
+  private readonly viewProjection = new THREE.Matrix4();
+  private readonly bounds = new THREE.Sphere();
+  private readonly centre = new THREE.Vector3();
+  /** Avatars posed and drawn in the last update (in view), for the report and the tests. */
+  inView = 0;
   /** Loads done and failed, for the report and the tests. */
   loads = 0;
   failures = 0;
@@ -234,6 +241,10 @@ export class AvatarLayer {
   update(states: readonly AvatarState[], camera: THREE.Camera, dt: number, now: number): Set<number> {
     const drawn = new Set<number>();
     const from = camera.position;
+    camera.updateWorldMatrix(true, false);
+    this.viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.viewProjection, camera.coordinateSystem, camera.reversedDepth);
+    this.inView = 0;
     // Anyone not in this frame's list (out of the snapshot, kept apart by a block) is not drawn.
     for (const e of this.entries.values()) e.holder.visible = false;
     const ordered = states
@@ -263,11 +274,19 @@ export class AvatarLayer {
         e.want = want;
         e.wantSince = now;
       }
-      e.holder.visible = !s.hidden;
       if (!e.failed && want !== e.level && (e.level === undefined || now - e.wantSince > SWITCH_AFTER_MS)) this.request(s.entity, e, want);
+      // three.js culls meshes, never groups, and an avatar's skinned meshes move past their bounds
+      // (culling is off on them): the holder is culled here as a whole, by a sphere around the body,
+      // and an avatar out of view is neither posed nor drawn. This player's own always is.
+      const h = s.height > 0.2 ? s.height : 1.7;
+      const inView = s.me || this.frustum.intersectsSphere(this.bounds.set(this.centre.set(s.x, s.y + h / 2, s.z), h * 0.8));
+      e.holder.visible = !s.hidden && inView;
       if (e.level === undefined) continue;
-      this.place(e, s, dt, now, springs < this.policy.springs && e.level !== 'impostor' && d < FULL_WITHIN * 1.5);
-      if (e.level !== 'impostor') springs += 1;
+      if (inView) {
+        this.place(e, s, dt, now, springs < this.policy.springs && e.level !== 'impostor' && d < FULL_WITHIN * 1.5);
+        if (e.level !== 'impostor') springs += 1;
+        if (!s.hidden) this.inView += 1;
+      }
       if (!s.hidden) drawn.add(s.entity);
     }
     return drawn;

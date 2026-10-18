@@ -24,6 +24,11 @@ describe('the crowd flags', () => {
     expect(errors).toEqual([]);
     expect(flags.crowd).toMatchObject({ converted: true, present: 200, inView: 55 });
     expect(rendererQuery(flags)).toMatchObject({ converted: '1', inview: '55', present: '200' });
+    expect(rendererQuery(flags)['tier']).toBeUndefined();
+    const tiered = parseFlags(argv('--crowd=60', '--avatars=/tmp/c', '--crowd-converted=1', '--crowd-tier=medium'));
+    expect(tiered.errors).toEqual([]);
+    expect(rendererQuery(tiered.flags)).toMatchObject({ converted: '1', tier: 'medium' });
+    expect(parseFlags(argv('--crowd=60', '--avatars=/tmp/c', '--crowd-converted=1', '--crowd-tier=ultra')).errors).toEqual(['--crowd-tier must be low, medium or high, got ultra']);
   });
 
   it('refuses a crowd without avatars, a crowd too small for its tiers and mixed modes', () => {
@@ -97,6 +102,8 @@ describe('the S0.09 pass lines', () => {
 
   it('fails too few full avatars, too much memory and a run with no frames', () => {
     expect(crowdPass({ ...report, tiers: { full: { count: 7 } } }, 1500)[2]!.ok).toBe(false);
+    // The converted crowd sets its own count: a tier's quota of the near ones it draws in full.
+    expect(crowdPass({ ...report, tiers: { full: { count: 4 } }, fullExpected: 4 }, 1500)[2]).toMatchObject({ limit: '≥ 4', ok: true });
     expect(crowdPass(report, 2049)[3]!.ok).toBe(false);
     expect(crowdPass({ summary: { frames: 0 } }, 1000).slice(0, 2).every((l) => !l.ok)).toBe(true);
   });
