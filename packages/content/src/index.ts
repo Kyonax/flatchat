@@ -86,6 +86,7 @@ export {
   type Region,
   REGIONS,
   regionOfBone,
+  resolveOutfit,
   type Slot,
   SLOT_REPLACES,
   SLOTS,

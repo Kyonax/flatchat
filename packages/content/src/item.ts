@@ -94,6 +94,24 @@ export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: Attach
   return problems;
 }
 
+/** An outfit made wearable (S5.05): where items conflict (outfitProblems), the one worn later wins,
+ *  as a toggle that puts an item on takes the place of the one it conflicts with. Keeps the order. */
+export function resolveOutfit<T extends { slot: Slot; attach?: AttachPoint | undefined }>(worn: readonly T[]): T[] {
+  const kept: T[] = [];
+  const taken = new Set<string>();
+  const replacedBy = (slot: Slot): Slot[] => Object.entries(SLOT_REPLACES).flatMap(([s, rs]) => ((rs as readonly Slot[]).includes(slot) ? [s as Slot] : []));
+  for (let i = worn.length - 1; i >= 0; i--) {
+    const w = worn[i]!;
+    const key = w.slot === 'attachment' ? `attachment at ${w.attach ?? '?'}` : w.slot;
+    if (taken.has(key)) continue;
+    // A later top or bottom displaces an earlier full item; a later full item, an earlier top or bottom.
+    if ((SLOT_REPLACES[w.slot] ?? []).some((r) => taken.has(r)) || replacedBy(w.slot).some((s) => taken.has(s))) continue;
+    taken.add(key);
+    kept.push(w);
+  }
+  return kept.reverse();
+}
+
 /** What a creator's file declares: `extras.flatchat_item` on its scene (a Blender scene's custom
  *  property) or on the file itself. */
 export interface ItemDeclaration {

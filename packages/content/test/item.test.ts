@@ -3,7 +3,7 @@
 // slots and their caps, a creator's declaration read or refused with every reason at once, and a
 // fit's JSON checked before three.js sees it; and which items can be worn together (S5.05).
 import { describe, expect, it } from 'vitest';
-import { checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, outfitProblems, readItemDeclaration, REGIONS, regionOfBone, SLOT_REPLACES, SLOTS } from '../src/index.ts';
+import { type AttachPoint, checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, outfitProblems, readItemDeclaration, REGIONS, regionOfBone, resolveOutfit, type Slot, SLOT_REPLACES, SLOTS } from '../src/index.ts';
 
 describe('items', () => {
   it('name the kits\' 53 bones and give every bone but the root one region', () => {
@@ -53,5 +53,22 @@ describe('outfits (S5.05)', () => {
     expect(outfitProblems([{ slot: 'top' }, { slot: 'top' }])).toEqual(['2 items in one top slot']);
     expect(outfitProblems([{ slot: 'attachment', attach: 'back' }, { slot: 'attachment', attach: 'back' }])).toEqual(['2 items in one attachment at back']);
     expect(outfitProblems([{ slot: 'full' }, { slot: 'bottom' }])).toEqual(['a full item takes the bottom slot too']);
+  });
+
+  it('are made wearable by keeping the item worn later where two conflict, in their order', () => {
+    const tee = { id: 'tee', slot: 'top' as const };
+    const shirt = { id: 'shirt', slot: 'top' as const };
+    const jeans = { id: 'jeans', slot: 'bottom' as const };
+    const dress = { id: 'dress', slot: 'full' as const };
+    const capL = { id: 'capL', slot: 'attachment' as const, attach: 'hip_l' as const };
+    const capR = { id: 'capR', slot: 'attachment' as const, attach: 'hip_r' as const };
+    const ids = (xs: Array<{ id: string }>): string[] => xs.map((x) => x.id);
+    expect(ids(resolveOutfit([tee, jeans, capL, capR]))).toEqual(['tee', 'jeans', 'capL', 'capR']);
+    expect(ids(resolveOutfit([tee, jeans, shirt]))).toEqual(['jeans', 'shirt']);
+    expect(ids(resolveOutfit([tee, jeans, dress]))).toEqual(['dress']);
+    expect(ids(resolveOutfit([dress, jeans]))).toEqual(['jeans']);
+    expect(ids(resolveOutfit([capL, { ...capL, id: 'capL2' }]))).toEqual(['capL2']);
+    const sets: Array<Array<{ id: string; slot: Slot; attach?: AttachPoint }>> = [[tee, shirt, dress, jeans], [dress, tee, capL, capL]];
+    for (const set of sets) expect(outfitProblems(resolveOutfit(set))).toEqual([]);
   });
 });
