@@ -68,6 +68,7 @@ export {
 } from './avatar.ts';
 export { MODEL_FROM, type ModelFrom } from './avatar.ts';
 export { BLENDER_FORMATS, MODEL_EXTENSIONS, MODEL_FORMAT_NAMES, type UploadFormat, uploadFormat } from './formats.ts';
+export { checkFingerprint, type Fingerprint, FingerprintError, matchOf, SHAPE_MATCH, SHAPE_MIN_TOKENS, SHAPE_SLOTS, shapeSimilarity, TEXTURE_MATCH_BITS, TEXTURE_MAX, textureDistance } from './fingerprint.ts';
 export {
   BODY_KITS,
   type BodyKit,
