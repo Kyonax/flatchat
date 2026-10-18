@@ -6,6 +6,8 @@
 // and the client, so all three agree on what an avatar is and how heavy it counts.
 
 /** The manifest's format: the converter's output for this version of the platform. */
+import { SHADER_EXTENSION } from './shader-graph.ts';
+
 export const AVATAR_FORMAT = 1;
 /** The largest file the platform takes for conversion. */
 export const AVATAR_SOURCE_LIMIT = 64 * 1024 * 1024;
@@ -31,6 +33,9 @@ export interface AvatarStats {
   springJoints: number;
   colliders: number;
   collisionChecks: number;
+  /** Creator shaders' cost together (S6.03): each graph's static cost (shader-graph.ts); none when
+   *  the avatar has no creator shader, or came from an earlier converter. */
+  shaderCost?: number;
 }
 
 type Limits = Omit<AvatarStats, 'vertices' | 'morphTargets'>;
@@ -38,10 +43,11 @@ const MB = 1024 * 1024;
 
 /** The highest number each rank allows (VRChat's PC table; above `poor` is `veryPoor`). */
 export const RANK_LIMITS: Record<Exclude<Rank, 'veryPoor'>, Limits> = {
-  excellent: { triangles: 32_000, textureBytes: 40 * MB, skinnedMeshes: 1, basicMeshes: 4, materialSlots: 4, bones: 75, springs: 4, springJoints: 16, colliders: 4, collisionChecks: 32 },
-  good: { triangles: 70_000, textureBytes: 75 * MB, skinnedMeshes: 2, basicMeshes: 8, materialSlots: 8, bones: 150, springs: 8, springJoints: 64, colliders: 8, collisionChecks: 128 },
-  medium: { triangles: 70_000, textureBytes: 110 * MB, skinnedMeshes: 8, basicMeshes: 16, materialSlots: 16, bones: 256, springs: 16, springJoints: 128, colliders: 16, collisionChecks: 256 },
-  poor: { triangles: 70_000, textureBytes: 150 * MB, skinnedMeshes: 16, basicMeshes: 24, materialSlots: 32, bones: 400, springs: 32, springJoints: 256, colliders: 32, collisionChecks: 512 },
+  // A creator shader's cost (S6.03, T-01) ranks too: a rim glow costs about 15, noise 10 a read.
+  excellent: { triangles: 32_000, textureBytes: 40 * MB, skinnedMeshes: 1, basicMeshes: 4, materialSlots: 4, bones: 75, springs: 4, springJoints: 16, colliders: 4, collisionChecks: 32, shaderCost: 50 },
+  good: { triangles: 70_000, textureBytes: 75 * MB, skinnedMeshes: 2, basicMeshes: 8, materialSlots: 8, bones: 150, springs: 8, springJoints: 64, colliders: 8, collisionChecks: 128, shaderCost: 150 },
+  medium: { triangles: 70_000, textureBytes: 110 * MB, skinnedMeshes: 8, basicMeshes: 16, materialSlots: 16, bones: 256, springs: 16, springJoints: 128, colliders: 16, collisionChecks: 256, shaderCost: 300 },
+  poor: { triangles: 70_000, textureBytes: 150 * MB, skinnedMeshes: 16, basicMeshes: 24, materialSlots: 32, bones: 400, springs: 32, springJoints: 256, colliders: 32, collisionChecks: 512, shaderCost: 600 },
 };
 
 /** Hard limits: an avatar over any of these is refused, not ranked. */
@@ -63,14 +69,16 @@ export const AVATAR_LIMITS = {
 /** The rank of an avatar, and the numbers that set it (those past the next better rank). */
 export function rankOf(stats: AvatarStats): { rank: Rank; limitedBy: Array<keyof Limits> } {
   const keys = Object.keys(RANK_LIMITS.excellent) as Array<keyof Limits>;
+  // A number an earlier converter did not measure counts as none.
+  const past = (k: keyof Limits, r: Exclude<Rank, 'veryPoor'>): boolean => (stats[k] ?? 0) > (RANK_LIMITS[r][k] ?? Infinity);
   for (const rank of ['excellent', 'good', 'medium', 'poor'] as const) {
-    const over = keys.filter((k) => stats[k] > RANK_LIMITS[rank][k]);
+    const over = keys.filter((k) => past(k, rank));
     if (over.length === 0) {
       const better = RANKS[RANKS.indexOf(rank) - 1] as Exclude<Rank, 'veryPoor'> | undefined;
-      return { rank, limitedBy: better ? keys.filter((k) => stats[k] > RANK_LIMITS[better][k]) : [] };
+      return { rank, limitedBy: better ? keys.filter((k) => past(k, better)) : [] };
     }
   }
-  return { rank: 'veryPoor', limitedBy: keys.filter((k) => stats[k] > RANK_LIMITS.poor[k]) };
+  return { rank: 'veryPoor', limitedBy: keys.filter((k) => past(k, 'poor')) };
 }
 
 /** Ranks ordered from best (0) to worst (4), for a viewer's minimum. */
@@ -121,6 +129,8 @@ export interface AvatarManifest {
   height: number;
   /** Spring bones, for the client's per-rank budgets (S4.08). */
   springs: number;
+  /** Materials with a creator shader (S6.03), in LOD0 only; the other levels keep the fallback. */
+  shaders?: number;
   warnings: string[];
 }
 
@@ -153,6 +163,7 @@ export function checkManifest(value: unknown): AvatarManifest {
 
 /** The extensions an avatar level may use: the converter writes no others. */
 export const LEVEL_EXTENSIONS: ReadonlySet<string> = new Set([
+  SHADER_EXTENSION,
   'VRMC_vrm',
   'VRMC_springBone',
   'VRMC_materials_mtoon',

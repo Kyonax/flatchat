@@ -128,6 +128,24 @@ export {
 } from './effect.ts';
 export { checkEffectBundle, type EffectCheck } from './effect-check.ts';
 export {
+  type CheckedGraph,
+  checkShaderGraph,
+  evaluateShaderGraph,
+  oscillation,
+  SHADER_BOUND,
+  SHADER_EPS,
+  SHADER_EXTENSION,
+  SHADER_FORMAT,
+  SHADER_LIMITS,
+  SHADER_OPS,
+  type ShaderGraph,
+  ShaderGraphError,
+  type ShaderInputs,
+  type ShaderNode,
+  type ShaderOp,
+  type ShaderType,
+} from './shader-graph.ts';
+export {
   checkOverlayFit,
   DEFAULT_OVERLAY_SETTINGS,
   HUD_POINTS,
