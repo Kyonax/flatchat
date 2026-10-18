@@ -182,6 +182,13 @@ try {
       .waitFor({ timeout: 120_000 })
       .then(() => 'ready')
       .catch(async () => (await page.locator('[data-test=item]').first().getAttribute('data-status').catch(() => null)) ?? 'none');
+    // The starter wardrobe (P.08): the grey fedora taken with no upload, converted by the core.
+    await page.locator('[data-test=starter][data-id=grey-fedora] [data-test=take-starter]').click({ timeout: 10_000 });
+    steps['starter'] = await page
+      .locator('[data-test=item][data-status=ready]', { hasText: 'Grey fedora' })
+      .waitFor({ timeout: 120_000 })
+      .then(async () => ((await page.locator('[data-test=starter][data-id=grey-fedora]').getAttribute('data-taken')) === 'true' ? 'ready' : 'not marked taken'))
+      .catch(async () => (await page.locator('[data-test=item]', { hasText: 'Grey fedora' }).first().getAttribute('data-status').catch(() => null)) ?? 'none');
     // The free gallery (S5.06): the tee published under the strictest licence (the tester may
     // publish), then found among the gallery's items with its makers.
     await page.locator('[data-test=publish-item]').first().click({ timeout: 10_000 });
@@ -372,6 +379,7 @@ try {
     steps['avatarDrawn'] === true &&
     steps['kit'] === 'worn' &&
     steps['item'] === 'ready' &&
+    steps['starter'] === 'ready' &&
     steps['published'] === true &&
     steps['dressed'] === true &&
     steps['outfitSaved'] === true &&
