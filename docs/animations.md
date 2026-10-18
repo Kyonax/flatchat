@@ -32,6 +32,10 @@ FlatChat converts every animation on its own servers, in a sandbox. FBX needs Bl
 
 Upload an emote or a dance from the client's home screen (Upload an emote, Upload a dance). In a world, press B for your emotes and dances and pick one: everyone nearby sees it, in step, from the moment it started. A dance repeats until you stop it or walk; an emote plays once. Players far away, drawn as impostors, keep walking instead.
 
+## Sounds
+
+An emote or a dance can bring a sound: tick "With a sound" before uploading, then pick a WAV or an Ogg (Vorbis or Opus), up to 8 MB and two minutes. Everyone near the dancer hears it, from the dancer's place, in step with the motion. A dance's sound repeats with it; an emote's plays once. FlatChat bakes a mouth track from the sound with Rhubarb Lip Sync, so the avatar's mouth moves with the singing. Each player sets the volume of emote and dance sounds in Settings, Sound, and 0 turns them off. Only use sounds you have the right to share.
+
 ## Making a good one
 
 - Rest the skeleton in a T-pose, or close to it. An A-pose is straightened, but a pose far from either is measured from its own rest.
