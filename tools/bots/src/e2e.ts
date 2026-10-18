@@ -106,11 +106,11 @@ try {
   const plaza = await register('E2E Plaza');
   const garden = await register('E2E Garden');
   // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
-  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect']);
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect', '--overlay']);
   // The garden's host does not play fair (S6.01): six broken effects beside its tornado, put into
   // the built world past the converter, with made-up numbers. The client must refuse every one.
   await run([process.execPath, HOSTILE, join(dir, 'travel', 'b.built')]);
-  const gardenEffectBytes = (JSON.parse(readFileSync(join(dir, 'travel', 'b.built', 'world.json'), 'utf8')) as { files: Array<{ size: number; kind: string }> }).files.filter((f) => f.kind === 'effect').reduce((n, f) => n + f.size, 0);
+  const gardenExtraBytes = (JSON.parse(readFileSync(join(dir, 'travel', 'b.built', 'world.json'), 'utf8')) as { files: Array<{ size: number; kind: string }> }).files.filter((f) => f.kind === 'effect' || f.kind === 'overlay').reduce((n, f) => n + f.size, 0);
   const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
     const [icePort, signalPort] = [await freePort(), await freePort()];
     const s = await start(
@@ -199,6 +199,14 @@ try {
       .waitFor({ timeout: 120_000 })
       .then(async () => ((await page.locator('[data-test=starter][data-id=grey-fedora]').getAttribute('data-taken')) === 'true' ? 'ready' : 'not marked taken'))
       .catch(async () => (await page.locator('[data-test=item]', { hasText: 'Grey fedora' }).first().getAttribute('data-status').catch(() => null)) ?? 'none');
+    // A starter overlay (S6.02): the star badge taken with no upload, its PNG written again by the
+    // core's converter.
+    await page.locator('[data-test=starter][data-id=star-badge] [data-test=take-starter]').click({ timeout: 10_000 });
+    steps['starterOverlay'] = await page
+      .locator('[data-test=item][data-status=ready]', { hasText: 'Star badge' })
+      .waitFor({ timeout: 120_000 })
+      .then(() => 'ready')
+      .catch(async () => (await page.locator('[data-test=item]', { hasText: 'Star badge' }).first().getAttribute('data-status').catch(() => null)) ?? 'none');
     // A starter effect (S6.01): the aura taken with no upload, dry-run by the core's converter.
     await page.locator('[data-test=starter][data-id=aura] [data-test=take-starter]').click({ timeout: 10_000 });
     steps['starterEffect'] = await page
@@ -307,6 +315,41 @@ try {
       .waitFor({ state: 'attached', timeout: 20_000 })
       .then(() => true)
       .catch(() => false);
+    // The star badge on the wearer's own screen (S6.02); the safe-mode key clears it at once and
+    // brings it back; then off, so the next world gets the saved outfit.
+    const overlays = page.locator('[data-test=overlays]');
+    const star = page.locator('[data-test=outfit-menu] li', { hasText: 'Star badge' }).locator('[data-test=outfit-item]');
+    await page.keyboard.press('KeyO');
+    await star.click({ timeout: 10_000 });
+    await page.keyboard.press('KeyO');
+    steps['overlay'] = await page
+      .locator('[data-test=overlays][data-mine="1"]')
+      .waitFor({ state: 'attached', timeout: 30_000 })
+      .then(() => true)
+      .catch(async () => `mine ${await overlays.getAttribute('data-mine').catch(() => '?')}`);
+    await page.waitForTimeout(500);
+    await snap('1b-overlay');
+    await page.keyboard.press('Shift+Escape');
+    steps['safeMode'] = await page
+      .locator('[data-test=overlays][data-safe="1"][data-mine="0"]')
+      .waitFor({ state: 'attached', timeout: 10_000 })
+      .then(async () => page.locator('[data-test=safe-mode]').isVisible())
+      .catch(() => false);
+    await snap('1c-safe-mode');
+    await page.keyboard.press('Shift+Escape');
+    steps['safeModeOff'] = await page
+      .locator('[data-test=overlays][data-safe="0"][data-mine="1"]')
+      .waitFor({ state: 'attached', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    await page.keyboard.press('KeyO');
+    await star.click({ timeout: 10_000 });
+    await page.keyboard.press('KeyO');
+    steps['overlayOff'] = await page
+      .locator('[data-test=overlays][data-mine="0"]')
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
     // The fountain's sound plays (S2.14): one emitter, from the downloaded world.
     steps['sounds'] = await page.locator('[data-test=sounds]').getAttribute('data-playing', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
@@ -397,6 +440,12 @@ try {
       .waitFor({ state: 'attached', timeout: 60_000 })
       .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
       .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
+    // The garden's own screen overlay (S6.02): on for every visitor.
+    steps['worldOverlay'] = await page
+      .locator('[data-test=overlays][data-world="1"]')
+      .waitFor({ state: 'attached', timeout: 30_000 })
+      .then(() => true)
+      .catch(async () => `world ${await page.locator('[data-test=overlays]').getAttribute('data-world').catch(() => '?')}`);
     // The garden's broken effects (scripts/hostile-effects.ts): each refused by the client's own
     // check and dry run, the slowest when its measuring worker is ended at the deadline.
     steps['hostileRefused'] = await page
@@ -465,9 +514,15 @@ try {
     Number(steps['gardenParts']) > 60 &&
     Number(steps['worldEffect']) > 0 &&
     steps['hostileRefused'] === 6 &&
+    steps['starterOverlay'] === 'ready' &&
+    steps['overlay'] === true &&
+    steps['safeMode'] === true &&
+    steps['safeModeOff'] === true &&
+    steps['overlayOff'] === true &&
+    steps['worldOverlay'] === true &&
     (steps['pageErrors'] as string[]).length === 0 &&
-    // The park sends its plan and its effects, never geometry.
-    (gardenSent['chunk']?.bytes ?? Infinity) - gardenEffectBytes < 64 * 1024;
+    // The park sends its plan, its effects and its overlay, never geometry.
+    (gardenSent['chunk']?.bytes ?? Infinity) - gardenExtraBytes < 64 * 1024;
   await stop(core.proc);
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message : String(err);

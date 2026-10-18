@@ -5,8 +5,9 @@
 // with a fresh profile: the park built into the app (drawn from the base library, a chat line
 // answered by the world), then a world folder given with --offline-world, which the client
 // converts with the host tool's converter before playing it: make-travel's second world, the park
-// with Effekseer's tornado (S6.01), so the conversion dry-runs an effect in the client's own
-// bundled worker and the world view measures and plays it.
+// with Effekseer's tornado (S6.01) and a screen overlay (S6.02), so the conversion dry-runs an
+// effect in the client's own bundled worker, and the world view measures and plays it and shows
+// the overlay.
 //
 //   node tools/bots/src/offline-check.ts -- CLIENT [--shots DIR]
 //
@@ -31,7 +32,7 @@ if (!client) {
 
 const steps: Record<string, unknown> = {};
 const worlds = mkdtempSync(join(tmpdir(), 'fcoffline-worlds-'));
-execFileSync(process.execPath, [MAKE_TRAVEL, worlds, '--worlds', `${randomUUID()},${randomUUID()}`, '--names', 'Offline Plaza,Offline Garden', '--kits', 'plaza,park', '--effect'], { stdio: 'ignore' });
+execFileSync(process.execPath, [MAKE_TRAVEL, worlds, '--worlds', `${randomUUID()},${randomUUID()}`, '--names', 'Offline Plaza,Offline Garden', '--kits', 'plaza,park', '--effect', '--overlay'], { stdio: 'ignore' });
 const FOLDER = join(worlds, 'b');
 
 /** One run: a fresh profile, an unreachable core, then `play` on the offline screen. */
@@ -74,8 +75,14 @@ try {
       .waitFor({ state: 'attached', timeout: 60_000 })
       .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
       .catch(async () => `refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
+    // Its screen overlay (S6.02), converted with the folder like everything else.
+    steps['folderOverlay'] = await page
+      .locator('[data-test=overlays][data-world="1"]')
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
   });
-  ok = Number(steps['parkParts']) > 60 && steps['chat'] === true && steps['folderWorld'] === 'Offline Garden' && Number(steps['folderEffect']) > 0;
+  ok = Number(steps['parkParts']) > 60 && steps['chat'] === true && steps['folderWorld'] === 'Offline Garden' && Number(steps['folderEffect']) > 0 && steps['folderOverlay'] === true;
 } catch (err) {
   steps['error'] = err instanceof Error ? err.message.split('\n')[0] : String(err);
 }
