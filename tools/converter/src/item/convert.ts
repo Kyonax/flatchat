@@ -17,7 +17,7 @@ import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { fitTextures } from '../textures.ts';
 import { CLIP_TOLERANCE, clippingOf, type KitBody, skeletonOffset } from './clipping.ts';
 
-export const ITEM_CONVERTER_VERSION = '1.0.0';
+export const ITEM_CONVERTER_VERSION = '1.0.1';
 
 export class ItemError extends Error {
   readonly problems: string[];
@@ -155,6 +155,20 @@ export async function convertItem(upload: Uint8Array, o: ItemOptions = {}): Prom
     const { fits: here } = fitNodes(doc);
     const keep = here.get(body)!;
     for (const node of root.listNodes()) if (node !== keep && node.getMesh()) node.setMesh(null).setSkin(null);
+    // The other fits' skeletons go too: only this fit's skin, its joints and what holds them stay.
+    // Left in, the file holds the body's skeleton once per fit, and three.js makes the names unique
+    // as it loads it (Hips, Hips_1, Hips_2): every body's clothes but the first's then find no bones
+    // on the avatar and are not drawn (prune keeps those nodes: they are joints of skins it drops).
+    const skin = keep.getSkin()!;
+    for (const s of root.listSkins()) if (s !== skin) s.dispose();
+    const needed = new Set<Node>();
+    const hold = (n: Node | null): void => {
+      for (let p = n; p && !needed.has(p); p = p.getParentNode()) needed.add(p);
+    };
+    hold(keep);
+    for (const j of skin.listJoints()) hold(j);
+    hold(skin.getSkeleton());
+    for (const node of root.listNodes()) if (!needed.has(node)) node.dispose();
     for (const a of root.listAnimations()) a.dispose();
     for (const node of root.listNodes()) node.setCamera(null);
     for (const c of root.listCameras()) c.dispose();
