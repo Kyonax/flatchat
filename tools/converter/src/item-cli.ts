@@ -22,6 +22,7 @@ import { BODY_KITS, type BodyKit, uploadFormat } from '@flatchat/content';
 import { readAvatarLevel } from './avatar/convert.ts';
 import { type KitBody, kitBody } from './item/clipping.ts';
 import { convertEffectItem } from './effect/item.ts';
+import { convertOverlayItem } from './overlay.ts';
 import { convertItem, ItemError, type ItemResult } from './item/convert.ts';
 import { sourceArgs } from './source/upload.ts';
 
@@ -67,6 +68,8 @@ try {
   let r: ItemResult;
   if (!source && uploadFormat(upload) === 'effect') {
     r = await convertEffectItem(upload, declaration !== undefined ? { declaration } : {});
+  } else if (!source && uploadFormat(upload) === 'image') {
+    r = await convertOverlayItem(upload, declaration !== undefined ? { declaration } : {});
   } else {
     const kits = await readKits(kitsDir);
     r = await convertItem(upload, { ktx2: parsed.values['no-ktx2'] !== true, kits, ...(source ? { source } : {}), ...(declaration !== undefined ? { declaration } : {}) });

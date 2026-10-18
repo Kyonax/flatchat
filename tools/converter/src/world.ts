@@ -37,6 +37,8 @@ import {
   transformPoint,
   validateWorld,
   type WorldReport,
+  type BuiltOverlay,
+  OVERLAY_LIMITS,
 } from '@flatchat/content';
 import { BODY } from '@flatchat/sim';
 import { type Document, Logger, type Mesh, NodeIO } from '@gltf-transform/core';
@@ -48,6 +50,8 @@ import { exportNavMesh, init as initRecast } from 'recast-navigation';
 import { generateSoloNavMesh } from 'recast-navigation/generators';
 import { convertEffect, EffectError, type EffectResult, folderEffect } from './effect/convert.ts';
 import { DryRunner, type DryRunnerOptions } from './effect/dry-run.ts';
+import { ItemError } from './item/convert.ts';
+import { overlayImage } from './overlay.ts';
 import { fitTextures } from './textures.ts';
 
 export interface ConvertOptions {
@@ -464,6 +468,19 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
     });
   }
 
+  // Screen overlays (S6.02): each image written again, as an overlay item's is.
+  const { overlays: declared, ...manifest } = report.manifest;
+  const overlays: BuiltOverlay[] = [];
+  for (const o of declared ?? []) {
+    let image;
+    try {
+      image = overlayImage(files.get(o.image)!, OVERLAY_LIMITS.world.side);
+    } catch (err) {
+      throw new ConvertError({ ...report, ok: false, problems: (err instanceof ItemError ? err.problems : [String(err)]).map((m) => ({ code: 'overlay-image', severity: 'error' as const, file: o.image, at: '', message: m })) });
+    }
+    overlays.push({ file: put(image.png, 'overlay'), width: image.width, height: image.height, hud: o.hud, size: o.size, opacity: o.opacity, motion: o.motion });
+  }
+
   const collision = put(encodeColliders(colliders), 'collision');
   const nav = await navmesh(colliders, warn);
   const navmeshHash = nav ? put(nav, 'navmesh') : undefined;
@@ -475,7 +492,7 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
     zs.push(positions[k + 2]!);
   }
   const bounds = { min: [Math.min(0, ...xs), -100, Math.min(0, ...zs)] as [number, number, number], max: [Math.max(16, ...xs), 500, Math.max(16, ...zs)] as [number, number, number] };
-  const world: BuiltWorld = { format: BUILT_FORMAT, manifest: report.manifest, scenes, collision, ...(navmeshHash ? { navmesh: navmeshHash } : {}), bounds, files: listed };
+  const world: BuiltWorld = { format: BUILT_FORMAT, manifest, scenes, collision, ...(navmeshHash ? { navmesh: navmeshHash } : {}), bounds, files: listed, ...(overlays.length ? { overlays } : {}) };
   out.set('world.json', new TextEncoder().encode(`${JSON.stringify(world)}\n`));
   o.log?.('converted', { scenes: scenes.length, files: listed.length, bytes: listed.reduce((n, f) => n + f.size, 0), colliders: colliders.length, navmesh: !!nav, warnings: warnings.length });
   return { world, out, warnings };

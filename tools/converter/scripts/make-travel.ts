@@ -10,6 +10,8 @@
 //        [--modes reset,persistent]   (each world's persistence; the kits' own when left out)
 //        [--quiet]                    (Stage 3's acceptance, S3.13: the second world gets a quiet zone,
 //                                      with a spawn group `quiet` inside it and `near-quiet` 7 m outside)
+//        [--overlay]                  (S6.02: the second world gets a screen overlay, the starter heart,
+//                                      at the top of every visitor's screen)
 //        [--effect]                   (S6.01: the second world gets an effect, Effekseer's CC0 tornado
 //                                      sample from kits/effects/samples, 6 m in front of its arrivals
 //                                      and 3 m to the right, beside the avatar in the camera's view)
@@ -28,7 +30,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false }, overlay: { type: 'boolean', default: false } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
@@ -156,7 +158,13 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
   if (kit === 'plaza') writeFileSync(join(dir, 'scenes', 'fountain.wav'), fountainWav());
   let toml = readFileSync(join(dir, 'world.toml'), 'utf8').replace(/^name = ".*"$/m, `name = ${JSON.stringify(names[k])}`);
   if (modes) toml = toml.replace(/^mode = ".*"$/m, `mode = "${modes[k]}"`);
-  writeFileSync(join(dir, 'world.toml'), `${toml.trimEnd()}\n\n[[scenes]]\nid = "travel"\nfile = "scenes/travel.glb"\n`);
+  let more = '';
+  if (values.overlay && label === 'b') {
+    mkdirSync(join(dir, 'overlays'), { recursive: true });
+    cpSync(join(ROOT, 'kits', 'overlays', 'heart-badge.png'), join(dir, 'overlays', 'heart.png'));
+    more = '\n[[overlays]]\nimage = "overlays/heart.png"\nhud = "top"\nsize = 0.1\nopacity = 0.8\nmotion = "pulse"\n';
+  }
+  writeFileSync(join(dir, 'world.toml'), `${toml.trimEnd()}\n\n[[scenes]]\nid = "travel"\nfile = "scenes/travel.glb"\n${more}`);
   const built = await convertWorld(readFolder(dir), { ktx2: false });
   writeBuilt(join(out, `${label}.built`), built.out);
   report[label] = { id: ids[k], kit, leadsTo: ids[1 - k], portal: LAYOUT[kit].portal, arrival: LAYOUT[kit].arrival, built: join(out, `${label}.built`) };
