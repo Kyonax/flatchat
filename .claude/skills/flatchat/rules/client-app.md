@@ -18,7 +18,7 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 | `src/main/core-url.ts` | `DEFAULT_CORE` (OQ-27); `--core=URL` and the settings' `core` field override it |
 | `src/shared/settings.ts` | The settings shape and its cleaning, the actions and default keys, `bind`/`unbind`/`actionFor` (pure: main and page both import it) |
 | `src/renderer/src/i18n/` | `en.ts` and `es.ts` (key for key), `makeI18n`, `pickLocale` |
-| `src/renderer/src/ui/` | `ClientApp.vue` (the screens; join errors through `home.reasons`), `SignIn`, `HomeView` (the world browser, S2.09: join by world ID, favourites, the public list with players of capacity), `WorldRow` (a world, its star, its join button: disabled offline or full), `SettingsView` (rebinding by pressing a key; right-click clears), `WorldView`, `MicQuestion`, `keys.ts` (labels from the keyboard layout), `theme.css` |
+| `src/renderer/src/ui/` | `ClientApp.vue` (the screens; join errors through `home.reasons`), `SignIn`, `HomeView` (the world browser, S2.09: join by world ID, favourites, the public list with players of capacity), `WorldRow` (a world, its star, its join button: disabled offline or full), `SettingsView` (rebinding by pressing a key; right-click clears), `WorldView`, `MicQuestion`, `keys.ts` (labels from the keyboard layout), `theme.css` (S6.07's tokens: rule `ui-design`), `HelpView`, `CreditsView` (`credits.ts` reads `CREDITS.md?raw`), `KeysHelp` (`key-groups.ts`; F1 in a world), `LogoMark` |
 | `src/renderer/src/world/` | `session.ts` (`WorldSession`), `controls.ts`, `remotes.ts`, `camera.ts`, `crowd-view.ts`, `plaza-scene.ts` |
 | `tools/bots/src/e2e.ts` | The end-to-end test (below) |
 
