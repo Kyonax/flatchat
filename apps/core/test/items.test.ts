@@ -7,14 +7,20 @@
 // So does the starter wardrobe (P.08): any account takes one of its items, converted once and
 // reused, never taken for a copy, never published to the gallery.
 // An outfit holds the account's own ready items, worn together, a prop's adjustment within limits;
-// deleting an item takes it out of the outfits that held it.
+// deleting an item takes it out of the outfits that held it. Effects (S6.01) are items worn at a
+// point: uploaded with their declaration, dry-run in the sandbox, refused over an avatar's budget,
+// delivered as one bundle; the starter effects are anyone's; an outfit's effects fit an avatar's
+// budget together.
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STRICT_LICENCE } from '@flatchat/content';
+import { sampleBundle } from '@flatchat/converter/effect-samples';
 import { sampleProp } from '@flatchat/converter/item-samples';
+import { readBundle } from '@flatchat/content';
+import { zipSync } from 'fflate';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInvitation } from '../src/accounts.ts';
@@ -222,4 +228,48 @@ describe('outfits', () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/v1/outfits/${outfit.id}`, headers: maker.auth })).statusCode).toBe(204);
     expect(((await app.inject({ method: 'GET', url: '/api/v1/outfits', headers: maker.auth })).json() as { outfits: unknown[] }).outfits).toEqual([]);
   }, 150_000);
+});
+
+describe('effects', () => {
+  const zipOf = (rel: string): Uint8Array => zipSync(Object.fromEntries([...sampleBundle(rel).files].map(([p, b]) => [p, b])), { mtime: new Date('2026-10-18T00:00:00Z') });
+  const effectUpload = async (who: Who, bytes: Uint8Array, declaration: Record<string, unknown>): Promise<string> => {
+    const slot = await app.inject({ method: 'POST', url: '/api/v1/items', headers: who.auth, payload: { name: String(declaration['name']), bytes: bytes.length, sha256: sha(bytes), declaration: { slot: 'effect', authors: [], ...declaration } } });
+    expect(slot.statusCode, slot.body).toBe(201);
+    const { id, upload: u } = slot.json() as { id: string; upload: { url: string } };
+    expect((await app.inject({ method: 'PUT', url: local(u.url), headers: { 'content-type': 'application/octet-stream' }, payload: Buffer.from(bytes) })).statusCode).toBe(202);
+    return id;
+  };
+
+  it('are uploaded with their declaration, measured in the sandbox, and delivered as one bundle', async () => {
+    const laser = await settled(maker, 'items', await effectUpload(maker, zipOf('00_Basic/Laser01.efkefc'), { name: 'Laser', attach: 'hand_r' }));
+    expect(laser).toMatchObject({ status: 'ready', slot: 'effect', fits: [], problems: [] });
+    const d = (await app.inject({ method: 'GET', url: `/api/v1/item-files/${String(laser['manifest'])}`, headers: maker.auth })).json() as { manifest: { attach: string; effect: { file: string; peak: { instances: number } } }; links: Record<string, string> };
+    expect(d.manifest).toMatchObject({ attach: 'hand_r', effect: { peak: { instances: 122 } } });
+    const bundle = await app.inject({ method: 'GET', url: local(d.links['effect']!) });
+    expect(sha(bundle.rawPayload)).toBe(d.manifest.effect.file);
+    expect(readBundle(new Uint8Array(bundle.rawPayload)).main).toBe('Laser01.efkefc');
+  }, 150_000);
+
+  it('are refused over an avatar’s budget, with the reason', async () => {
+    const trail = await settled(maker, 'items', await effectUpload(maker, zipOf('00_Basic/Simple_Track1.efkefc'), { name: 'Trail', attach: 'hips' }));
+    expect(trail['status']).toBe('refused');
+    expect((trail['problems'] as string[]).join(' ')).toMatch(/406 particles at once; an avatar's effects may have 300/);
+  }, 150_000);
+
+  it('come as starters any account takes, and an outfit’s effects fit an avatar’s budget together', async () => {
+    const player = await account('glow@example.org', 1);
+    const took = await app.inject({ method: 'POST', url: '/api/v1/items/starter', headers: player.auth, payload: { starter: 'aura' } });
+    expect(took.statusCode, took.body).toBe(202);
+    const aura = await settled(player, 'items', (took.json() as { id: string }).id);
+    expect(aura).toMatchObject({ status: 'ready', name: 'Aura', slot: 'effect', starter: 'aura' });
+    // A second aura worn at another point: their models together pass the avatar's 20,000 triangles.
+    const copy = await settled(player, 'items', await effectUpload(player, zipOf('00_Version16/Aura01.efkefc'), { name: 'Aura again', attach: 'chest' }));
+    expect(copy['status']).toBe('ready');
+    const save = await app.inject({ method: 'POST', url: '/api/v1/outfits', headers: player.auth, payload: { name: 'Glowing', items: [{ item: aura['manifest'] }, { item: copy['manifest'] }] } });
+    expect(save.statusCode).toBe(400);
+    expect((save.json() as { message: string }).message).toMatch(/triangles together; an avatar's may draw 20000/);
+    // One aura, turned and moved like a prop, is worn.
+    const one = await app.inject({ method: 'POST', url: '/api/v1/outfits', headers: player.auth, payload: { name: 'Glow', items: [{ item: aura['manifest'], adjust: { x: 0, y: 10, z: 0, rx: 0, ry: 0, rz: 0, scale: 100 } }] } });
+    expect(one.statusCode, one.body).toBe(201);
+  }, 200_000);
 });

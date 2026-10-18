@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AttachPoint, BODY_KITS, checkItemManifest, type Fingerprint, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, readItemDeclaration, type Slot, type WornAdjust } from '@flatchat/content';
+import { type AttachPoint, BODY_KITS, checkItemManifest, type EffectFit, effectFiles, type Fingerprint, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, POINT_SLOTS, readEffectFile, readItemDeclaration, type Slot, uploadFormat, type WornAdjust, writeBundle } from '@flatchat/content';
 import { OUTFIT_MAX } from '@flatchat/protocol';
 import type { Db, Sql } from './db.ts';
 import { copyOf, readFingerprint, readKitFingerprints, strike } from './copies.ts';
@@ -32,6 +32,9 @@ export const MAX_ITEMS = 200;
 export const MAX_OUTFITS = 30;
 export const SLOT_MS = 15 * 60_000;
 export const CONVERT_MS = 10 * 60_000;
+/** An effect's conversion, its dry run included (S6.01): the sandbox allows no threads, so a
+ *  broken effect stuck in one long update is stopped by ending the whole process. */
+export const EFFECT_CONVERT_MS = 60_000;
 export const NAME_MAX = 64;
 
 export interface ItemRow {
@@ -53,13 +56,15 @@ export interface ItemRow {
   starter: string | null;
 }
 
-/** A starter item as kits/items/wardrobe.json lists it: its name, its file, that file's SHA-256 and size. */
+/** A starter item as kits/items/wardrobe.json lists it: its name, its file, that file's SHA-256 and
+ *  size; a starter effect's bundle is made in memory (readEffectStarters), so it carries it. */
 export interface StarterFile {
   id: string;
   name: string;
   file: string;
   sha256: string;
   bytes: number;
+  source?: Uint8Array;
 }
 
 /** The starter wardrobe in a folder (kits/items/), by id; none when it has no wardrobe.json. */
@@ -71,6 +76,27 @@ export function readStarters(dir: string): Map<string, StarterFile> {
   for (const i of listed.items ?? []) {
     if (typeof i.id !== 'string' || !/^[a-z0-9-]{1,64}$/.test(i.id) || typeof i.file !== 'string' || typeof i.sha256 !== 'string' || !HASH.test(i.sha256) || !Number.isInteger(i.bytes)) continue;
     out.set(i.id, { id: i.id, name: typeof i.name === 'string' ? i.name : i.id, file: join(dir, i.file), sha256: i.sha256, bytes: i.bytes as number });
+  }
+  return out;
+}
+
+/** The starter effects (S6.01, kits/effects/starters.json), by id: each sample effect bundled with
+ *  the files it names and its declaration, as an effect that declares itself; none when the folder
+ *  has no starters.json. */
+export function readEffectStarters(dir: string): Map<string, StarterFile> {
+  const out = new Map<string, StarterFile>();
+  const file = join(dir, 'starters.json');
+  if (!existsSync(file)) return out;
+  const listed = JSON.parse(readFileSync(file, 'utf8')) as { starters?: Array<{ id?: unknown; name?: unknown; effect?: unknown; attach?: unknown; scale?: unknown; authors?: unknown }> };
+  for (const s of listed.starters ?? []) {
+    if (typeof s.id !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s.id) || typeof s.effect !== 'string' || typeof s.name !== 'string') continue;
+    const path = join(dir, s.effect);
+    const main = new Uint8Array(readFileSync(path));
+    const name = s.effect.slice(s.effect.lastIndexOf('/') + 1);
+    const files = new Map<string, Uint8Array>([[name, main]]);
+    for (const f of effectFiles(readEffectFile(main))) files.set(f.path, new Uint8Array(readFileSync(join(dirname(path), f.path))));
+    const source = writeBundle({ main: name, files, declaration: { name: s.name, slot: 'effect', attach: s.attach, scale: s.scale, authors: s.authors } });
+    out.set(s.id, { id: s.id, name: s.name, file: path, sha256: sha256(source), bytes: source.length, source });
   }
   return out;
 }
@@ -102,6 +128,8 @@ export interface ItemsOptions {
   kits?: string;
   /** The starter wardrobe's folder (default: the repository's kits/items/). */
   wardrobe?: string;
+  /** The starter effects' folder (default: the repository's kits/effects/). */
+  effects?: string;
   /** Headless Blender (its executable), for FBX, OBJ and .blend; without it those are refused. */
   blender?: string;
 }
@@ -134,7 +162,7 @@ export class Items {
     };
     this.kits = o.kits ?? join(ROOT, 'kits', 'bodies');
     const wardrobe = o.wardrobe ?? join(ROOT, 'kits', 'items');
-    this.starters = readStarters(wardrobe);
+    this.starters = new Map([...readStarters(wardrobe), ...readEffectStarters(o.effects ?? join(ROOT, 'kits', 'effects'))]);
     this.kitPrints = [...readKitFingerprints(this.kits), ...readKitFingerprints(wardrobe)];
   }
 
@@ -162,7 +190,7 @@ export class Items {
       );
       return { id: row!.id, status: 'ready' };
     }
-    const bytes = new Uint8Array(readFileSync(s.file));
+    const bytes = s.source ?? new Uint8Array(readFileSync(s.file));
     if (bytes.length !== s.bytes || sha256(bytes) !== s.sha256) throw new Error(`the starter item ${id} is not the one wardrobe.json names`);
     this.o.store.put(bytes);
     const [row] = await this.o.db.query<{ id: string }>(
@@ -248,9 +276,14 @@ export class Items {
         return;
       }
       if (blended) more.push(...blended.args);
+      const effect = uploadFormat(upload) === 'effect';
       const args = converterArgs(this.converter, blended?.input ?? input, out, this.o.ktx2 !== false, { reads, args: more });
-      const run = await runConverter(args, out, { isolated: this.isolated, timeoutMs: CONVERT_MS });
+      const run = await runConverter(args, out, { isolated: this.isolated, timeoutMs: effect ? EFFECT_CONVERT_MS : CONVERT_MS });
       const { code, result } = run;
+      if (effect && code === null) {
+        await refuse([`the effect did not finish its dry run in ${EFFECT_CONVERT_MS / 1000} s: it is too slow to play`]);
+        return;
+      }
       if (result?.ok && code === 0) {
         const manifest = checkItemManifest(result.manifest);
         // A copy of something taken down, or of another's closed gallery entry, goes no further
@@ -264,7 +297,7 @@ export class Items {
           return;
         }
         // Every file the manifest names, checked against its name, into the store.
-        const names = new Set([...Object.values(manifest.fits).map((f) => f!.file), ...(manifest.prop ? [manifest.prop.file] : [])]);
+        const names = new Set([...Object.values(manifest.fits).map((f) => f!.file), ...(manifest.prop ? [manifest.prop.file] : []), ...(manifest.effect ? [manifest.effect.file] : [])]);
         for (const name of readdirSync(out)) {
           if (!HASH.test(name)) continue;
           const bytes = new Uint8Array(readFileSync(join(out, name)));
@@ -334,6 +367,7 @@ export class Items {
       if (fit) links[body] = this.o.store.link(fit.file, now);
     }
     if (manifest.prop) links['prop'] = this.o.store.link(manifest.prop.file, now);
+    if (manifest.effect) links['effect'] = this.o.store.link(manifest.effect.file, now);
     return { manifest, links };
   }
 
@@ -392,20 +426,26 @@ export class Items {
     const slots = new Map(rows.map((r) => [r.manifest_sha256, r.slot]));
     const missing = items.filter((i) => !slots.has(i.item)).length;
     if (missing > 0) throw new ContentProblem('not-found', `${missing} of the outfit's items are not among this account's ready items`);
-    const worn: Array<{ slot: Slot; attach?: AttachPoint }> = [];
+    const worn: Array<{ slot: Slot; attach?: AttachPoint; effect?: EffectFit }> = [];
     for (const i of items) {
       const slot = slots.get(i.item)!;
-      if (slot !== 'attachment' && i.adjust) throw new ContentProblem('bad-request', 'only an attachment takes an adjustment');
-      worn.push(slot === 'attachment' ? { slot, attach: (await this.pointOf(i.item)) ?? 'hips' } : { slot });
+      const atPoint = POINT_SLOTS.includes(slot);
+      if (!atPoint && i.adjust) throw new ContentProblem('bad-request', 'only an attachment or an effect takes an adjustment');
+      if (!atPoint) {
+        worn.push({ slot });
+        continue;
+      }
+      // A prop's or an effect's point, and an effect's dry run, from its manifest in the store.
+      const m = this.manifestOf(i.item);
+      worn.push({ slot, attach: m?.attach ?? 'hips', ...(m?.effect ? { effect: m.effect } : {}) });
     }
     const problems = outfitProblems(worn);
     if (problems.length > 0) throw new ContentProblem('bad-request', `these items cannot be worn together: ${problems.join('; ')}`);
     return items;
   }
 
-  /** An attachment's point, from its manifest in the store. */
-  private async pointOf(manifestHash: string): Promise<AttachPoint | undefined> {
+  private manifestOf(manifestHash: string): ItemManifest | undefined {
     const bytes = this.o.store.read(manifestHash);
-    return bytes ? checkItemManifest(JSON.parse(new TextDecoder().decode(bytes))).attach : undefined;
+    return bytes ? checkItemManifest(JSON.parse(new TextDecoder().decode(bytes))) : undefined;
   }
 }
