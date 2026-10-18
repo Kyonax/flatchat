@@ -8,8 +8,12 @@
 // Hearing: each voiceBundle frame goes into its speaker's playout buffer (jitter.ts); the
 // speaker's playout worklet asks for a frame every 20 ms of audio, and the chain answers with the
 // decoded frame, an FEC rebuild, a concealment or silence → a low-pass and a gain by distance
-// (distance.ts) → an HRTF panner at the speaker's position → the output. At most 16 speakers.
+// (distance.ts), lower and darker when a wall stands between (S6.06's occlusion) → an HRTF panner at
+// the speaker's position → the output, and the room around the listener (a reverb zone's, on this
+// context's own convolver). At most 16 speakers.
+import type { ReverbRoom } from '@flatchat/content';
 import type { MessageOf } from '@flatchat/protocol';
+import { type Audible, OCCLUDED_GAIN, OCCLUDED_HZ, Reverb } from '../world/acoustics';
 import captureUrl from './capture-worklet.ts?worker&url';
 import type { ClipRecorder } from './clip';
 import { speakerLevel, VOICE_RANGE_M, voiceCutoffHz } from './distance';
@@ -57,6 +61,8 @@ interface Speaker {
   range: number;
   /** Where it was last placed, to set its level again when a setting changes. */
   at: Vec3 | undefined;
+  /** Whether a wall stands between it and the listener (S6.06). */
+  occluded: boolean;
 }
 
 const MAX_SPEAKERS = 16;
@@ -91,10 +97,14 @@ export class VoiceChain {
   private readonly counts = { sent: 0, gated: 0, encodeMs: 0, decoded: 0, decodeMs: 0 };
   private readonly finished: JitterStats[] = [];
 
+  /** The room around the listener; every voice is sent to it. */
+  readonly reverb: Reverb;
+
   private constructor(ctx: AudioContext, decoders: OpusDecoderHandle[]) {
     this.ctx = ctx;
     this.freeDecoders = decoders;
     this.output = new GainNode(ctx);
+    this.reverb = new Reverb(ctx, this.output);
   }
 
   /** Loads the worklets and 16 decoders (one per speaker that can be heard at once). */
@@ -173,6 +183,31 @@ export class VoiceChain {
     }
   }
 
+  /** The speakers placed, for the occlusion's rays: each within its range. */
+  audibles(): Audible[] {
+    const out: Audible[] = [];
+    for (const s of this.speakers.values()) if (s.at) out.push({ key: `voice:${s.entity}`, at: s.at, reach: s.range });
+    return out;
+  }
+
+  /** Muffles the voices behind something (by the occlusion's latest state); returns how many are. */
+  occlude(state: ReadonlyMap<string, boolean>): number {
+    let n = 0;
+    for (const s of this.speakers.values()) {
+      const occluded = state.get(`voice:${s.entity}`) ?? false;
+      if (occluded) n += 1;
+      if (occluded === s.occluded) continue;
+      s.occluded = occluded;
+      if (s.at) this.position(s, s.at);
+    }
+    return n;
+  }
+
+  /** The room around the listener (a reverb zone's; undefined: none). */
+  room(room: ReverbRoom | undefined, mix: number): void {
+    this.reverb.set(room, mix);
+  }
+
   /** The mouth shapes last heard from a speaker, for its avatar's lips. */
   mouthOf(entity: number): MouthShape | undefined {
     return this.speakers.get(entity)?.mouth;
@@ -197,6 +232,7 @@ export class VoiceChain {
 
   close(): void {
     for (const s of [...this.speakers.values()]) this.removeSpeaker(s);
+    this.reverb.close();
     this.encoder?.free();
     for (const d of this.freeDecoders) d.free();
     void this.ctx.close();
@@ -211,7 +247,8 @@ export class VoiceChain {
     // Distance loudness is the gain node's (distance.ts), so the panner only places the voice.
     const panner = new PannerNode(this.ctx, { panningModel: 'HRTF', distanceModel: 'linear', rolloffFactor: 0, refDistance: 1, maxDistance: 10_000 });
     node.connect(filter).connect(gain).connect(panner).connect(this.output);
-    const speaker: Speaker = { entity, jitter: new JitterBuffer(), decoder, node, filter, gain, panner, lastHeard: performance.now(), mouth: { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0, level: 0 }, worldGain: 1, range: VOICE_RANGE_M, at: undefined };
+    panner.connect(this.reverb.input);
+    const speaker: Speaker = { entity, jitter: new JitterBuffer(), decoder, node, filter, gain, panner, lastHeard: performance.now(), mouth: { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0, level: 0 }, worldGain: 1, range: VOICE_RANGE_M, at: undefined, occluded: false };
     node.port.onmessage = () => node.port.postMessage(...this.nextFrame(speaker));
     this.speakers.set(entity, speaker);
     return speaker;
@@ -244,8 +281,8 @@ export class VoiceChain {
     s.panner.positionX.setValueAtTime(at.x, t);
     s.panner.positionY.setValueAtTime(at.y, t);
     s.panner.positionZ.setValueAtTime(at.z, t);
-    s.gain.gain.setTargetAtTime(speakerLevel(d, s.range, s.worldGain, this.volumeOf(s.entity), this.earmuffs), t, 0.05);
-    s.filter.frequency.setTargetAtTime(voiceCutoffHz(d, s.range), t, 0.05);
+    s.gain.gain.setTargetAtTime(speakerLevel(d, s.range, s.worldGain, this.volumeOf(s.entity), this.earmuffs) * (s.occluded ? OCCLUDED_GAIN : 1), t, 0.05);
+    s.filter.frequency.setTargetAtTime(s.occluded ? Math.min(OCCLUDED_HZ, voiceCutoffHz(d, s.range)) : voiceCutoffHz(d, s.range), t, 0.05);
   }
 
   private removeSpeaker(s: Speaker): void {

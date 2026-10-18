@@ -25,9 +25,11 @@
 //                                                    others on a world server on this machine or the LAN
 //   --census [--census-out=FILE]                     spike S0.10: what this network allows (NAT,
 //                                                    port mapping, IPv6) and the GPU, then quit
-//   --bench=SECONDS [--bench-out=FILE] [--bench-size=WxH] [--bench-look=1]
+//   --bench=SECONDS [--bench-out=FILE] [--bench-size=WxH] [--bench-look=1] [--bench-audio=1]
 //                                                    with --bench-look=1, S6.05's look bench: each world screen
-//                                                    effect's frame-time cost (crowd/look-bench.ts), SECONDS each
+//                                                    effect's frame-time cost (crowd/look-bench.ts), SECONDS each;
+//                                                    with --bench-audio=1, S6.06's audio bench: the CPU cost of
+//                                                    occlusion and reverb, SECONDS of audio (crowd/audio-bench.ts)
 //                                                    draw a fixed-size frame with no frame-rate cap
 //                                                    and log every frame time (default 1280x720)
 //   --crowd=SECONDS --avatars=DIR [--crowd-full=12] [--crowd-lod=20] [--crowd-present=55]
@@ -79,6 +81,7 @@ export interface ClientFlags {
   bench?: number;
   /** S6.05's look bench in place of the greybox bench (crowd/look-bench.ts). */
   benchLook?: boolean;
+  benchAudio?: boolean;
   benchOut?: string;
   benchSize: Size;
   crowd?: CrowdFlags;
@@ -161,6 +164,7 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
     }
   }
   if (value(argv, 'bench-look') === '1') flags.benchLook = true;
+  if (value(argv, 'bench-audio') === '1') flags.benchAudio = true;
   const benchOut = value(argv, 'bench-out');
   if (benchOut) flags.benchOut = benchOut;
   const size = value(argv, 'bench-size');
@@ -287,7 +291,7 @@ export function rendererQuery(flags: ClientFlags): Record<string, string> {
     };
   }
   if (flags.bench !== undefined) {
-    return { bench: String(flags.bench), size: `${flags.benchSize.width}x${flags.benchSize.height}`, ...(flags.benchLook ? { look: '1' } : {}) };
+    return { bench: String(flags.bench), size: `${flags.benchSize.width}x${flags.benchSize.height}`, ...(flags.benchLook ? { look: '1' } : {}), ...(flags.benchAudio ? { audio: '1' } : {}) };
   }
   if (flags.voiceLoad !== undefined) return { voiceload: String(flags.voiceLoad) };
   if (flags.lounge !== undefined && flags.join) {
@@ -314,8 +318,10 @@ export interface ProtocolReport {
 /** A measuring run passes only if the scene drew on a known backend; a smoke run also needs every
  *  golden packet of the protocol to pass inside the renderer, and, when it was asked to join a
  *  world server, a join that worked. */
-export function exitCodeFor(report: { backend?: unknown; protocol?: unknown; net?: unknown; ok?: unknown; error?: unknown }, mode: 'smoke' | 'bench' | 'voice' | 'crowd', options: { join?: boolean } = {}): 0 | 1 {
+export function exitCodeFor(report: { backend?: unknown; protocol?: unknown; net?: unknown; ok?: unknown; error?: unknown; mode?: unknown }, mode: 'smoke' | 'bench' | 'voice' | 'crowd', options: { join?: boolean } = {}): 0 | 1 {
   if (mode === 'voice') return report.ok === true ? 0 : 1;
+  // The audio bench (S6.06) draws nothing: it passes when it measured without an error.
+  if (mode === 'bench' && report.mode === 'audio-bench') return report.error === undefined ? 0 : 1;
   // A crowd run that drew and finished exits 0; its pass lines are in the report.
   if (mode === 'crowd') return (report.backend === 'WebGPU' || report.backend === 'WebGL2') && report.error === undefined ? 0 : 1;
   if (report.backend !== 'WebGPU' && report.backend !== 'WebGL2') return 1;

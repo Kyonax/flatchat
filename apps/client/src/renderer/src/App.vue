@@ -6,6 +6,7 @@ import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
 import { runConvertedCrowd } from './crowd/converted';
 import { runLookCheck } from './crowd/look';
+import { runAudioBench } from './crowd/audio-bench';
 import { runLookBench } from './crowd/look-bench';
 import { runCrowd } from './crowd/crowd';
 import LoungeView from './lounge/LoungeView.vue';
@@ -86,6 +87,18 @@ onMounted(async () => {
       },
     });
     benchLine.value = report['error'] ? `Look bench failed: ${String(report['error'])}` : 'Look bench done';
+    await window.flatchat?.benchReport(report);
+    return;
+  }
+  // The audio bench (S6.06): the CPU cost of occlusion and reverb, and of the occlusion's rays.
+  if (benchSeconds > 0 && params.get('audio') === '1') {
+    const report = await runAudioBench({
+      seconds: benchSeconds,
+      onProgress: (line) => {
+        benchLine.value = line;
+      },
+    });
+    benchLine.value = report['error'] ? `Audio bench failed: ${String(report['error'])}` : 'Audio bench done';
     await window.flatchat?.benchReport(report);
     return;
   }

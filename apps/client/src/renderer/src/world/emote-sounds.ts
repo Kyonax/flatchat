@@ -53,6 +53,11 @@ export class EmoteSounds {
     this.master.gain.value = Math.min(1, Math.max(0, v));
   }
 
+  /** Sends every emote sound also to `node` (the world's reverb, S6.06), at the emotes' volume. */
+  sendTo(node: AudioNode): void {
+    this.master.connect(node);
+  }
+
   /** How many sounds play now. */
   get count(): number {
     return this.playing.size;

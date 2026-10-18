@@ -121,6 +121,19 @@ export class Physics {
     this.state = { x: next.x, y: next.y - HALF - BODY.radius, z: next.z, vy: s.vy, grounded };
   }
 
+  /** Whether a world solid stands between two points (S6.06's occlusion): a ray through everything
+   *  but the player, stopping `clearance` metres short of `to` (a sound inside its own fountain or
+   *  speaker box is not behind it). */
+  blocked(from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }, clearance = 0.5): boolean {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const d = Math.hypot(dx, dy, dz);
+    if (!(d > clearance)) return false;
+    const ray = new RAPIER.Ray(from, { x: dx / d, y: dy / d, z: dz / d });
+    return this.world.castRay(ray, d - clearance, true, undefined, undefined, this.collider) !== null;
+  }
+
   dispose(): void {
     this.world.free();
   }

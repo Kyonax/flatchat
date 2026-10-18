@@ -321,6 +321,8 @@ const es: Shape<typeof en> = {
     worldVolume: 'Sonidos del mundo y pasos',
     uiVolume: 'Sonidos de la interfaz',
     emoteVolume: 'Sonidos de gestos y bailes',
+    occlusion: 'Amortiguar sonidos y voces detrás de las paredes',
+    reverb: 'Eco de la sala en la que estás',
     inputDevice: 'Micrófono',
     defaultDevice: 'El del sistema',
     server: 'Servidor de FlatChat',

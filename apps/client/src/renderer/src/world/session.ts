@@ -10,13 +10,14 @@
 // world checks it and answers `placed`). Heights (S2.07): the player's chosen height goes in the
 // hello and in `appearance`; everyone is drawn, and the camera placed, at the height the world
 // fitted (the roster's).
-import { type Collider, decodeColliders, DEFAULT_LOOK, type WorldLook } from '@flatchat/content';
+import { type BuiltZone, type Collider, decodeColliders, DEFAULT_LOOK, type WorldLook } from '@flatchat/content';
 import { decodeCellBlock, fromHex, type Message, type MessageOf, toHex } from '@flatchat/protocol';
 import { BODY, type MoveInput, type WorldMap } from '@flatchat/sim';
 import * as THREE from 'three/webgpu';
 import type { Settings } from '../../../shared/settings';
 import { JoinRefused, WorldConnection } from '../net/connection';
 import { VoiceChain } from '../voice/chain';
+import { Occlusion, reverbAt, SOURCE_CLEARANCE } from './acoustics';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
 import { AvatarLayer, type AvatarState, type Worn } from './avatar-layer';
@@ -140,7 +141,13 @@ export interface WorldState {
   gpuResets: number;
   /** The world's screen effects drawn now (S6.05): what it asks for and the viewer allows. */
   look: { bloom: boolean; shafts: boolean; reflections: boolean; filters: boolean };
+  /** 3D audio (S6.06): the sounds and voices in reach, how many a wall muffles, the room of the
+   *  reverb zone the listener is in ('' for none), and the occlusion's rays and milliseconds a frame. */
+  audio: { audible: number; occluded: number; room: string; rays: number; rayMs: number; worstMs: number };
 }
+
+/** No sound behind anything (occlusion switched off). */
+const NOTHING_OCCLUDED: ReadonlyMap<string, boolean> = new Map();
 
 /** A map made in code as colliders (boxes), for the physics. */
 export function mapColliders(map: WorldMap): Collider[] {
@@ -213,6 +220,10 @@ export class WorldSession {
   private volume: GainNode | undefined;
   private mic: MediaStream | undefined;
   private physics: Physics | undefined;
+  /** The world's zones (its reverb zones for the room around the listener, S6.06). */
+  private zones: BuiltZone[] = [];
+  /** Which sounds a wall stands in front of: rays through the world's solids, a few a frame. */
+  private readonly occlusion = new Occlusion((a, b) => this.physics?.blocked(a, b, SOURCE_CLEARANCE) ?? false);
   private me: Body = { x: 0, y: 0, z: 0, vy: 0, grounded: true };
   private downloader: Downloader | undefined;
   private announced: { hash: string; size: number } | undefined;
@@ -319,6 +330,7 @@ export class WorldSession {
       gpuReset: false,
       gpuResets: gpuResets.count,
       look: { bloom: false, shafts: false, reflections: false, filters: false },
+      audio: { audible: 0, occluded: 0, room: '', rays: 0, rayMs: 0, worstMs: 0 },
     });
   }
 
@@ -423,6 +435,7 @@ export class WorldSession {
           const r = await animationFile(anim, 'audio');
           return r.ok ? { bytes: r.bytes, loop: r.manifest.use === 'dance' } : undefined;
         });
+        this.emoteSounds.sendTo(this.sounds.reverb.input);
       }
     } catch {
       // No audio output: a silent world.
@@ -667,6 +680,7 @@ export class WorldSession {
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     if (this.sounds && this.state.status === 'joined') this.footsteps(now, pose.position);
+    if (this.state.status === 'joined') this.acoustics();
     const poses = this.avatars(now);
     if (this.avatarLayer) this.tunePolicy(dt * 1000, now);
     const drawn = this.avatarLayer?.update(this.avatarStates(poses), camera, dt, now);
@@ -688,6 +702,8 @@ export class WorldSession {
         this.state.emoteSounds = this.emoteSounds?.count ?? 0;
       }
       if (this.effects) this.state.effects = { ...this.effects.stats };
+      const rays = this.occlusion.takeCounts();
+      if (rays.frames > 0) this.state.audio = { ...this.state.audio, rays: Math.round(rays.rays / rays.frames), rayMs: Number((rays.ms / rays.frames).toFixed(3)), worstMs: Number(rays.worstMs.toFixed(3)) };
       this.frames = 0;
       this.fpsAt = now;
       this.remotes.prune(now - 5000);
@@ -1205,6 +1221,7 @@ export class WorldSession {
     const { world, files } = await this.downloader.world(hash, size);
     const colliders = decodeColliders(files.get(world.collision)!);
     this.physics = new Physics(colliders, this.me);
+    this.zones = world.scenes.flatMap((sc) => sc.zones);
     for (const scene of world.scenes) {
       const group = await loadScene(this.renderer!, files.get(scene.glb)!);
       this.scene?.add(group);
@@ -1254,6 +1271,22 @@ export class WorldSession {
     }));
     this.state.world = world.manifest.name;
     this.state.download = undefined;
+  }
+
+  /** Occlusion and the room (S6.06): rays from the head to the sounds and voices in reach, a few a
+   *  frame, each muffled while a wall stands between; and the room of the reverb zone the head is in,
+   *  for the world's sounds and the voices alike. Each can be switched off in the settings. */
+  private acoustics(): void {
+    const head = { x: this.me.x, y: this.me.y + BODY.eye * this.scaleOf(this.entity), z: this.me.z };
+    const audible = [...(this.sounds?.audibles() ?? []), ...(this.chain?.audibles() ?? [])];
+    const state = this.settings.sound.occlusion && this.physics ? this.occlusion.update(head, audible) : NOTHING_OCCLUDED;
+    const occluded = (this.sounds?.occlude(state) ?? 0) + (this.chain?.occlude(state) ?? 0);
+    const zone = this.settings.sound.reverb ? reverbAt(this.zones, head) : undefined;
+    this.sounds?.room(zone?.room, zone?.mix ?? 0);
+    this.chain?.room(zone?.room, zone?.mix ?? 0);
+    const a = this.state.audio;
+    const room = zone?.room ?? '';
+    if (a.audible !== audible.length || a.occluded !== occluded || a.room !== room) this.state.audio = { ...a, audible: audible.length, occluded, room };
   }
 
   /** The ears at the camera; a footstep for each stride of the player and of anyone within 12 m. */

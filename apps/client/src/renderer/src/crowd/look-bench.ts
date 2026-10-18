@@ -34,28 +34,32 @@ const CONFIGS: ReadonlyArray<{ name: string; on: { bloom: boolean; shafts: boole
 ];
 const WARMUP_MS = 1000;
 const WARMUP_FRAMES = 20;
+/** A warm-up never takes longer than this (CI's software renderer can take seconds a frame); the
+ *  main process's time limit counts on it. */
+const WARMUP_CAP_MS = 3000;
 
 /** Waits until the GPU has done everything submitted so far. WebGL's finish() does not wait in
  *  Chromium (it only flushes), and reading a pixel back costs more after some frames than others
  *  (the canvas's samples are resolved first), so on WebGL2 a fence is waited for: the same cost
  *  after every frame. */
-async function gpuDone(renderer: THREE.WebGPURenderer): Promise<void> {
+async function gpuDone(renderer: THREE.WebGPURenderer): Promise<boolean> {
   const backend = renderer.backend as { device?: GPUDevice; gl?: WebGL2RenderingContext };
   if (backend.device) {
     await backend.device.queue.onSubmittedWorkDone();
-    return;
+    return true;
   }
   const gl = backend.gl;
   const fence = gl?.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-  if (!gl || !fence) return;
+  if (!gl || !fence) return false;
   gl.flush();
   try {
     // A fence's state changes only between tasks: look again after each breath, for at most 2 s.
     for (const until = performance.now() + 2000; performance.now() < until; ) {
       const state = gl.clientWaitSync(fence, 0, 0);
-      if (state !== gl.TIMEOUT_EXPIRED) return;
+      if (state !== gl.TIMEOUT_EXPIRED) return true;
       await breathe();
     }
+    return false;
   } finally {
     gl.deleteSync(fence);
   }
@@ -117,19 +121,22 @@ export async function runLookBench(canvas: HTMLCanvasElement, o: { seconds: numb
       o.onProgress(`Look bench: ${c.name}…`);
       const on = lookEffects(LOOK, c.on, false);
       const pipeline = c.name === 'none' ? undefined : new LookPipeline(renderer, scene, camera, LOOK, on, sun);
+      let unwaited = 0;
       const draw = async (): Promise<void> => {
         spin.rotation.y += 0.004;
         if (pipeline) pipeline.render();
         else renderer.render(scene, camera);
-        await gpuDone(renderer);
+        if (!(await gpuDone(renderer))) unwaited += 1;
       };
       // A warm-up first (the shaders compile on the first frames), then frames back to back, each
       // waited for on the GPU: the time is the frame's whole cost, not how fast its commands were
       // queued (the display's pace has no part in it).
       const warm = performance.now();
-      for (let n = 0; n < WARMUP_FRAMES || performance.now() - warm < WARMUP_MS; n++) {
+      let warmed = 0;
+      while ((warmed < WARMUP_FRAMES || performance.now() - warm < WARMUP_MS) && performance.now() - warm < WARMUP_CAP_MS) {
         await draw();
-        if (n % 10 === 9) await breathe();
+        warmed += 1;
+        if (warmed % 10 === 0) await breathe();
       }
       const times: number[] = [];
       const start = performance.now();
@@ -142,7 +149,8 @@ export async function runLookBench(canvas: HTMLCanvasElement, o: { seconds: numb
       pipeline?.dispose();
       const s = summarizeFrames(times);
       const mean = times.reduce((a, b) => a + b, 0) / Math.max(1, times.length);
-      results.push({ name: c.name, frames: times.length, avgMs: Number(mean.toFixed(3)), p95Ms: Number(s.p95Ms.toFixed(3)), avgFps: Number(s.avgFps.toFixed(1)) });
+      // `warmed`: the warm-up's frames; `unwaited`: frames whose GPU work was not seen done in 2 s.
+      results.push({ name: c.name, frames: times.length, avgMs: Number(mean.toFixed(3)), p95Ms: Number(s.p95Ms.toFixed(3)), avgFps: Number(s.avgFps.toFixed(1)), warmed, unwaited });
     }
     const none = results[0]!['avgMs'] as number;
     for (const r of results) r['costMs'] = Number(((r['avgMs'] as number) - none).toFixed(3));

@@ -428,6 +428,19 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           @change="sound({ emotes: num($event) })"
         >
       </label>
+      <label
+        v-for="k in (['occlusion', 'reverb'] as const)"
+        :key="k"
+        class="row"
+      >
+        <input
+          type="checkbox"
+          :checked="settings.sound[k]"
+          :data-test="`sound-${k}`"
+          @change="sound({ [k]: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t(`settings.${k}`) }}</span>
+      </label>
       <h2>{{ t('settings.server') }}</h2>
       <div class="row">
         <input

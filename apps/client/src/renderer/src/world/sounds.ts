@@ -4,9 +4,12 @@
 // panners that follow the camera; global ones (music, ambience) play everywhere. Footsteps and the
 // interface's sounds are the platform's default sounds (Track P's P.06, default-sounds.ts): recorded,
 // CC0, carried inside the client; a footstep is never the same one twice running, its pitch a
-// little off each time. Occlusion and reverb come in S6.06. Everything goes through `AudioContext`'s
-// create… methods, so tests drive it with a fake context.
-import type { BuiltWorld } from '@flatchat/content';
+// little off each time. Occlusion and reverb (S6.06, acoustics.ts): an emitter behind a wall goes
+// through a low-pass at a lower gain, and every placed sound also goes to the room around the
+// listener (a reverb zone's). Everything goes through `AudioContext`'s create… methods, so tests
+// drive it with a fake context.
+import type { BuiltWorld, ReverbRoom } from '@flatchat/content';
+import { type Audible, OCCLUDED_GAIN, OCCLUDED_HZ, OCCLUSION_EASE, Reverb, type ReverbContext } from './acoustics';
 import { FOOTSTEPS, SoundBank, UI_SOUNDS, type UiSoundKind } from './default-sounds';
 
 /** At most this many emitters play at once: a world that marks more keeps its first ones. */
@@ -64,13 +67,29 @@ export class Strides {
 /** The parts of an AudioContext this module uses (a fake one stands in for it in tests). */
 export type SoundContext = Pick<
   AudioContext,
-  'createGain' | 'createPanner' | 'createBufferSource' | 'decodeAudioData' | 'destination' | 'listener' | 'close' | 'resume'
->;
+  'createGain' | 'createPanner' | 'createBufferSource' | 'createBiquadFilter' | 'decodeAudioData' | 'destination' | 'listener' | 'close' | 'resume'
+> &
+  ReverbContext;
+
+/** A placed emitter playing: its gain and low-pass, eased when it goes behind something or out. */
+interface Placed {
+  key: string;
+  plan: EmitterPlan;
+  gain: GainNode;
+  filter: BiquadFilterNode;
+  occluded: boolean;
+}
+
+/** An open low-pass: the sound as it is. */
+const OPEN_HZ = 20_000;
 
 export class WorldSounds {
   readonly ctx: SoundContext;
   private readonly master: GainNode;
+  /** The room around the listener; every placed sound is sent to it. */
+  readonly reverb: Reverb;
   private readonly sources: AudioBufferSourceNode[] = [];
+  private readonly placed: Placed[] = [];
   private readonly bank: SoundBank;
   /** The footstep played last, so the next is another. */
   private lastStep = -1;
@@ -83,6 +102,7 @@ export class WorldSounds {
     this.master = ctx.createGain();
     this.master.gain.value = volume;
     this.master.connect(ctx.destination);
+    this.reverb = new Reverb(ctx, this.master);
     this.bank = new SoundBank(ctx);
     this.ready = this.bank.load(FOOTSTEPS);
   }
@@ -122,7 +142,13 @@ export class WorldSounds {
         panner.positionX.value = plan.position[0];
         panner.positionY.value = plan.position[1];
         panner.positionZ.value = plan.position[2];
-        gain.connect(panner).connect(this.master);
+        // Open until the emitter is found behind something (occlude).
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = OPEN_HZ;
+        gain.connect(filter).connect(panner).connect(this.master);
+        panner.connect(this.reverb.input);
+        this.placed.push({ key: `emitter:${this.placed.length}`, plan, gain, filter, occluded: false });
       } else {
         gain.connect(this.master);
       }
@@ -131,6 +157,32 @@ export class WorldSounds {
       this.playing += 1;
     }
     return this.playing;
+  }
+
+  /** The placed emitters, for the occlusion's rays: each within its silent distance. */
+  audibles(): Audible[] {
+    return this.placed.map((e) => ({ key: e.key, at: { x: e.plan.position[0], y: e.plan.position[1], z: e.plan.position[2] }, reach: e.plan.maxDistance }));
+  }
+
+  /** Muffles the emitters behind something (by the occlusion's latest state), eased; returns how
+   *  many are muffled. */
+  occlude(state: ReadonlyMap<string, boolean>): number {
+    const t = this.ctx.currentTime;
+    let n = 0;
+    for (const e of this.placed) {
+      const occluded = state.get(e.key) ?? false;
+      if (occluded) n += 1;
+      if (occluded === e.occluded) continue;
+      e.occluded = occluded;
+      e.filter.frequency.setTargetAtTime(occluded ? OCCLUDED_HZ : OPEN_HZ, t, OCCLUSION_EASE);
+      e.gain.gain.setTargetAtTime(e.plan.gain * (occluded ? OCCLUDED_GAIN : 1), t, OCCLUSION_EASE);
+    }
+    return n;
+  }
+
+  /** The room around the listener (a reverb zone's; undefined: none). */
+  room(room: ReverbRoom | undefined, mix: number): void {
+    this.reverb.set(room, mix);
   }
 
   /** Where the listener is: the camera, facing along yaw and pitch (yaw 0 faces -z). */
@@ -171,8 +223,10 @@ export class WorldSounds {
       panner.positionY.value = at.y;
       panner.positionZ.value = at.z;
       env.connect(panner).connect(this.master);
+      panner.connect(this.reverb.input);
     } else {
       env.connect(this.master);
+      env.connect(this.reverb.input);
     }
     source.start();
     this.steps += 1;
@@ -186,6 +240,7 @@ export class WorldSounds {
         // never started
       }
     }
+    this.reverb.close();
     void this.ctx.close();
   }
 }

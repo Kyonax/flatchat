@@ -447,6 +447,16 @@ onBeforeUnmount(() => {
     <span
       v-if="state?.status === 'joined'"
       hidden
+      data-test="audio"
+      :data-audible="state.audio.audible"
+      :data-occluded="state.audio.occluded"
+      :data-room="state.audio.room"
+      :data-rays="state.audio.rays"
+      :data-ray-ms="state.audio.rayMs"
+    />
+    <span
+      v-if="state?.status === 'joined'"
+      hidden
       data-test="emote"
       :data-anim="state.emote"
       :data-playing="state.emoting ? 1 : 0"

@@ -32,6 +32,7 @@ describe('parseFlags', () => {
     expect(flags.bench).toBe(60);
     expect(flags.benchOut).toBe('frames.json');
     expect(rendererQuery(flags)).toEqual({ bench: '60', size: '1280x720' });
+    expect(rendererQuery(parseFlags(argv('--bench=5', '--bench-audio=1')).flags)).toEqual({ bench: '5', size: '1280x720', audio: '1' });
   });
 
   it('reads a bench size', () => {
@@ -131,6 +132,9 @@ describe('exitCodeFor', () => {
     expect(exitCodeFor({ backend: 'WebGL2' }, 'bench')).toBe(0);
     expect(exitCodeFor({ backend: 'none' }, 'bench')).toBe(1);
     expect(exitCodeFor({}, 'bench')).toBe(1);
+    // The audio bench (S6.06) draws nothing: it passes when it measured.
+    expect(exitCodeFor({ mode: 'audio-bench' }, 'bench')).toBe(0);
+    expect(exitCodeFor({ mode: 'audio-bench', error: 'no audio' }, 'bench')).toBe(1);
   });
 
   it('passes a smoke run only when every golden packet passed in the renderer', () => {

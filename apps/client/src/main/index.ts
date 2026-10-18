@@ -69,6 +69,9 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // A bench measures at full pace even in a window Chromium thinks hidden (CI's virtual display
+      // runs no window manager): there its timers and frames are otherwise throttled.
+      backgroundThrottling: flags.bench === undefined,
     },
   });
   const query = rendererQuery(flags);
@@ -768,7 +771,9 @@ void app.whenReady().then(() => {
   createWindow();
   if (flags.smoke) setTimeout(() => finish('smoke-timeout', {}, flags.smokeOut), SMOKE_TIMEOUT_MS);
   if (flags.bench !== undefined) {
-    setTimeout(() => finish('bench-timeout', {}, flags.benchOut), flags.bench * 1000 + BENCH_SLACK_MS);
+    // The look bench (S6.05) makes six runs, each with a warm-up of at most 3 s (crowd/look-bench.ts).
+    const runs = flags.benchLook ? 6 : 1;
+    setTimeout(() => finish('bench-timeout', {}, flags.benchOut), runs * (flags.bench * 1000 + (flags.benchLook ? 3000 : 0)) + BENCH_SLACK_MS);
   }
   if (flags.voiceTest !== undefined) setTimeout(() => finish('voice-timeout', {}, flags.voiceOut), flags.voiceTest * 1000 + BENCH_SLACK_MS);
   if (flags.voiceLoad !== undefined) {

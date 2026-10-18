@@ -317,6 +317,8 @@ export default {
     worldVolume: 'World sounds and footsteps',
     uiVolume: 'Interface sounds',
     emoteVolume: 'Emote and dance sounds',
+    occlusion: 'Muffle sounds and voices behind walls',
+    reverb: 'Echo of the room you are in',
     inputDevice: 'Microphone',
     defaultDevice: 'System default',
     server: 'FlatChat server',

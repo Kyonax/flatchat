@@ -142,11 +142,14 @@ export function cleanWornItems(raw: unknown): WornItem[] {
 
 
 /** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes;
- *  and other players' emote and dance sounds (S5.07; 0 turns them off). */
+ *  and other players' emote and dance sounds (S5.07; 0 turns them off). Sounds and voices behind a
+ *  wall muffled, and the room's echo in a world's reverb zones (S6.06): on until switched off. */
 export interface SoundSettings {
   world: number;
   ui: number;
   emotes: number;
+  occlusion: boolean;
+  reverb: boolean;
 }
 
 /** Effects on avatars and in worlds (S6.01): whether they play at all, and whether strangers'
@@ -196,7 +199,7 @@ export function defaultSettings(): Settings {
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
     avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, shadersStrangers: false, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
-    sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
+    sound: { world: 0.8, ui: 0.5, emotes: 0.6, occlusion: true, reverb: true },
     effects: { show: true, strangers: false },
     overlays: { mine: true, world: true, allowed: [] },
     look: { bloom: true, shafts: true, reflections: true, filters: true },
@@ -286,7 +289,7 @@ export function cleanSettings(raw: unknown): Settings {
           .map(([account, items]) => [account, cleanWornItems(items)]),
       ),
     },
-    sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui), emotes: num(sound['emotes'], 0, 1, d.sound.emotes) },
+    sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui), emotes: num(sound['emotes'], 0, 1, d.sound.emotes), occlusion: bool(sound['occlusion'], d.sound.occlusion), reverb: bool(sound['reverb'], d.sound.reverb) },
     effects: { show: bool(effects['show'], d.effects.show), strangers: bool(effects['strangers'], d.effects.strangers) },
     overlays: {
       mine: bool(overlays['mine'], d.overlays.mine),
