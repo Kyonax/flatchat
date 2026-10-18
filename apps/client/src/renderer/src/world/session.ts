@@ -34,6 +34,7 @@ import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
 import { builtInEmote } from './clips';
+import { EffectsLayer, type EffectStats } from './effects';
 import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
 import { PathWalker } from './walker';
@@ -122,6 +123,9 @@ export interface WorldState {
   emoting: boolean;
   /** Emote and dance sounds playing near the viewer (S5.07). */
   emoteSounds: number;
+  /** Effects (S6.01): playing, their particles, refused, stopped by the guard, drawn with the
+   *  scene's depth, the runtime's backend, and whether it could not start. */
+  effects: EffectStats;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -171,6 +175,7 @@ export class WorldSession {
   private crowd: CrowdView | undefined;
   /** Players' own avatars (S4.05), over the placeholders. */
   private avatarLayer: AvatarLayer | undefined;
+  private effects: EffectsLayer | undefined;
   /** Each player's worn avatar (its manifest's hash) and face (S4.07), from the roster. */
   private readonly worn = new Map<number, string>();
   private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
@@ -286,13 +291,15 @@ export class WorldSession {
       emote: '',
       emoting: false,
       emoteSounds: 0,
+      effects: { playing: 0, instances: 0, refused: 0, stopped: 0, depth: false, backend: '', failed: false },
     });
   }
 
   /** Draws the world, then joins; resolves once joined, or with the state saying why not. */
   async start(ticket: Ticket): Promise<void> {
     const view = buildWorldScene(this.map);
-    const renderer = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
+    // Opaque: effects blend over the finished image, and their alpha must not show the page through.
+    const renderer = new THREE.WebGPURenderer({ canvas: this.canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
     await renderer.init();
     this.renderer = renderer;
     this.state.backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
@@ -336,6 +343,17 @@ export class WorldSession {
       );
       view.scene.add(this.avatarLayer.group);
       this.detachers.push(() => this.avatarLayer?.dispose());
+      // Effects (S6.01): worn ones ride their markers; the runtime loads with the first.
+      const itemFile = bridge.itemFile;
+      if (itemFile) {
+        this.effects = new EffectsLayer(renderer, async (item) => {
+          const r = await itemFile(item, 'effect');
+          if (!r.ok || !r.bytes) throw new Error(r.ok ? 'no effect bundle' : r.error);
+          return new Uint8Array(r.bytes);
+        });
+        this.avatarLayer.effects = this.effects;
+        this.detachers.push(() => this.effects?.dispose());
+      }
     }
     this.scene = view.scene;
     this.mapMeshes = view.scene.children.filter((o) => o.name.startsWith('surface:'));
@@ -602,6 +620,7 @@ export class WorldSession {
     if (drawn) for (const p of poses) if (drawn.has(p.entity)) p.avatarDrawn = true;
     this.crowd?.update(poses, camera.position);
     this.renderer?.render(scene, camera);
+    this.effects?.frame(camera, dt);
     this.frames += 1;
     if (now - this.fpsAt >= 500) {
       this.state.fps = Math.round((this.frames * 1000) / (now - this.fpsAt));
@@ -611,6 +630,7 @@ export class WorldSession {
         this.state.emoting = this.avatarLayer.emoting(this.entity);
         this.state.emoteSounds = this.emoteSounds?.count ?? 0;
       }
+      if (this.effects) this.state.effects = { ...this.effects.stats };
       this.frames = 0;
       this.fpsAt = now;
       this.remotes.prune(now - 5000);
@@ -696,12 +716,26 @@ export class WorldSession {
     if (now - this.policyAt < 250 || !this.avatarLayer) return;
     this.policyAt = now;
     const friends = new Set(this.state.friends);
-    this.avatarLayer.policy = viewerPolicy(s, s.autoTune ? this.tuner.factor : 1, {
+    const policy = viewerPolicy(s, s.autoTune ? this.tuner.factor : 1, {
       accountOf: (e) => this.people.get(e)?.account,
       trustOf: (e) => this.trusts.get(e) ?? 0,
       friends,
       me: this.entity,
     });
+    this.avatarLayer.policy = policy;
+    if (this.effects) {
+      // Whose effects show (S6.01, Q-M10): one's own and the world's; anyone else's when their
+      // avatar is not shielded or hidden, a stranger's only when the viewer allows strangers'.
+      const fx = this.settings.effects;
+      this.effects.allowed = (owner) => {
+        if (!fx.show) return false;
+        if (owner === 'world' || owner === this.entity) return true;
+        if (policy.shown?.(owner) === 'impostor') return false;
+        const account = this.people.get(owner)?.account;
+        return fx.strangers || (account !== undefined && friends.has(account));
+      };
+      this.effects.refresh();
+    }
   }
 
   /** What this player wears now (S5.05): sent to the world, which fits it and shows everyone. The

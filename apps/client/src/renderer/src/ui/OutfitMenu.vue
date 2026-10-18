@@ -13,7 +13,7 @@ const emit = defineEmits<{ wear: [items: FlatchatWorn[]]; close: [] }>();
 const { t, te } = useI18n();
 const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
-/** Each attachment's point, from its manifest. */
+/** Each attachment's and effect's point, from its manifest. */
 const points = ref<Record<string, AttachPoint>>({});
 const name = ref('');
 const error = ref('');
@@ -27,7 +27,7 @@ async function load(): Promise<void> {
   if (a?.ok) items.value = a.items;
   if (b?.ok) outfits.value = b.outfits;
   for (const i of ready.value) {
-    if (i.slot !== 'attachment' || points.value[i.manifest!]) continue;
+    if ((i.slot !== 'attachment' && i.slot !== 'effect') || points.value[i.manifest!]) continue;
     const r = await window.flatchat?.itemFile(i.manifest!, 'manifest');
     if (r?.ok && r.manifest.attach) points.value = { ...points.value, [i.manifest!]: r.manifest.attach };
   }

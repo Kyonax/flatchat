@@ -26,6 +26,8 @@ const BUNDLED = [
   { package: 'recast-navigation', note: 'paths for click to move (S2.06), with @recast-navigation/core and @recast-navigation/wasm under the same licence' },
   { name: 'Recast & Detour', version: 'inside @recast-navigation/wasm 0.43.1', licence: 'Zlib', text: 'third_party/recast/License.txt', note: 'compiled to WebAssembly inside recast-navigation, by Mikko Mononen' },
   { package: '@flatchat/content', note: 'FlatChat’s own content formats, Apache-2.0' },
+  { package: '@flatchat/effects', note: 'FlatChat’s effects: the runtime’s bindings and its guard (S6.01), Apache-2.0' },
+  { name: 'The Effekseer runtime (EffekseerForWeb, with Effekseer inside)', version: 'EffekseerForWeb da76b502, Effekseer 1.80.7', licence: 'MIT, with zlib, BSD-3-Clause, Apache-2.0 WITH LLVM-exception and public-domain parts', text: '../../packages/effects/third_party/effekseer/LICENSE.md', note: 'effects on avatars and in worlds (S6.01), compiled to WebAssembly' },
   { package: 'smol-toml', note: 'world.toml, inside @flatchat/content' },
   { name: 'Basis Universal transcoder', version: 'three.js r186', licence: 'Apache-2.0', text: 'third_party/basis/LICENSE', note: 'KTX2 textures of downloaded worlds (shipped with three.js, by Binomial LLC)' },
   // Offline mode (S2.13): the world server and the host tool's converter run in the main process.

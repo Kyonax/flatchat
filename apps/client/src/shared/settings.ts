@@ -146,6 +146,13 @@ export interface SoundSettings {
   emotes: number;
 }
 
+/** Effects on avatars and in worlds (S6.01): whether they play at all, and whether strangers'
+ *  (not friends) do; trust levels below the shield and hidden people never show theirs (Q-M10). */
+export interface EffectSettings {
+  show: boolean;
+  strangers: boolean;
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -156,6 +163,7 @@ export interface Settings {
   view: ViewSettings;
   avatar: AvatarSettings;
   sound: SoundSettings;
+  effects: EffectSettings;
 }
 
 export function defaultSettings(): Settings {
@@ -168,6 +176,7 @@ export function defaultSettings(): Settings {
     view: { person: 'third', sensitivity: 12, invertY: false },
     avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
     sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
+    effects: { show: true, strangers: false },
   };
 }
 
@@ -210,6 +219,7 @@ export function cleanSettings(raw: unknown): Settings {
   const view = obj(r['view']);
   const avatar = obj(r['avatar']);
   const sound = obj(r['sound']);
+  const effects = obj(r['effects']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -251,6 +261,7 @@ export function cleanSettings(raw: unknown): Settings {
       ),
     },
     sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui), emotes: num(sound['emotes'], 0, 1, d.sound.emotes) },
+    effects: { show: bool(effects['show'], d.effects.show), strangers: bool(effects['strangers'], d.effects.strangers) },
   };
 }
 
@@ -264,6 +275,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     view: { ...current.view, ...obj(p['view']) },
     avatar: { ...current.avatar, ...obj(p['avatar']) },
     sound: { ...current.sound, ...obj(p['sound']) },
+    effects: { ...current.effects, ...obj(p['effects']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

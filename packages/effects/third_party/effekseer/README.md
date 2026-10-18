@@ -11,12 +11,12 @@ EffekseerForWeb, not EffekseerForWebGL, because the client draws with three.js's
 
 ```
 6cea4c9e2b6341231353c875e07ed7cf82552c4b08348ac899c2c3e569e34d09  effekseer-webgl-native.js
-b2fe352b134551a4a410b677b758cd152d30cda753f290500192f471746131cb  effekseer-webgl-native.wasm
+b2fe352b134551a4a410b677b758cd152d30cda753f290500192f471746131cb  wasm/effekseer-webgl-native.wasm
 345cae36a84ffe401c5bf88f499f2342b52cec1a4b9910e8913e50ba10ab188b  effekseer-webgpu-native.js
-c4512a400648b1509f63c251cb8c64338ba618dd37b7dc80dea20ef8ee0694a8  effekseer-webgpu-native.wasm
+c4512a400648b1509f63c251cb8c64338ba618dd37b7dc80dea20ef8ee0694a8  wasm/effekseer-webgpu-native.wasm
 ```
 
-`packages/effects/test/dry-run.test.ts` checks them against this list.
+`packages/effects/test/dry-run.test.ts` checks them against this list. The WebAssembly sits in `wasm/`, away from the glue beside it: the glue's own reference to it (`new URL(…, import.meta.url)`) would make the client's bundler copy it a second time, and FlatChat always hands the runtime its bytes itself.
 
 ## How they are built
 

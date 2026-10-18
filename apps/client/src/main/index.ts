@@ -13,7 +13,7 @@
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, readLicence, uploadFormat } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, EFFECT_EXTENSIONS, readLicence, uploadFormat } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -404,7 +404,15 @@ ipcMain.handle('flatchat:items:upload', async (event, given: unknown) => {
   const e2e = process.env['FLATCHAT_E2E_ITEM'];
   const picked = e2e
     ? { canceled: false, filePaths: [e2e] }
-    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an item', filters: [{ name: 'Items (GLB, FBX, OBJ, DAE, .blend)', extensions: MODEL_EXTENSIONS.filter((e) => e !== 'vrm') }], properties: ['openFile'] });
+    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, {
+        title: 'Upload an item',
+        filters: [
+          { name: 'Items and effects', extensions: [...MODEL_EXTENSIONS.filter((e) => e !== 'vrm'), ...EFFECT_EXTENSIONS] },
+          { name: 'Items (GLB, FBX, OBJ, DAE, .blend)', extensions: MODEL_EXTENSIONS.filter((e) => e !== 'vrm') },
+          { name: 'Effects (Effekseer .efkefc, .efk, .efkpkg, or a .zip)', extensions: [...EFFECT_EXTENSIONS] },
+        ],
+        properties: ['openFile'],
+      });
   const path = picked.canceled ? undefined : picked.filePaths[0];
   if (!path) return { ok: false, error: 'cancelled' };
   try {
@@ -431,7 +439,7 @@ ipcMain.handle('flatchat:items:delete', async (_event, id: unknown) => {
 const itemDeliveries = new Map<string, { at: number; d: Promise<{ manifest: unknown; links: Record<string, string> }> }>();
 ipcMain.handle('flatchat:item-file', async (_event, manifest: unknown, part: unknown) => {
   if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || !auth || !cache) return { ok: false, error: 'bad-request' };
-  if (part !== 'manifest' && part !== 'prop' && !(BODY_KITS as readonly unknown[]).includes(part)) return { ok: false, error: 'bad-request' };
+  if (part !== 'manifest' && part !== 'prop' && part !== 'effect' && !(BODY_KITS as readonly unknown[]).includes(part)) return { ok: false, error: 'bad-request' };
   try {
     let entry = itemDeliveries.get(manifest);
     if (!entry || Date.now() - entry.at > 50 * 60_000) {
@@ -442,7 +450,7 @@ ipcMain.handle('flatchat:item-file', async (_event, manifest: unknown, part: unk
     const d = await entry.d;
     const m = checkItemManifest(d.manifest);
     if (part === 'manifest') return { ok: true, manifest: m };
-    const hash = part === 'prop' ? m.prop?.file : m.fits[part as (typeof BODY_KITS)[number]]?.file;
+    const hash = part === 'prop' ? m.prop?.file : part === 'effect' ? m.effect?.file : m.fits[part as (typeof BODY_KITS)[number]]?.file;
     const link = d.links[part as string];
     if (!hash || !link) return { ok: false, error: 'not-found' };
     const bytes = await cachedFile(hash, link);

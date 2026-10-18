@@ -63,6 +63,7 @@ const voice = (patch: Partial<Settings['voice']>): void => emit('change', { voic
 const view = (patch: Partial<Settings['view']>): void => emit('change', { view: { ...props.settings.view, ...patch } });
 const avatar = (patch: Partial<Settings['avatar']>): void => emit('change', { avatar: { ...props.settings.avatar, ...patch } });
 const sound = (patch: Partial<Settings['sound']>): void => emit('change', { sound: { ...props.settings.sound, ...patch } });
+const effects = (patch: Partial<Settings['effects']>): void => emit('change', { effects: { ...props.settings.effects, ...patch } });
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -281,6 +282,25 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           @change="avatar({ autoTune: ($event.target as HTMLInputElement).checked })"
         >
         <span>{{ t('settings.autoTune') }}</span>
+      </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.effects.show"
+          data-test="effects-show"
+          @change="effects({ show: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.effectsShow') }}</span>
+      </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.effects.strangers"
+          :disabled="!settings.effects.show"
+          data-test="effects-strangers"
+          @change="effects({ strangers: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.effectsStrangers') }}</span>
       </label>
 
       <h2>{{ t('settings.voice') }}</h2>

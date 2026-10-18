@@ -19,7 +19,7 @@ export class RuntimeSpent extends Error {
 
 export interface RuntimeOptions {
   factory: NativeFactory;
-  /** The build's .wasm, already fetched or read (nothing is fetched by the module itself). */
+  /** The build's .wasm, already fetched or read: the module never fetches or reads it itself. */
   wasm: Uint8Array;
   instances?: number;
   quads?: number;
@@ -42,6 +42,15 @@ export interface WebGPURuntimeOptions extends RuntimeOptions {
   width: number;
   height: number;
 }
+
+/** The part of WebAssembly's API the runtime needs, typed here so the package needs no DOM types. */
+interface WasmApi {
+  compile(bytes: Uint8Array): Promise<object>;
+  instantiate(module: object, imports: object): Promise<object>;
+}
+
+/** Each build's WebAssembly compiled once, however many runtimes are made of it. */
+const COMPILED = new WeakMap<Uint8Array, Promise<object>>();
 
 /** An image the WebGL build uploads as it is: an ImageBitmap in the client; in Node, only its size. */
 export type EffectImage = { width: number; height: number };
@@ -83,12 +92,27 @@ export class EffectsRuntime {
   }
 
   static async create(o: WebGLRuntimeOptions | WebGPURuntimeOptions): Promise<EffectsRuntime> {
-    const module = await o.factory({
-      wasmBinary: o.wasm,
-      print: () => undefined,
-      printErr: () => undefined,
-      ...(o.backend === 'webgpu' ? { preinitializedWebGPUDevice: o.device } : {}),
-    });
+    // The build reads no `wasmBinary` (Emscripten 6 takes it only when asked to at build time):
+    // its WebAssembly would be fetched or read from beside the glue. It is handed over here,
+    // compiled first so a broken file fails now, then instantiated through instantiateWasm.
+    const wasm = (globalThis as unknown as { WebAssembly: WasmApi }).WebAssembly;
+    let compiling = COMPILED.get(o.wasm);
+    if (!compiling) COMPILED.set(o.wasm, (compiling = wasm.compile(o.wasm)));
+    const compiled = await compiling;
+    let failed: (err: unknown) => void = () => undefined;
+    const failure = new Promise<never>((_, reject) => (failed = reject));
+    const module = await Promise.race([
+      o.factory({
+        instantiateWasm: (imports: object, done: (instance: object) => void) => {
+          wasm.instantiate(compiled, imports).then(done, failed);
+          return {};
+        },
+        print: () => undefined,
+        printErr: () => undefined,
+        ...(o.backend === 'webgpu' ? { preinitializedWebGPUDevice: o.device } : {}),
+      }),
+      failure,
+    ]);
     const native = bindNative(module);
     native.setLogEnabled(0);
     const instances = o.instances ?? EFFECT_LIMITS.instances;

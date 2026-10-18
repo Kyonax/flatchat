@@ -13,7 +13,7 @@ let build: WebGLBuild | undefined;
 export async function testBuild(): Promise<WebGLBuild> {
   build ??= {
     factory: ((await import(join(THIRD, 'effekseer-webgl-native.js'))) as { default: NativeFactory }).default,
-    wasm: new Uint8Array(readFileSync(join(THIRD, 'effekseer-webgl-native.wasm'))),
+    wasm: new Uint8Array(readFileSync(join(THIRD, 'wasm', 'effekseer-webgl-native.wasm'))),
   };
   return build;
 }

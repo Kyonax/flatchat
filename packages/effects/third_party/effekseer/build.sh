@@ -40,9 +40,10 @@ for backend in webgl webgpu; do
   mkdir "build_$backend"
   (cd "build_$backend" && emcmake cmake -DEFK_WEB_BACKEND="$backend" ../src/cpp >/dev/null && cmake --build . -j "$(nproc)" >/dev/null)
 done
-mkdir -p out
-cp build_webgl/effekseer-webgl-native.{js,wasm} build_webgpu/effekseer-webgpu-native.{js,wasm} out/
-(cd out && sha256sum effekseer-*)
+mkdir -p out/wasm
+cp build_webgl/effekseer-webgl-native.js build_webgpu/effekseer-webgpu-native.js out/
+cp build_webgl/effekseer-webgl-native.wasm build_webgpu/effekseer-webgpu-native.wasm out/wasm/
+(cd out && sha256sum effekseer-* wasm/effekseer-*)
 if [ "$patch" = yes ]; then
-  (cd out && for f in effekseer-*; do cmp -s "$f" "$here/$f" && echo "same: $f" || echo "DIFFERS: $f"; done)
+  (cd out && for f in effekseer-* wasm/effekseer-*; do cmp -s "$f" "$here/$f" && echo "same: $f" || echo "DIFFERS: $f"; done)
 fi

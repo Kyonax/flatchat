@@ -22,8 +22,8 @@ const fitOf = (r: DryRun): EffectFit => ({ file: '0'.repeat(64), bytes: 0, versi
 describe('the pinned runtime', () => {
   it('is the four files its README names, by SHA-256', () => {
     const readme = readFileSync(join(THIRD, 'README.md'), 'utf8');
-    const built = readdirSync(THIRD).filter((f) => /^effekseer-web(gl|gpu)-native\.(js|wasm)$/.test(f)).sort();
-    expect(built).toEqual(['effekseer-webgl-native.js', 'effekseer-webgl-native.wasm', 'effekseer-webgpu-native.js', 'effekseer-webgpu-native.wasm']);
+    const built = [...readdirSync(THIRD).filter((f) => /^effekseer-web(gl|gpu)-native\.js$/.test(f)), ...readdirSync(join(THIRD, 'wasm')).map((f) => `wasm/${f}`)].sort();
+    expect(built).toEqual(['effekseer-webgl-native.js', 'effekseer-webgpu-native.js', 'wasm/effekseer-webgl-native.wasm', 'wasm/effekseer-webgpu-native.wasm']);
     for (const f of built) {
       const sha = createHash('sha256').update(readFileSync(join(THIRD, f))).digest('hex');
       expect(readme, `${relative(HERE, join(THIRD, f))} is not the one the README names`).toContain(`${sha}  ${f}`);

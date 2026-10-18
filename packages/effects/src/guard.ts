@@ -84,6 +84,10 @@ export class EffectBudget {
   isBlocked(file: string): boolean {
     return this.blocked.has(file);
   }
+
+  blockedFiles(): string[] {
+    return [...this.blocked];
+  }
 }
 
 /** Trimming: given each owner's live instances this frame, the owners whose effects must stop

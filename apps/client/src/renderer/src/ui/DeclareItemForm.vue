@@ -1,29 +1,32 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { ATTACH_POINTS, type AttachPoint, ItemFormatError, readItemDeclaration, REGIONS, type Region, type Slot, SLOTS } from '@flatchat/content';
+import { ATTACH_POINTS, type AttachPoint, ItemFormatError, MODEL_SLOTS, readItemDeclaration, REGIONS, type Region, type Slot } from '@flatchat/content';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 // What an item's file cannot say itself (S5.08): an FBX, an OBJ or a DAE keeps no declaration, so
 // before it is sent the account gives its name, its slot, and the body it covers (hidden under it)
-// or, for an attachment, the point it is worn at; and who made it. Checked here as the core and the
-// converter check it (packages/content's readItemDeclaration), then sent with the file the main
-// process holds for it.
+// or, for an attachment, the point it is worn at; and who made it. An effect (S6.01: an Effekseer
+// file, package or zip) keeps none either: its slot is the effect's, and it asks the point it is
+// worn at and the scale it plays at. Checked here as the core and the converter check it
+// (packages/content's readItemDeclaration), then sent with the file the main process holds for it.
 const props = defineProps<{ token: string; name: string; format: string }>();
 const emit = defineEmits<{ done: []; cancel: [] }>();
 const { t, te } = useI18n();
 const name = ref(props.name);
-const slot = ref<Slot>('top');
-const attach = ref<AttachPoint>('head_top');
+const effect = props.format === 'effect';
+const slot = ref<Slot>(effect ? 'effect' : 'top');
+const attach = ref<AttachPoint>(effect ? 'hips' : 'head_top');
+const scale = ref(1);
 const hides = ref<Region[]>([]);
 const authors = ref('');
 const busy = ref(false);
 const problems = ref<string[]>([]);
 const error = ref('');
-const slots = Object.keys(SLOTS) as Slot[];
+const slots = MODEL_SLOTS;
 const points = Object.keys(ATTACH_POINTS) as AttachPoint[];
 const regions = Object.keys(REGIONS) as Region[];
-const formatName = computed(() => (props.format === 'blend' ? '.blend' : props.format === 'gltf' ? 'GLB' : props.format.toUpperCase()));
+const formatName = computed(() => (props.format === 'blend' ? '.blend' : props.format === 'gltf' ? 'GLB' : effect ? 'Effekseer' : props.format.toUpperCase()));
 
 async function send(): Promise<void> {
   error.value = '';
@@ -34,7 +37,7 @@ async function send(): Promise<void> {
       name: name.value,
       slot: slot.value,
       authors: authors.value.split(',').map((a) => a.trim()).filter(Boolean),
-      ...(slot.value === 'attachment' ? { attach: attach.value, hides: [] } : { hides: [...hides.value] }),
+      ...(slot.value === 'attachment' ? { attach: attach.value, hides: [] } : slot.value === 'effect' ? { attach: attach.value, hides: [], scale: Number(scale.value) } : { hides: [...hides.value] }),
     });
   } catch (err) {
     problems.value = err instanceof ItemFormatError ? err.problems : [String(err)];
@@ -71,7 +74,7 @@ async function send(): Promise<void> {
         data-test="declare-name"
       >
     </label>
-    <label>
+    <label v-if="!effect">
       {{ t('declare.slot') }}
       <select
         v-model="slot"
@@ -84,7 +87,7 @@ async function send(): Promise<void> {
         >{{ te(`items.slot.${s}`) ? t(`items.slot.${s}`) : s }}</option>
       </select>
     </label>
-    <label v-if="slot === 'attachment'">
+    <label v-if="slot === 'attachment' || slot === 'effect'">
       {{ t('declare.point') }}
       <select
         v-model="attach"
@@ -97,7 +100,18 @@ async function send(): Promise<void> {
         >{{ t(`declare.points.${p}`) }}</option>
       </select>
     </label>
-    <fieldset v-else>
+    <label v-if="slot === 'effect'">
+      {{ t('declare.scale') }}
+      <input
+        v-model.number="scale"
+        type="number"
+        min="0.01"
+        max="100"
+        step="0.01"
+        data-test="declare-scale"
+      >
+    </label>
+    <fieldset v-if="slot !== 'attachment' && slot !== 'effect'">
       <legend>{{ t('declare.hides') }}</legend>
       <label
         v-for="r in regions"

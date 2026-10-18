@@ -37,6 +37,7 @@ import { disposeLevel, parseAnimation, parseItemFile, parseLevel } from './avata
 import { type BoneAngles, type Expression, handPose, type HandPose, mouthShapes } from './avatar-pose';
 import { builtInEmote } from './clips';
 import { Motion } from './motion';
+import type { EffectSink } from './effects';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 import { addSegments, type Segments, setSegments, useSegments } from './segments';
 
@@ -140,6 +141,8 @@ interface Entry {
   dressed: string | undefined;
   worn: THREE.Object3D[];
   wornItems: number;
+  /** The effects this entry wears (S6.01), as the effect sink numbers them. */
+  effects: number[];
   /** Each bone's place at rest on the current level, for props. */
   rest2: Map<string, THREE.Matrix4> | undefined;
   /** The emote or dance it plays (S5.07), and its action on the current level once loaded. */
@@ -156,6 +159,8 @@ const qb = new THREE.Quaternion();
 export class AvatarLayer {
   readonly group = new THREE.Group();
   policy: AvatarPolicy = DEFAULT_POLICY;
+  /** Where worn effects play (S6.01): each rides a marker at its point, as a prop does. */
+  effects: EffectSink | undefined;
   private readonly renderer: THREE.WebGPURenderer;
   private readonly fetch: Fetcher;
   private readonly entries = new Map<number, Entry>();
@@ -295,6 +300,7 @@ export class AvatarLayer {
       dressed: undefined,
       worn: [],
       wornItems: 0,
+      effects: [],
       rest2: undefined,
       emote: this.pendingEmotes.get(entity),
       playing: undefined,
@@ -603,6 +609,8 @@ export class AvatarLayer {
 
   private undress(e: Entry): void {
     for (const o of e.worn) o.removeFromParent();
+    for (const id of e.effects) this.effects?.takeOff(id);
+    e.effects = [];
     e.worn = [];
     e.wornItems = 0;
     e.dressed = undefined;
@@ -623,6 +631,7 @@ export class AvatarLayer {
     const vrm = e.vrm!;
     void (async () => {
       const added: THREE.Object3D[] = [];
+      const effects: Array<{ manifest: string; m: ItemManifest; marker: THREE.Object3D }> = [];
       try {
         const known = await Promise.all(
           e.outfit.map(async (w) => {
@@ -647,6 +656,18 @@ export class AvatarLayer {
                 added.push(pivot);
                 items += 1;
               }
+            } else if (m.slot === 'effect' && m.attach && m.effect) {
+              // An empty marker at the point, where the effect plays (effects.ts).
+              if (!this.effects) continue;
+              const marker = new THREE.Object3D();
+              marker.name = 'flatchat-effect';
+              const node = (b: string): THREE.Object3D | undefined => vrm.humanoid.getRawBoneNode(b as Parameters<VRM['humanoid']['getRawBoneNode']>[0]) ?? undefined;
+              const pivot = e.rest2 ? wearProp(marker, m.attach, node, e.rest2, e.info?.height && e.info.height > 0.3 ? e.info.height : 1.7, w.adjust) : undefined;
+              if (pivot) {
+                added.push(pivot);
+                effects.push({ manifest: w.item, m, marker });
+                items += 1;
+              }
             } else if (e.kit && m.fits[e.kit]) {
               const meshes = wearFit(await this.fit(w.item, e.kit), vrm.scene);
               if (!meshes) throw new Error('the fit does not match the body');
@@ -665,6 +686,7 @@ export class AvatarLayer {
           return;
         }
         this.undress(e);
+        for (const x of effects) e.effects.push(this.effects!.wear(entity, x.manifest, x.m.effect!, x.marker));
         // The clothes stretch with the limbs, as the skin under them does.
         if (e.segments) useSegments(vrm.scene, e.segments);
         vrm.scene.traverse((o) => {
