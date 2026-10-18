@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { ANIMATION_FORMAT, ANIMATION_MAX_SECONDS, ANIMATION_SOURCE_LIMIT, type AnimationAudioType, type AnimationManifest, type AnimationSource, type AnimationUse, checkAnimationFile, readGltf, VRMC_VRM_ANIMATION } from '@flatchat/content';
 import type { Node } from '@gltf-transform/core';
+import { prune } from '@gltf-transform/functions';
 import { avatarIO, validateGltf } from '../avatar/convert.ts';
 import { HUMAN_BONE_NAMES, humanBoneOf, mapByNames, REQUIRED_BONES } from '../avatar/humanoid.ts';
 import { AudioError, readAudio } from './audio.ts';
@@ -45,6 +46,8 @@ export interface AnimationOptions {
    *  JSON), baked into the VRMA's mouth expressions. */
   audio?: Uint8Array;
   cues?: unknown;
+  /** For a library of many clips (Track P's P.05): the one to take, by name; otherwise the longest. */
+  clip?: string;
 }
 
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
@@ -108,6 +111,33 @@ export function mapJoints(joints: readonly Joint[]): Map<string, number> {
 }
 
 /** Reads any source into a motion and its human bones. */
+/** A library's one clip, by name, alone in a GLB: every other animation dropped, and any channel
+ *  that targets what an earlier one already does (Mesh2Motion's library has some, which the glTF
+ *  Validator refuses) dropped too. */
+async function oneClip(bytes: Uint8Array, name: string): Promise<Uint8Array> {
+  const io = avatarIO();
+  const doc = await io.readBinary(bytes);
+  const all = doc.getRoot().listAnimations();
+  const keep = all.find((a) => a.getName() === name);
+  if (!keep) throw new AnimationError([`no clip named “${name.slice(0, 80)}” among ${all.length}`]);
+  for (const a of all) if (a !== keep) a.dispose();
+  const seen = new Map<Node, Set<string>>();
+  for (const channel of keep.listChannels()) {
+    const node = channel.getTargetNode();
+    const path = channel.getTargetPath() ?? '';
+    if (!node) continue;
+    const paths = seen.get(node) ?? new Set<string>();
+    if (paths.has(path)) {
+      channel.dispose();
+      continue;
+    }
+    paths.add(path);
+    seen.set(node, paths);
+  }
+  await doc.transform(prune({ keepLeaves: true }));
+  return io.writeBinary(doc);
+}
+
 async function readMotion(bytes: Uint8Array, format: AnimationSource): Promise<{ motion: Motion; map: Map<string, number> }> {
   if (format === 'bvh') {
     const motion = readBvh(new TextDecoder().decode(bytes));
@@ -135,11 +165,13 @@ async function readMotion(bytes: Uint8Array, format: AnimationSource): Promise<{
   return { motion, map };
 }
 
-export async function convertAnimation(bytes: Uint8Array, o: AnimationOptions = {}): Promise<AnimationResult> {
-  if (bytes.length > ANIMATION_SOURCE_LIMIT) throw new AnimationError([`the file is ${(bytes.length / 1048576).toFixed(1)} MB: ${ANIMATION_SOURCE_LIMIT / 1048576} MB at most`]);
-  const format = animationFormat(bytes);
+export async function convertAnimation(upload: Uint8Array, o: AnimationOptions = {}): Promise<AnimationResult> {
+  if (upload.length > ANIMATION_SOURCE_LIMIT) throw new AnimationError([`the file is ${(upload.length / 1048576).toFixed(1)} MB: ${ANIMATION_SOURCE_LIMIT / 1048576} MB at most`]);
+  const format = animationFormat(upload);
   if (format === 'unknown') throw new AnimationError(['not an animation FlatChat reads: a VRMA, a GLB clip, a BVH or an FBX']);
   if (format === 'fbx') throw new AnimationError(['an FBX is read by headless Blender into a GLB first (the core does it)']);
+  if (o.clip !== undefined && format === 'bvh') throw new AnimationError(['a BVH holds one motion: there is no clip to choose']);
+  const bytes = o.clip !== undefined ? await oneClip(upload, o.clip) : upload;
   if (format !== 'bvh') {
     const { problems } = await validateGltf(bytes, false);
     if (problems.length > 0) throw new AnimationError(problems.map((e) => `glTF-Validator: ${e}`));
@@ -190,7 +222,7 @@ export async function convertAnimation(bytes: Uint8Array, o: AnimationOptions = 
     format: ANIMATION_FORMAT,
     kind: 'animation',
     converter: ANIMATION_CONVERTER_VERSION,
-    source: { sha256: o.source?.sha256 ?? sha256(bytes), bytes: o.source?.bytes ?? bytes.length, format: o.from ?? format },
+    source: { sha256: o.source?.sha256 ?? sha256(upload), bytes: o.source?.bytes ?? upload.length, format: o.from ?? format },
     name: (o.name ?? '').trim().slice(0, 64),
     use: o.use ?? 'emote',
     loop: loops(humanoid),

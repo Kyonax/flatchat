@@ -133,25 +133,25 @@ const SPINE_LINK = /^(spine\d*|chest|upperchest|chestupper|torso|waist)$/;
 
 export type BoneMatch = string | { side: 'left' | 'right'; finger: string; joint: number } | 'spine-link';
 
-/** The human bone a node's name stands for in a plain GLB rig, if it is one. */
+/** The human bone a node's name stands for in a plain GLB rig, if it is one. A side may come first
+ *  or last, and a name can start with an l or an r that is no side (Unreal's lowerarm_r, ring_01_l):
+ *  each reading is tried, and the one that names a bone wins. */
 export function humanBoneOf(name: string): BoneMatch | undefined {
-  let n = simplify(name);
-  let side: 'left' | 'right' | undefined;
-  for (const [re, s] of SIDES) {
-    if (re.test(n)) {
-      const rest = n.replace(re, '');
-      if (rest.length >= 3) {
-        side = s;
-        n = rest;
-        break;
-      }
-    }
+  const n = simplify(name);
+  for (const [re, side] of SIDES) {
+    if (!re.test(n)) continue;
+    const rest = n.replace(re, '');
+    if (rest.length < 3) continue;
+    const bone = sidedBone(rest, side);
+    if (bone !== undefined) return bone;
   }
-  if (!side) {
-    if (SPINE_LINK.test(n)) return 'spine-link';
-    for (const bone of ['hips', 'neck', 'head'] as const) if (ALIASES[bone]!.includes(n)) return bone;
-    return undefined;
-  }
+  if (SPINE_LINK.test(n)) return 'spine-link';
+  for (const bone of ['hips', 'neck', 'head'] as const) if (ALIASES[bone]!.includes(n)) return bone;
+  return undefined;
+}
+
+/** A bone of one side, by its name with the side taken off. */
+function sidedBone(n: string, side: 'left' | 'right'): BoneMatch | undefined {
   for (const bone of ['eye', 'shoulder', 'upperArm', 'lowerArm', 'hand', 'upperLeg', 'lowerLeg', 'foot', 'toes'] as const) {
     if (ALIASES[bone]!.includes(n)) return `${side}${bone[0]!.toUpperCase()}${bone.slice(1)}`;
   }
