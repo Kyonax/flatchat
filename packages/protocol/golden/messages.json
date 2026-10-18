@@ -163,7 +163,12 @@
             "name": "Kyonax",
             "trust": 4,
             "height": 175,
-            "role": "owner"
+            "role": "owner",
+            "face": {
+              "expression": "neutral",
+              "left": "relaxed",
+              "right": "relaxed"
+            }
           },
           {
             "entity": 2,
@@ -172,12 +177,17 @@
             "trust": 0,
             "avatar": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "height": 162,
-            "role": "moderator"
+            "role": "moderator",
+            "face": {
+              "expression": "happy",
+              "left": "peace",
+              "right": "thumbsUp"
+            }
           }
         ],
         "left": []
       },
-      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f40a050000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a20800"
+      "hex": "12050200006b0e2c1a7f3d4e8a9c215d4f3a2b1c0e064b796f6e6178f40a01080000c3a1f2e45b6d4c7e8f90a1b2c3d4e5f60cc391616e64c3ba20f09f8eae08e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855a2282300"
     },
     {
       "name": "roster-change",
@@ -191,6 +201,24 @@
         ]
       },
       "hex": "1200040600080000"
+    },
+    {
+      "name": "wear",
+      "value": {
+        "type": "wear",
+        "token": "000102030405060708090a0b0c0d0e0f"
+      },
+      "hex": "1610000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "name": "face",
+      "value": {
+        "type": "face",
+        "expression": "surprised",
+        "left": "point",
+        "right": "open"
+      },
+      "hex": "175501"
     },
     {
       "name": "appearance",

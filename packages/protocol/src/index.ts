@@ -51,6 +51,8 @@ export {
   CELL_SIZE,
   type Channel,
   CONTACT,
+  EXPRESSIONS,
+  HAND_POSES,
   LEAVE_REASONS,
   MAX_MESSAGE_BYTES,
   type MessageDef,

@@ -1,6 +1,6 @@
 {
-  "protocol": 6,
-  "fingerprint": "1133523f",
+  "protocol": 7,
+  "fingerprint": "ebe314c3",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -511,6 +511,61 @@
                           "owner"
                         ]
                       }
+                    },
+                    {
+                      "name": "face",
+                      "type": {
+                        "kind": "struct",
+                        "fields": [
+                          {
+                            "name": "expression",
+                            "type": {
+                              "kind": "enum",
+                              "bits": 3,
+                              "values": [
+                                "neutral",
+                                "happy",
+                                "angry",
+                                "sad",
+                                "relaxed",
+                                "surprised"
+                              ]
+                            }
+                          },
+                          {
+                            "name": "left",
+                            "type": {
+                              "kind": "enum",
+                              "bits": 3,
+                              "values": [
+                                "relaxed",
+                                "fist",
+                                "point",
+                                "peace",
+                                "thumbsUp",
+                                "open",
+                                "rock"
+                              ]
+                            }
+                          },
+                          {
+                            "name": "right",
+                            "type": {
+                              "kind": "enum",
+                              "bits": 3,
+                              "values": [
+                                "relaxed",
+                                "fist",
+                                "point",
+                                "peace",
+                                "thumbsUp",
+                                "open",
+                                "rock"
+                              ]
+                            }
+                          }
+                        ]
+                      }
                     }
                   ]
                 }
@@ -543,6 +598,82 @@
               "type": {
                 "kind": "uint",
                 "bits": 10
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "wear",
+        "id": 22,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "token",
+              "type": {
+                "kind": "bytes",
+                "maxBytes": 4096
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "face",
+        "id": 23,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "expression",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "neutral",
+                  "happy",
+                  "angry",
+                  "sad",
+                  "relaxed",
+                  "surprised"
+                ]
+              }
+            },
+            {
+              "name": "left",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "relaxed",
+                  "fist",
+                  "point",
+                  "peace",
+                  "thumbsUp",
+                  "open",
+                  "rock"
+                ]
+              }
+            },
+            {
+              "name": "right",
+              "type": {
+                "kind": "enum",
+                "bits": 3,
+                "values": [
+                  "relaxed",
+                  "fist",
+                  "point",
+                  "peace",
+                  "thumbsUp",
+                  "open",
+                  "rock"
+                ]
               }
             }
           ]
@@ -1477,7 +1608,7 @@
       ]
     },
     "token": {
-      "version": 1,
+      "version": 2,
       "cipher": "AES-256-GCM",
       "header": {
         "kind": "struct",
@@ -1593,6 +1724,16 @@
               "max": 100,
               "of": {
                 "kind": "uuid"
+              }
+            }
+          },
+          {
+            "name": "avatar",
+            "type": {
+              "kind": "optional",
+              "of": {
+                "kind": "fixedBytes",
+                "length": 32
               }
             }
           }

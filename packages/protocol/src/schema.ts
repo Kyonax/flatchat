@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -76,6 +76,11 @@ const centimetres = uint(10);
  *  The world keeps the others in its own database. */
 export const ROLES = ['visitor', 'builder', 'moderator', 'admin', 'owner'] as const;
 const role = oneOf(ROLES);
+/** A face (version 7, S4.07): VRM 1.0's emotions, chosen from a menu or a hotkey, and each hand's
+ *  pose. The mouth moves with the voice frames instead. */
+export const EXPRESSIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised'] as const;
+export const HAND_POSES = ['relaxed', 'fist', 'point', 'peace', 'thumbsUp', 'open', 'rock'] as const;
+const face = struct({ expression: oneOf(EXPRESSIONS), left: oneOf(HAND_POSES), right: oneOf(HAND_POSES) });
 
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
  *  core's asset store, never from the host; `height` is the world's fitted height. */
@@ -87,6 +92,7 @@ const player = struct({
   avatar: optional(fixedBytes(32)),
   height: centimetres,
   role,
+  face,
 });
 
 export const REFUSE_REASONS = [
@@ -172,6 +178,12 @@ export const MESSAGES = {
   },
   // The player's look (version 4, S2.07): a new height; the world fits it and sends a roster change.
   appearance: { id: 0x13, from: 'client', channel: 'reliable', body: struct({ height: centimetres }) },
+  // A new avatar during the visit (version 7, S4.05): a fresh connect token for this world, of the
+  // same account, whose `avatar` the world takes into the roster; the core vouches for the avatar,
+  // so a client cannot wear what it does not own.
+  wear: { id: 0x16, from: 'client', channel: 'reliable', body: struct({ token: bytes(4096) }) },
+  // The player's face and hands (version 7, S4.07); the world keeps it in the roster.
+  face: { id: 0x17, from: 'client', channel: 'reliable', body: face },
   // A move the client cannot walk (version 4, S2.06): onto a seat (`seat`, its index in the built
   // world), or to a clicked spot. The world checks it and answers `placed`: where the player is
   // now, and whether it moved them.
@@ -225,7 +237,7 @@ export const MESSAGES = {
 } as const satisfies Record<string, MessageDef>;
 
 /** The connect token's format version, written as its first byte. */
-export const TOKEN_VERSION = 1;
+export const TOKEN_VERSION = 2;
 
 /** The token's readable part, also the additional data its encryption authenticates. The nonce
  *  is random per token, so a world server can refuse a token it has already seen. */
@@ -234,7 +246,8 @@ export const TOKEN_HEADER = struct({ version: u8, world: uuid, expiresAt: u64, n
 /** What the core vouches for, encrypted for one world (docs/protocol.md, "The connect token").
  *  A minor's birth date never travels: only `under18`. Format 1 (version 5) adds whether the
  *  account owns the world, who may reach it, a minor's accepted friends and the accounts kept apart
- *  from it by a block in either direction, 100 of each at most. */
+ *  from it by a block in either direction, 100 of each at most. Format 2 (version 7) adds the
+ *  avatar the account wears: its manifest's SHA-256 in the core's store (S4.05). */
 export const TOKEN_CLAIMS = struct({
   account: uuid,
   name: str(64),
@@ -247,4 +260,5 @@ export const TOKEN_CLAIMS = struct({
   contact: oneOf(CONTACT),
   friends: list(uuid, 100),
   blocks: list(uuid, 100),
+  avatar: optional(fixedBytes(32)),
 });
