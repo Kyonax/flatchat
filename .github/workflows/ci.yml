@@ -128,6 +128,8 @@ jobs:
       # folder the client converts itself, each played as a guest.
       - name: Offline mode, with no core
         run: xvfb-run -a node tools/bots/src/offline-check.ts apps/client/release/linux-unpacked/flatchat
+      - name: The look check, materials and creator shaders on this GPU
+        run: xvfb-run -a node tools/bots/src/look-check.ts apps/client/release/linux-unpacked/flatchat
       - uses: actions/upload-artifact@v7
         if: always()
         with:
