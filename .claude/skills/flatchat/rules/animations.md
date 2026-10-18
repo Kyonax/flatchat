@@ -2,7 +2,7 @@
 title: Animations — Emotes and Dances into VRMA, the Retargeter, BVH, GLB Clips, FBX through Headless Blender, Golden Files
 impact: HIGH
 impactDescription: A motion measured from an A-pose rest as if it were a T-pose lifts or buries every arm; a source facing back or Z-up comes out turned; translation copied from any bone but the hips drifts limbs; a VRMA that does not rest in the T-pose with unrotated bones plays wrong in three-vrm-animation; an FBX read with leaf bones ignored loses the head and hands; an arccosine angle check reports quantisation noise as error.
-tags: animations, emotes, dances, S5.07, ad-009, Q-M5, Q-M11, rr-013, VRMA, VRMC_vrm_animation, three-vrm-animation, normalized humanoid, T-pose, A-pose, retarget, straighten, BVH, readBvh, GLB clip, readGltfMotion, FBX, fbx2glb.py, make-sample-fbx.py, headless Blender, ignore_leaf_bones, convertAnimation, AnimationError, animationFormat, mapJoints, writeVrma, loops, ANIMATION_FORMAT, AnimationManifest, checkAnimationFile, checkAnimationManifest, ANIMATION_MAX_SECONDS, ANIMATION_FPS, ANIMATION_USES, animation-cli, golden animations.json, FLATCHAT_GOLDEN_WRITE, FLATCHAT_BLENDER, qangle, quat.ts
+tags: animations, emotes, dances, EmoteMenu, AnimationsPanel, playEmote, emoteTime, readyEmote, parseAnimation, VRMAnimationLoaderPlugin, createVRMAnimationClip, AnimationMixer, S5.07, ad-009, Q-M5, Q-M11, rr-013, VRMA, VRMC_vrm_animation, three-vrm-animation, normalized humanoid, T-pose, A-pose, retarget, straighten, BVH, readBvh, GLB clip, readGltfMotion, FBX, fbx2glb.py, make-sample-fbx.py, headless Blender, ignore_leaf_bones, convertAnimation, AnimationError, animationFormat, mapJoints, writeVrma, loops, ANIMATION_FORMAT, AnimationManifest, checkAnimationFile, checkAnimationManifest, ANIMATION_MAX_SECONDS, ANIMATION_FPS, ANIMATION_USES, animation-cli, golden animations.json, FLATCHAT_GOLDEN_WRITE, FLATCHAT_BLENDER, qangle, quat.ts
 ---
 
 Every emote and dance becomes VRMA on VRM 1.0's normalized humanoid (S5.07, ad-009, rr-013). three-vrm-animation then plays it on any VRM avatar. Creators' guide: `docs/animations.md`.
@@ -39,4 +39,19 @@ Every emote and dance becomes VRMA on VRM 1.0's normalized humanoid (S5.07, ad-0
 
 ## Not Yet
 
-The core takes uploads since part b (rule `core-service`: `src/animations.ts`, `runBlender`; `-Y` disables auto-run, `-y` would enable it). Protocol version 10 carries emotes since part c (rule `protocol-and-codecs`). Still to come: the client's three-vrm-animation playback and emote menu (part d); audio and Rhubarb mouth tracks (part e).
+The core takes uploads since part b (rule `core-service`: `src/animations.ts`, `runBlender`; `-Y` disables auto-run, `-y` would enable it). Protocol version 10 carries emotes since part c (rule `protocol-and-codecs`).
+
+## In the Client (Part d)
+
+| Part | Where |
+|---|---|
+| Playing | `AvatarLayer.play(entity, anim)` from each roster entry; `readyEmote` loads the VRMA once per hash (`parseAnimation` in avatar-loader.ts: `checkAnimationFile`, then `VRMAnimationLoaderPlugin`), makes `createVRMAnimationClip(animation, vrm)` on the current level and an `AnimationMixer` on `vrm.scene`; `place` sets `action.time` to the seconds since the start tick (`AvatarState.emoteTime`, a dance modulo its length, an emote once) and `mixer.update(0)` instead of the shared walk; a finished emote hands back to it. `clear` stops it before a level goes. Impostors keep walking |
+| The world's clock | The session keeps the newest snapshot's tick and when it came; `emoteTimeOf` turns a roster emote's start tick into seconds at the welcome's `tickHz` |
+| Your own | `playEmote(anim)` sends `emote` (two changes a second, the latest waits); any move, jump or walk to a spot sends a stop. `state.emote` (the manifest, '' for none) and `state.emoting` (`AvatarLayer.emoting`: the action runs this frame); `data-test=emote` carries `data-anim` and `data-playing` |
+| The menus | `ui/EmoteMenu.vue` on B (`emotes` in `ACTIONS`): the account's ready animations, one click each, and Stop; `ui/AnimationsPanel.vue` on the home screen: Upload an emote / a dance (`flatchat:animations:upload` with the use; `FLATCHAT_E2E_ANIMATION` for the end-to-end test), the list, delete |
+| The main process | `flatchat:animations`, `:animations:delete`, `flatchat:animation-file` (manifest checked with `checkAnimationManifest`, the VRMA from the content cache through the `vrma` link); `core-api.ts` `cleanAnimations`, `animations`, `animationSlot`, `deleteAnimation`, `animationFiles` |
+| Tested | `apps/client/test/emote.test.ts` in Node: the converter's dance on the converted feminine body raises the arm to 77–83° at one second and lifts the hips 1 to 3 cm at half a second; the end-to-end test uploads the BVH sample as a dance, plays it from B (`emoted`) and walks it off (`emoteStopped`, shot `1c-dancing`) |
+
+## Not Yet
+
+Audio and Rhubarb mouth tracks (part e); emotes on impostors.
