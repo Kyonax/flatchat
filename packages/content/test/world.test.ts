@@ -176,6 +176,18 @@ describe('broken scenes', () => {
     expect(codes(validateWorld(world(glb(j))))).toEqual(['marker-invalid', 'marker-invalid', 'marker-invalid', 'index-out-of-range']);
   });
 
+  it('reads a reverb zone, its room and its mix, and refuses a room it does not know (S6.06)', () => {
+    const at = (zone: Record<string, unknown>): ReturnType<typeof validateWorld> => {
+      const j = sceneJson();
+      (j['nodes'] as Array<Record<string, unknown>>)[4]!['extensions'] = { FLATCHAT_world: { zone } };
+      return validateWorld(world(glb(j)));
+    };
+    expect(at({ kind: 'reverb', size: [12, 6, 12], room: 'hall', mix: 0.5 }).scenes[0]!.zones[0]).toMatchObject({ kind: 'reverb', room: 'hall', mix: 0.5 });
+    expect(at({ kind: 'reverb', size: [4, 3, 4] }).scenes[0]!.zones[0]).toMatchObject({ room: 'room', mix: 0.35 });
+    expect(codes(at({ kind: 'reverb', size: [4, 3, 4], room: 'bathroom' }))).toEqual(['marker-invalid']);
+    expect(codes(at({ kind: 'reverb', size: [4, 3, 4], mix: 1.5 }))).toEqual(['marker-invalid']);
+  });
+
   it('finds the images inside a GLB', () => {
     const bin = png(4096, 4096);
     const j = sceneJson({ bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: bin.length }], buffers: [{ byteLength: bin.length }], images: [{ bufferView: 0, mimeType: 'image/png' }] });

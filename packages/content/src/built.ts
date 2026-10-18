@@ -7,6 +7,7 @@ import { plainText, WORLD_FORMAT, type WorldManifest } from './manifest.ts';
 import { readLook, type WorldLook } from './look.ts';
 import { OVERLAY_LIMITS, type OverlayLook, readOverlayLook } from './overlay.ts';
 import { isPart, MAX_PARTS } from './parts.ts';
+import { REVERB_ROOMS, type ReverbRoom } from './scene.ts';
 
 export const BUILT_FORMAT = 1;
 
@@ -45,9 +46,12 @@ export interface BuiltPortal extends BuiltBox {
 }
 
 export interface BuiltZone extends BuiltBox {
-  kind: 'voice' | 'quiet' | 'private';
+  kind: 'voice' | 'quiet' | 'private' | 'reverb';
   range?: number;
   gain?: number;
+  /** A reverb zone's room and mix (S6.06). */
+  room?: ReverbRoom;
+  mix?: number;
 }
 
 export interface BuiltEmitter {
@@ -194,7 +198,11 @@ export function parseBuiltWorld(json: unknown): { world: BuiltWorld } | { error:
         ),
         zones: list(s['zones'], `${at}.zones`, 256, (z, a) => {
           if (!isObj(z)) return fail(a, 'an object');
-          const kind: BuiltZone['kind'] = z['kind'] === 'voice' || z['kind'] === 'quiet' || z['kind'] === 'private' ? z['kind'] : fail(`${a}.kind`, 'voice, quiet or private');
+          const kind: BuiltZone['kind'] = z['kind'] === 'voice' || z['kind'] === 'quiet' || z['kind'] === 'private' || z['kind'] === 'reverb' ? z['kind'] : fail(`${a}.kind`, 'voice, quiet, private or reverb');
+          if (kind === 'reverb') {
+            const room = (REVERB_ROOMS as readonly unknown[]).includes(z['room']) ? (z['room'] as ReverbRoom) : fail(`${a}.room`, REVERB_ROOMS.join(', '));
+            return { ...box(z, a), kind, room, mix: num(z['mix'], `${a}.mix`, 0, 1) };
+          }
           return {
             ...box(z, a),
             kind,

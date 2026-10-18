@@ -26,6 +26,8 @@ describe('world.json', () => {
       [(w) => ((w['manifest'] as Record<string, unknown>)['name'] = 'x'.repeat(49)), /manifest.name/],
       [(w) => ((w['files'] as Array<Record<string, unknown>>)[0]!['kind'] = 'script'), /kind/],
       [(w) => ((w['scenes'] as Array<Record<string, unknown>>)[0]!['zones'] = [{ center: [0, 0, 0], half: [1, 1, 1], yaw: 0, kind: 'disco' }]), /kind/],
+      [(w) => ((w['scenes'] as Array<Record<string, unknown>>)[0]!['zones'] = [{ center: [0, 0, 0], half: [1, 1, 1], yaw: 0, kind: 'reverb', room: 'disco', mix: 0.3 }]), /room/],
+      [(w) => ((w['scenes'] as Array<Record<string, unknown>>)[0]!['zones'] = [{ center: [0, 0, 0], half: [1, 1, 1], yaw: 0, kind: 'reverb', room: 'hall', mix: 3 }]), /mix/],
     ];
     for (const [change, why] of cases) {
       const w = plaza();
@@ -34,6 +36,11 @@ describe('world.json', () => {
       expect('error' in r ? r.error : 'accepted').toMatch(why);
     }
     expect(parseBuiltWorld('not even an object')).toEqual({ error: 'world.json: an object' });
+    // A reverb zone (S6.06) is kept with its room and mix.
+    const w = plaza();
+    (w['scenes'] as Array<Record<string, unknown>>)[0]!['zones'] = [{ center: [0, 1, 0], half: [6, 3, 6], yaw: 0, kind: 'reverb', room: 'cave', mix: 0.6 }];
+    const r = parseBuiltWorld(w);
+    expect('world' in r && r.world.scenes[0]!.zones[0]).toMatchObject({ kind: 'reverb', room: 'cave', mix: 0.6 });
   });
 
   it('reads base library parts, and refuses one the library does not have (S2.05)', () => {

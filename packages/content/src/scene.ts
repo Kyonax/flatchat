@@ -64,7 +64,13 @@ export interface Portal {
   size: Vec3;
 }
 
-export type ZoneKind = 'voice' | 'quiet' | 'private';
+export type ZoneKind = 'voice' | 'quiet' | 'private' | 'reverb';
+
+/** A reverb zone's rooms (S6.06), shortest echo first: the client makes each one's sound. */
+export const REVERB_ROOMS = ['small', 'room', 'hall', 'cave', 'cathedral'] as const;
+export type ReverbRoom = (typeof REVERB_ROOMS)[number];
+/** How much of the room a reverb zone mixes in when it does not say. */
+export const REVERB_MIX = 0.35;
 
 export interface Zone {
   node: number;
@@ -73,6 +79,9 @@ export interface Zone {
   size: Vec3;
   range?: number;
   gain?: number;
+  /** A reverb zone's room and mix (0 to 1). */
+  room?: ReverbRoom;
+  mix?: number;
 }
 
 /** A base library part placed by a node (S2.05). */
@@ -412,8 +421,13 @@ export function inspectScene(json: Gltf, file: string): { scene?: SceneInfo; pro
         const z = f['zone'];
         const size = vec3(z['size']);
         const kind = z['kind'];
-        if (kind !== 'voice' && kind !== 'quiet' && kind !== 'private') add('marker-invalid', at('FLATCHAT_world.zone'), 'a zone is voice, quiet or private');
+        const room = z['room'] ?? 'room';
+        const mix = z['mix'] ?? REVERB_MIX;
+        if (kind !== 'voice' && kind !== 'quiet' && kind !== 'private' && kind !== 'reverb') add('marker-invalid', at('FLATCHAT_world.zone'), 'a zone is voice, quiet, private or reverb');
         else if (!positive(size)) add('marker-invalid', at('FLATCHAT_world.zone'), 'a zone has a positive size');
+        else if (kind === 'reverb' && !(REVERB_ROOMS as readonly unknown[]).includes(room)) add('marker-invalid', at('FLATCHAT_world.zone'), `a reverb zone's room is ${REVERB_ROOMS.join(', ')}`);
+        else if (kind === 'reverb' && !(typeof mix === 'number' && mix >= 0 && mix <= 1)) add('marker-invalid', at('FLATCHAT_world.zone'), "a reverb zone's mix is 0 to 1");
+        else if (kind === 'reverb') info.zones.push({ node: index, matrix, kind, size: size!, room: room as ReverbRoom, mix: mix as number });
         else {
           const range = typeof z['range'] === 'number' && z['range'] >= 1 && z['range'] <= 200 ? z['range'] : undefined;
           const gain = typeof z['gain'] === 'number' && z['gain'] >= 0 && z['gain'] <= 4 ? z['gain'] : undefined;

@@ -27,6 +27,9 @@ export {
   type Vec3,
   type Zone,
   type ZoneKind,
+  REVERB_MIX,
+  REVERB_ROOMS,
+  type ReverbRoom,
 } from './scene.ts';
 export { FILE_LIMIT, FOLDER_LIMIT, imageSize, validateWorld, type WorldReport } from './validate.ts';
 export {
