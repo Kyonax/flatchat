@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.42.0"
+  version: "1.43.0"
   verified: "2026-10-18"
 ---
 
@@ -80,6 +80,7 @@ Reference these guidelines when:
 | The free gallery: licence fields (VRM 1.0's terms), publishing, browsing, taking, withdrawing, copies refused at upload, the gallery and publish panels | `rules/gallery.md` + `rules/core-service.md` + `rules/client-app.md` |
 | Emotes and dances: VRMA, the retargeter (T-pose, A-pose straightening, facing, units), BVH, GLB clips, FBX through headless Blender, the animation golden files | `rules/animations.md` + `rules/avatar-converter.md` |
 | Avatars and items as FBX, OBJ, DAE or .blend: format detection, headless Blender on the core (to-glb.py), DAE through assimp, the format fixtures, declarations given at upload, the client's declaration form | `rules/model-formats.md` + `rules/avatar-converter.md` + `rules/items.md` |
+| Fingerprints (shapes, texture hashes), copies caught at upload, the takedown form and its status page, the admin page's takedown queue, removal everywhere, strikes and bans | `rules/fingerprints-and-takedowns.md` + `rules/core-service.md` + `rules/gallery.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
 | World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
 | Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
@@ -117,6 +118,7 @@ A trap-linter finding names its rule; read that rule.
 | `body-kits` | The three standard bodies made headless from MakeHuman's CC0 assets (MPFB 2.0.18, the VRM Add-on 4.10.2, Blender 5.2 LTS): presets, expression recipes, the underwear layer, MToon, the pinned setup, two agreeing runs, the checks in CI. |
 | `animations` | Emotes and dances into VRMA on the normalized humanoid: measured from the source's T-pose (A-pose rests straightened), stood up and turned to face +Z, hips baked and kept near, hand-written VRMA, BVH and GLB readers, FBX through headless Blender, golden files per format. |
 | `model-formats` | FBX, OBJ and .blend through headless Blender on the core, DAE through assimp in the converter (welded, defaults dropped), formats by first bytes, the manifests' `source.from`, declarations at upload and fits by mesh name, the Blender fixtures (deterministic bytes) and the stand-in Blender in the core's tests. |
+| `fingerprints-and-takedowns` | Every upload's fingerprint (a MinHash of triangle tokens per part, perceptual texture hashes) in result.json; copies of what was taken down (a strike) or of closed gallery entries caught after conversion, with what the kits explain set aside; the takedown form, the admin review, removal everywhere by manifest. |
 | `gallery` | The free gallery: licence fields required and never looser than an avatar's file, publishing at trust level 2, taken copies as ordinary rows, withdrawing, exact copies refused unless the licence allows them, fixed SQL with nullable filters. |
 | `items` | Items for the three bodies: one fit per body by bone names, fixed slots with caps, 16 hide-mask regions cut where garments end, `convertItem`, the bind-pose skeleton check and the no-clipping check in seven reference poses, the test tee. |
 | `movement-sim` | `packages/sim`: the controller's constants and steps, `SNAP` for rounded heights, `checkMove` on the server, the plaza and `--map`. |

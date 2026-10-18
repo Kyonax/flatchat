@@ -5,7 +5,7 @@ impactDescription: A gallery that takes a licence with a field missing, or one l
 tags: gallery, free gallery, S5.06, ad-008, Q-M29, Q-J4, licence, licence fields, VRM meta, avatarPermission, commercialUsage, creditNotation, allowRedistribution, modification, allowExcessivelyViolentUsage, allowExcessivelySexualUsage, allowPoliticalOrReligiousUsage, allowAntisocialOrHateUsage, licenseUrl, otherLicenseUrl, readLicence, LicenceError, licenceOfFile, looserThan, galleryProblems, STRICT_LICENCE, USAGE_FLAGS, publish, take, withdraw, copyRefused, browse, PUBLISH_TRUST, GALLERY_PAGE, gallery_id, published, fromGallery, migration 0014, GalleryPanel, PublishForm, LicenceSummary, publish-trust
 ---
 
-The free gallery (S5.06, ad-008) holds avatars and items anyone may wear, each under licence fields; new players start from the standard bodies and the gallery (Q-M29); ripping is accepted and mitigated (Q-J4): licence fields now, fingerprints and takedowns in S5.09. Effects join it when Stage 6 makes them. Creators' guide: `docs/items.md`, The free gallery.
+The free gallery (S5.06, ad-008) holds avatars and items anyone may wear, each under licence fields; new players start from the standard bodies and the gallery (Q-M29); ripping is accepted and mitigated (Q-J4): licence fields (S5.06), and fingerprints and takedowns (S5.09, rule `fingerprints-and-takedowns`). Effects join it when Stage 6 makes them. Creators' guide: `docs/items.md`, The free gallery.
 
 ## The Files
 
@@ -33,4 +33,4 @@ The free gallery (S5.06, ad-008) holds avatars and items anyone may wear, each u
 
 ## Not Yet
 
-Thumbnails for items (the item converter makes none: the list shows the slot), effects (Stage 6), changed copies (S5.09's fingerprints) and takedowns that remove an entry everywhere (S5.09, `removed_at`).
+Thumbnails for items (the item converter makes none: the list shows the slot) and effects (Stage 6). Changed copies and takedowns are S5.09's (rule `fingerprints-and-takedowns`).
