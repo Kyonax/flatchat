@@ -45,4 +45,4 @@ An attachment item is `slot: attachment` with `attach`: one rigid mesh, no skin,
 
 ## Not Yet
 
-Wearing items and layers in the world (the client attaching a fit to a kit body by bone names, hiding regions, compositing the skin at outfit change, outfits) is S5.05; uploads, the gallery and licence fields are S5.06.
+The world already carries outfits (protocol version 9, S5.05a: the `outfit` message and each roster player's `outfit`, fitted by the world; rule `protocol-and-codecs`). Item uploads through the core and saved outfits are S5.05b; the client wearing them (a fit on a kit body by bone names, regions hidden, props at their points, the skin composited at an outfit change, the outfits menu) is S5.05c; the gallery and licence fields are S5.06.
