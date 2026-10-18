@@ -36,7 +36,9 @@ export function checkGlb(bytes: Uint8Array): void {
 
 let ktx2: KTX2Loader | undefined;
 
-function loader(renderer: THREE.WebGPURenderer): GLTFLoader {
+/** A glTF loader with the converter's decoders (meshopt geometry, KTX2 textures), the KTX2
+ *  transcoder shared by every loader: worlds' scenes here, avatars' levels in avatar-loader.ts. */
+export function loader(renderer: THREE.WebGPURenderer): GLTFLoader {
   if (!ktx2) {
     const manager = new THREE.LoadingManager();
     const js = `data:text/javascript;base64,${btoa(unescape(encodeURIComponent(transcoderJs)))}`;

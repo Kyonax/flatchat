@@ -288,6 +288,15 @@ onBeforeUnmount(() => {
       :data-playing="state.sounds"
       :data-parts="state.parts"
     />
+    <span
+      v-if="state?.status === 'joined'"
+      hidden
+      data-test="avatar-counts"
+      :data-lod0="state.avatars.lod0"
+      :data-lod1="state.avatars.lod1"
+      :data-lod2="state.avatars.lod2"
+      :data-impostor="state.avatars.impostor"
+    />
     <div
       v-if="state?.notice"
       class="whud toast"

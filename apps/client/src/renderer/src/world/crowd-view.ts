@@ -21,6 +21,8 @@ export interface AvatarPose {
   /** The player's height over the standard body's (S2.07); 1 when left out. */
   scale?: number;
   sitting?: boolean;
+  /** Their own avatar is drawn (S4.05): no capsule, but the name and the speaking ring stay. */
+  avatarDrawn?: boolean;
 }
 
 export type TagFactory = (name: string) => THREE.Sprite;
@@ -104,10 +106,12 @@ export class CrowdView {
       scale.set(s, a.sitting ? s * 0.68 : s, s);
       this.q.setFromAxisAngle(this.up, a.yaw);
       this.m.compose(new THREE.Vector3(a.x, a.y, a.z), this.q, scale);
-      this.bodies.setMatrixAt(n, this.m);
-      this.bodies.setColorAt(n, colourOf(a.entity));
-      this.visors.setMatrixAt(n, this.m);
-      n += 1;
+      if (!a.avatarDrawn) {
+        this.bodies.setMatrixAt(n, this.m);
+        this.bodies.setColorAt(n, colourOf(a.entity));
+        this.visors.setMatrixAt(n, this.m);
+        n += 1;
+      }
       if (a.speaking > 0.05) {
         const r = (0.8 + Math.min(1, a.speaking) * 0.6) * s;
         this.m.compose(new THREE.Vector3(a.x, a.y, a.z), this.q, new THREE.Vector3(r, scale.y, r));

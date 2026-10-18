@@ -143,6 +143,12 @@ export default {
     mute: 'Mute yourself',
     earmuffs: 'Earmuffs: hear only people close by',
     people: 'People here',
+    happy: 'Look happy',
+    angry: 'Look angry',
+    sad: 'Look sad',
+    relaxed: 'Look relaxed',
+    surprised: 'Look surprised',
+    hands: 'Change your hands’ pose',
     menu: 'Menu',
   },
   keys: {

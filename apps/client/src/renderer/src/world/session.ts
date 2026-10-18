@@ -19,6 +19,8 @@ import { JoinRefused, WorldConnection } from '../net/connection';
 import { VoiceChain } from '../voice/chain';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
+import { AvatarLayer, type AvatarState } from './avatar-layer';
+import type { Expression, HandPose } from './avatar-pose';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
 import { Navigation } from './navigation';
@@ -61,6 +63,8 @@ export interface WorldState {
   players: number;
   rttMs: number;
   fps: number;
+  /** Avatars drawn at each level (S4.05), refreshed twice a second. */
+  avatars: { lod0: number; lod1: number; lod2: number; impostor: number };
   backend: string;
   locked: boolean;
   chat: ChatLine[];
@@ -86,6 +90,8 @@ export interface WorldState {
   role: Role;
   /** A moderator muted this player (S3.07): the reason, or undefined when not muted. */
   heldMute: string | undefined;
+  /** This player's expression (S4.07), for the HUD. */
+  expression: Expression;
   /** The accounts this player muted, in every world (S3.08). */
   silenced: string[];
   /** Earmuffs on: far voices drop to a murmur (S3.08). */
@@ -147,6 +153,13 @@ export class WorldSession {
   private joinedWall = 0;
   private renderer: THREE.WebGPURenderer | undefined;
   private crowd: CrowdView | undefined;
+  /** Players' own avatars (S4.05), over the placeholders. */
+  private avatarLayer: AvatarLayer | undefined;
+  /** Each player's worn avatar (its manifest's hash) and face (S4.07), from the roster. */
+  private readonly worn = new Map<number, string>();
+  private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
+  /** This player's own face, as sent. */
+  private face: { expression: Expression; left: HandPose; right: HandPose } = { expression: 'neutral', left: 'relaxed', right: 'relaxed' };
   private conn: WorldConnection | undefined;
   private chain: VoiceChain | undefined;
   private volume: GainNode | undefined;
@@ -203,6 +216,7 @@ export class WorldSession {
       players: 0,
       rttMs: 0,
       fps: 0,
+      avatars: { lod0: 0, lod1: 0, lod2: 0, impostor: 0 },
       backend: '',
       locked: false,
       chat: [],
@@ -219,6 +233,7 @@ export class WorldSession {
       people: [],
       role: 'visitor',
       heldMute: undefined,
+      expression: 'neutral',
       silenced: [],
       earmuffs: false,
       hidden: [],
@@ -250,6 +265,17 @@ export class WorldSession {
     this.detachers.push(() => window.removeEventListener('resize', resize));
     this.crowd = new CrowdView(canvasTag);
     view.scene.add(this.crowd.group);
+    // Avatars come from the core (S4.05): an offline world has none, and keeps the placeholders.
+    const bridge = window.flatchat;
+    if (bridge?.avatarFile) {
+      this.avatarLayer = new AvatarLayer(renderer, async (manifest, level) => {
+        const r = await bridge.avatarFile(manifest, level);
+        if (!r.ok) throw new Error(r.error);
+        return { bytes: r.bytes, manifest: r.manifest };
+      });
+      view.scene.add(this.avatarLayer.group);
+      this.detachers.push(() => this.avatarLayer?.dispose());
+    }
     this.scene = view.scene;
     this.mapMeshes = view.scene.children.filter((o) => o.name.startsWith('surface:'));
     await loadPhysics();
@@ -451,6 +477,8 @@ export class WorldSession {
       if (this.controls.took('view')) this.state.person = this.state.person === 'first' ? 'third' : 'first';
       if (this.controls.took('mute')) this.toggleMute();
       if (this.controls.took('earmuffs')) this.toggleEarmuffs();
+      for (const e of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) if (this.controls.took(e)) this.setFace({ expression: this.face.expression === e ? 'neutral' : e });
+      if (this.controls.took('hands')) this.setFace({ left: nextHand(this.face.left), right: nextHand(this.face.right) });
       if (this.state.status === 'joined') {
         if (this.controls.took('fly')) this.toggleFlying();
         if (this.controls.took('sit')) this.sitOrStand();
@@ -486,15 +514,48 @@ export class WorldSession {
     camera.position.set(pose.position.x, pose.position.y, pose.position.z);
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     if (this.sounds && this.state.status === 'joined') this.footsteps(now, pose.position);
-    this.crowd?.update(this.avatars(now), camera.position);
+    const poses = this.avatars(now);
+    const drawn = this.avatarLayer?.update(this.avatarStates(poses), camera, dt, now);
+    if (drawn) for (const p of poses) if (drawn.has(p.entity)) p.avatarDrawn = true;
+    this.crowd?.update(poses, camera.position);
     this.renderer?.render(scene, camera);
     this.frames += 1;
     if (now - this.fpsAt >= 500) {
       this.state.fps = Math.round((this.frames * 1000) / (now - this.fpsAt));
+      if (this.avatarLayer) this.state.avatars = this.avatarLayer.counts();
       this.frames = 0;
       this.fpsAt = now;
       this.remotes.prune(now - 5000);
     }
+  }
+
+  /** What the avatar layer draws this frame: each placeholder's pose with its avatar, stance, face
+   *  and the mouth its voice moves. */
+  private avatarStates(poses: readonly AvatarPose[]): AvatarState[] {
+    return poses.map((p) => {
+      const me = p.entity === this.entity;
+      return {
+        entity: p.entity,
+        manifest: this.worn.get(p.entity),
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        yaw: p.yaw,
+        stance: me ? (this.sitting ? 'sitting' : this.me.grounded ? 'standing' : 'jumping') : (this.stances.get(p.entity) ?? 'standing'),
+        face: me ? this.face : (this.faces.get(p.entity) ?? { expression: 'neutral', left: 'relaxed', right: 'relaxed' }),
+        mouth: me ? undefined : this.chain?.mouthOf(p.entity),
+        hidden: p.hidden === true,
+        height: this.heights.get(p.entity) ?? BODY.height,
+        me,
+      };
+    });
+  }
+
+  /** A new face or hand pose (S4.07): drawn at once here, sent to the world for everyone else. */
+  setFace(change: Partial<{ expression: Expression; left: HandPose; right: HandPose }>): void {
+    this.face = { ...this.face, ...change };
+    this.state.expression = this.face.expression;
+    if (this.state.status === 'joined') this.conn?.send({ type: 'face', ...this.face });
   }
 
   private avatars(now: number): AvatarPose[] {
@@ -620,7 +681,19 @@ export class WorldSession {
       this.names.clear();
       this.people.clear();
     }
+    if (r.full) {
+      const listed = new Set(r.players.map((p) => p.entity));
+      for (const id of [...this.worn.keys()]) if (!listed.has(id)) this.avatarLayer?.drop(id);
+      this.worn.clear();
+      this.faces.clear();
+    }
     for (const p of r.players) {
+      // The avatar they wear (S4.05) and their face (S4.07).
+      const manifest = p.avatar ? toHex(p.avatar) : undefined;
+      if (manifest) this.worn.set(p.entity, manifest);
+      else this.worn.delete(p.entity);
+      this.avatarLayer?.wear(p.entity, manifest);
+      this.faces.set(p.entity, p.face);
       // A change lists a player again (a new height, a role): only a new entity is an arrival.
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
@@ -641,6 +714,9 @@ export class WorldSession {
       this.stances.delete(id);
       this.strides.delete(id);
       this.remotes.forget(id);
+      this.worn.delete(id);
+      this.faces.delete(id);
+      this.avatarLayer?.drop(id);
     }
     this.rosterSeen = true;
     this.state.players = this.names.size;
@@ -916,4 +992,10 @@ export class WorldSession {
     void this.renderer?.setAnimationLoop(null);
     this.renderer?.dispose();
   }
+}
+
+const HANDS: readonly HandPose[] = ['relaxed', 'point', 'peace', 'thumbsUp', 'fist', 'open', 'rock'];
+/** The next hand pose in the cycle R steps through. */
+function nextHand(h: HandPose): HandPose {
+  return HANDS[(HANDS.indexOf(h) + 1) % HANDS.length]!;
 }

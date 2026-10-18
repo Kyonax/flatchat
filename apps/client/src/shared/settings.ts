@@ -3,7 +3,7 @@
 // shows and changes them). Pure: no Node.js, no Electron, no DOM. Anything malformed falls back to
 // its default field by field, so a damaged file never stops the client.
 
-export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'menu'] as const;
+export const ACTIONS = ['forward', 'back', 'left', 'right', 'run', 'jump', 'down', 'fly', 'sit', 'goto', 'teleport', 'view', 'chat', 'talk', 'mute', 'earmuffs', 'people', 'happy', 'angry', 'sad', 'relaxed', 'surprised', 'hands', 'menu'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** Two bindings per action at most: a main key and a second one. */
@@ -31,6 +31,13 @@ export const DEFAULT_KEYS: Bindings = {
   earmuffs: ['KeyN'],
   // Who is here, with their roles (S3.06), and later what one can do about them.
   people: ['Tab'],
+  // The face (S4.07): an emotion until pressed again; the hands' poses in turn.
+  happy: ['Digit1'],
+  angry: ['Digit2'],
+  sad: ['Digit3'],
+  relaxed: ['Digit4'],
+  surprised: ['Digit5'],
+  hands: ['KeyR'],
   menu: ['Escape'],
 };
 

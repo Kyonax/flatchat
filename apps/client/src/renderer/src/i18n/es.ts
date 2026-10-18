@@ -147,6 +147,12 @@ const es: Shape<typeof en> = {
     mute: 'Silenciarte',
     earmuffs: 'Orejeras: oír solo a quien está cerca',
     people: 'Personas aquí',
+    happy: 'Cara feliz',
+    angry: 'Cara de enfado',
+    sad: 'Cara triste',
+    relaxed: 'Cara relajada',
+    surprised: 'Cara de sorpresa',
+    hands: 'Cambiar la pose de las manos',
     menu: 'Menú',
   },
   keys: {
