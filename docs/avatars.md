@@ -1,6 +1,6 @@
 # Avatars
 
-FlatChat takes avatars as **VRM 1.0**, **VRM 0.x** or a **plain GLB** with a humanoid skeleton. Every avatar is converted on FlatChat's side before anyone sees it: the client only ever draws the converter's own output, never the file you uploaded (Stage 4, S4.02).
+FlatChat takes avatars as **VRM 1.0**, **VRM 0.x** or a **plain GLB** with a humanoid skeleton, and as **FBX**, **OBJ**, **DAE** or **.blend** (S5.08). Every avatar is converted on FlatChat's side before anyone sees it: the client only ever draws the converter's own output, never the file you uploaded (Stage 4, S4.02).
 
 ## What to upload
 
@@ -8,12 +8,24 @@ FlatChat takes avatars as **VRM 1.0**, **VRM 0.x** or a **plain GLB** with a hum
 |---|---|
 | VRoid Studio, UniVRM, Blender's VRM add-on (VRM 0.x or 1.0) | Everything the file has: the humanoid, expressions, look-at, first person, spring bones and colliders, MToon materials |
 | A GLB from Mixamo, Ready Player Me, Blender or Unity | The skeleton found by its bones' names (Mixamo's `mixamorig:Hips`, `Spine`, `Spine1`…; Unity's and Unreal's usual names; Blender's `thigh.L`), the mouth and blink shapes by their names (`viseme_aa`, `eyeBlinkLeft`, `aa`, `blink`) |
+| An FBX (Mixamo, Unity, Maya, 3ds Max), an OBJ or a `.blend` | Read by headless Blender on FlatChat's side into a GLB, then as a GLB: the skeleton and the shape keys by their names. An OBJ has no skeleton, so it is a free shape |
+| A DAE (Collada, as Second Life's tools write it) | Read by assimp inside the converter into a GLB, then as a GLB. Its shape keys stay behind, and so do the images it names by path |
 
 **Free shapes** (S4.11): a robot, a creature or a prop works too. A model whose skeleton lacks VRM's required bones, or has no skeleton at all, gets a hips node holding the whole model and the missing bones as empty nodes: it walks, turns and bobs as one, and the bones it has move with everyone's motions. Free shapes wear attachments and effects, not the body kits' clothes (Stage 5).
 
-The file must carry everything inside it (a `.vrm` or a `.glb`, not a `.gltf` with separate files), weigh at most 64 MB, and stay within the hard limits: 1,000,000 triangles, 2,000,000 vertices, 4,096 nodes, 256 meshes, 64 materials, 64 textures of at most 8,192 px, 32 skins of at most 1,024 joints, 512 morph targets on a mesh. The humanoid needs VRM's required bones: hips, spine, head, both upper and lower arms and hands, both upper and lower legs and feet.
+The file must carry everything inside it (a `.vrm`, a `.glb`, an `.fbx` with its textures embedded, a `.blend` with its images packed; not a `.gltf` with separate files), weigh at most 64 MB, and stay within the hard limits: 1,000,000 triangles, 2,000,000 vertices, 4,096 nodes, 256 meshes, 64 materials, 64 textures of at most 8,192 px, 32 skins of at most 1,024 joints, 512 morph targets on a mesh. The humanoid needs VRM's required bones: hips, spine, head, both upper and lower arms and hands, both upper and lower legs and feet.
 
 Refused, with the reason: a file Khronos's glTF-Validator (and, for a VRM, vrm-validator) finds errors in, a file that requires an extension FlatChat cannot show (Draco, for one), a VRM of another version than 0.x or 1.0, and a GLB whose skeleton has no names a rig would use. Repaired, with a note: normals a little off unit length, a joint named twice for one vertex, weights that do not add up to one, and a skin's `skeleton` hint that is not the joints' common root. These four were the only errors on 68 real avatars from VRoid Studio and Blender's exporter.
+
+## Other formats
+
+FlatChat knows a file by its first bytes, never by its name. VRM and GLB go to the converter as they are. An FBX, an OBJ or a `.blend` is first turned into a GLB by headless Blender 5.2 LTS on FlatChat's side (`tools/blender/convert/to-glb.py`, DR-15). Blender runs as a process of its own, in a sandbox like the converter's: no network, a 6 GB memory cap, five minutes, factory settings, and scripts inside the file never run. It keeps what the scene shows:
+
+- meshes with their skins and shape keys, the armature's bones;
+- materials and packed images;
+- custom properties.
+
+Every modifier but the armature is applied. Hidden objects and a rig's bone widgets are left out, and so are animations. A DAE is turned into a GLB inside the converter itself, by assimp compiled to WebAssembly (assimpjs): Blender 5 no longer reads Collada. Either way, the manifest names the upload itself (`source.from`, with the upload's SHA-256 and size), and the avatar is converted from there like any GLB. A server without Blender refuses FBX, OBJ and `.blend` with that reason. Run `node apps/core/scripts/tools.ts` to fetch the pinned Blender.
 
 ## What the converter makes
 

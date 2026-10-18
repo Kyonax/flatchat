@@ -8,7 +8,7 @@ Items are made for the three standard bodies in [kits/bodies/](../kits/bodies/):
 2. Model the garment on one body, then fit it to the others. The bodies share one topology, so a garment shaped from the body's own surface carries over exactly. Skin each fit to its body's armature, with weights painted or copied from the body.
 3. Mark each fitted mesh with a custom property `flatchat_fit` set to `feminine`, `masculine` or `neutral`.
 4. Give the scene a custom property `flatchat_item` holding JSON, for example `{"name": "Linen shirt", "slot": "top", "hides": ["chest", "belly", "upper_arm_l", "upper_arm_r"], "authors": ["You"]}`.
-5. Export a .glb with custom properties included and the armatures selected with their meshes.
+5. Export a .glb with custom properties included and the armatures selected with their meshes, or upload the `.blend` itself: Blender on FlatChat's side keeps its custom properties (S5.08).
 
 `node tools/converter/scripts/make-test-item.ts` writes the test tee ([kits/items/test-tee/](../kits/items/test-tee/)) exactly so. It is a tee cut from each kit's own chest, belly and upper arms, 8 mm out from the skin, and it is the garment the converter's tests check.
 
@@ -58,8 +58,8 @@ Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV 
 
 ## What the converter checks
 
-- **The file:** a .glb that passes the Khronos glTF-Validator, with everything inside it.
-- **The declaration:** a name, a slot and real regions.
+- **The file:** a .glb (or the GLB Blender or assimp made of the upload) that passes the Khronos glTF-Validator, with everything inside it.
+- **The declaration:** a name, a slot and real regions, the file's own or else the one given at upload.
 - **The fits:** each a skinned mesh on the kits' 53 bones, and within its slot's caps.
 - **The body:** each fit made on its kit. Its skeleton must sit within 1 cm of the body's at the trunk and legs, so a fit made on another body is refused.
 - **Each fit alone:** cleaned of everything but itself, with its textures fitted to the slot and encoded to KTX2, then checked with the client's own check.
@@ -70,9 +70,18 @@ Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV 
 
 The result is one file per fit and a manifest (`ItemManifest` in `packages/content/src/item.ts`), each named by its SHA-256.
 
+## Items from other programs
+
+An item may also be an FBX, an OBJ or a DAE (S5.08). These go into a GLB the way an avatar's do ([docs/avatars.md](avatars.md#other-formats)). None of them keeps custom properties, so:
+
+- **The declaration is given at upload.** The client asks for the item's name, its slot and the regions it hides (or the point it is worn at) and who made it, before it sends the file. The core checks the declaration then and keeps it with the upload, and the converter uses it when the file declares nothing. A declaration inside the file always comes first.
+- **Each fit is found by its mesh's name.** Name the skinned mesh after its body: `feminine`, `masculine` or `neutral` anywhere in the name, as in `shirt_feminine`.
+
+The converter's own tests make the test tee's feminine fit into an FBX the way another program writes a garment. That is one body's skeleton, the mesh named for its body and no custom properties. It sits on the body exactly as the GLB tee does. For several bodies in one file, a GLB or a `.blend` is the sure way.
+
 ## Uploading and wearing
 
-Upload an item from the client's home screen (Upload an item, a `.glb`), the way you upload an avatar (trust level 1, a few days after signing up with a verified email): the core runs the converter on it with the three standard bodies at hand, and the item is ready, or refused with every reason the converter gave. The home screen lists your items with the bodies each one fits.
+Upload an item from the client's home screen (Upload an item: a `.glb`, a `.blend`, an `.fbx`, an `.obj` or a `.dae`), the way you upload an avatar (trust level 1, a few days after signing up with a verified email): the core runs the converter on it with the three standard bodies at hand, and the item is ready, or refused with every reason the converter gave. The home screen lists your items with the bodies each one fits.
 
 To wear clothes, wear a standard body: any account can take one of the three on the home screen (Wear the feminine, masculine or neutral body), with no upload. An avatar uploaded from a kit's own `.vrm` file, unchanged, counts as that body too. An edited copy is a new avatar, and the kit's items don't fit it. Attachments go on any avatar.
 
