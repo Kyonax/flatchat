@@ -236,6 +236,24 @@ try {
       .then(() => 'ready')
       .catch(async () => (await page.locator('[data-test=animation]').first().getAttribute('data-status').catch(() => null)) ?? 'none');
     await snap('0-home');
+    // The help and credits pages (S6.07): the help with every key, the credits read from CREDITS.md.
+    await page.locator('[data-test=home-help]').click({ timeout: 10_000 });
+    steps['helpPage'] = await page
+      .locator('[data-test=help] [data-test=keys-help] kbd')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(() => page.locator('[data-test=help] [data-test=keys-help] kbd').count())
+      .catch(() => 0);
+    await snap('0a-help');
+    await page.locator('[data-test=help-credits]').click({ timeout: 10_000 });
+    steps['creditsPage'] = await page
+      .locator('[data-test=credits-assets] tbody tr')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(() => page.locator('[data-test=credits-assets] tbody tr').count())
+      .catch(() => 0);
+    await snap('0b-credits');
+    await page.locator('[data-test=credits-back]').click({ timeout: 10_000 });
     if (values.relay) {
       // Relay only, and no relay yet: the join cannot reach the world.
       await joinPlaza.click({ timeout: 20_000 });
@@ -396,6 +414,17 @@ try {
     steps['people'] = await page.locator('[data-test=people] [data-test=person]').first().getAttribute('data-role', { timeout: 10_000 }).catch(() => null);
     await snap('2b-people');
     await page.keyboard.press('Tab');
+    // The keys help over the world (S6.07): F1 opens it with every action's keys, F1 closes it.
+    await page.keyboard.press('F1');
+    steps['keysHelp'] = await page
+      .locator('[data-test=keys-help] kbd')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(() => page.locator('[data-test=keys-help] kbd').count())
+      .catch(() => 0);
+    await snap('2b-keys');
+    await page.keyboard.press('F1');
+    await page.locator('[data-test=keys-help]').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
     // A report from inside the world (S3.02): the menu, the form, the receipt.
     await page.keyboard.press('Escape');
     const reportWorld = page.locator('[data-test=report-world]');
@@ -563,6 +592,9 @@ try {
     steps['worldOverlay'] === true &&
     steps['worldLook'] === true &&
     steps['worldAudio'] === true &&
+    Number(steps['helpPage']) > 20 &&
+    Number(steps['creditsPage']) >= 10 &&
+    Number(steps['keysHelp']) > 20 &&
     typeof steps['gpuReset'] === 'object' &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).recoveredMs < 15_000 &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).resets === 1 &&
