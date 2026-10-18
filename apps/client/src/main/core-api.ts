@@ -3,7 +3,7 @@
 // sign-out, the account, the world browser (the public list, a world by its id, favourites) and
 // connect tokens; avatars, the standard bodies, items and outfits. Only the main process talks to the
 // core; the page never holds an account token. `fetch` is injected so tests need no network.
-import { BODY_KITS, type BodyKit, fitWornAdjust, type Licence, LicenceError, readLicence, type Slot, SLOTS, type WornAdjust } from '@flatchat/content';
+import { ANIMATION_USES, type AnimationUse, BODY_KITS, type BodyKit, fitWornAdjust, type Licence, LicenceError, readLicence, type Slot, SLOTS, type WornAdjust } from '@flatchat/content';
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -155,6 +155,46 @@ export function cleanItems(raw: unknown): ItemEntry[] {
         createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
         published: uuidOrNull(v['published']),
         fromGallery: uuidOrNull(v['fromGallery']),
+      },
+    ];
+  });
+}
+
+/** One of the account's emotes and dances (S5.07). */
+export interface AnimationEntry {
+  id: string;
+  name: string;
+  use: AnimationUse;
+  status: AvatarItem['status'];
+  /** What the upload was: vrma, gltf, bvh or fbx, once converted. */
+  source: string;
+  duration: number | null;
+  loop: boolean;
+  problems: string[];
+  warnings: string[];
+  manifest: string | null;
+  createdAt: string;
+}
+
+/** Keeps only well-formed animations from the core's answer. */
+export function cleanAnimations(raw: unknown): AnimationEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 200).flatMap((a): AnimationEntry[] => {
+    const v = a as Record<string, unknown>;
+    if (typeof v['id'] !== 'string' || !UUID.test(v['id']) || typeof v['status'] !== 'string' || !STATUSES.has(v['status']) || !(ANIMATION_USES as readonly unknown[]).includes(v['use'])) return [];
+    return [
+      {
+        id: v['id'],
+        name: typeof v['name'] === 'string' ? v['name'].slice(0, 64) : '',
+        use: v['use'] as AnimationUse,
+        status: v['status'] as AnimationEntry['status'],
+        source: typeof v['source'] === 'string' ? v['source'].slice(0, 8) : '',
+        duration: typeof v['duration'] === 'number' && Number.isFinite(v['duration']) ? v['duration'] : null,
+        loop: v['loop'] === true,
+        problems: lines(v['problems']),
+        warnings: lines(v['warnings']),
+        manifest: typeof v['manifest'] === 'string' && HEX64.test(v['manifest']) ? v['manifest'] : null,
+        createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
       },
     ];
   });
@@ -600,6 +640,30 @@ export class CoreApi {
   async deleteOutfit(access: string, id: string): Promise<void> {
     if (!/^[0-9a-f-]{36}$/.test(id)) throw new CoreError(400, 'bad-request', 'not an outfit id');
     await this.call('DELETE', `/api/v1/outfits/${id}`, undefined, access);
+  }
+
+  // ---------------------------------------------------------------- emotes and dances (S5.07)
+
+  async animations(access: string): Promise<AnimationEntry[]> {
+    return cleanAnimations((await this.call<{ animations?: unknown }>('GET', '/api/v1/animations', undefined, access)).animations);
+  }
+
+  async animationSlot(access: string, file: { name: string; bytes: number; sha256: string; use: AnimationUse }): Promise<{ id: string; url: string }> {
+    const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown } }>('POST', '/api/v1/animations', file, access);
+    if (typeof r.id !== 'string' || typeof r.upload?.url !== 'string' || r.upload.method !== 'PUT') throw new CoreError(502, 'bad-answer', 'the core sent no upload slot');
+    return { id: r.id, url: this.onCore(r.upload.url) };
+  }
+
+  async deleteAnimation(access: string, id: string): Promise<void> {
+    if (!UUID.test(id)) throw new CoreError(400, 'bad-request', 'not an animation id');
+    await this.call('DELETE', `/api/v1/animations/${id}`, undefined, access);
+  }
+
+  /** A ready animation's manifest and signed links to it and its VRMA. */
+  async animationFiles(access: string, manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    if (!HEX64.test(manifest)) throw new CoreError(400, 'bad-request', 'not a manifest hash');
+    const r = await this.call<{ manifest?: unknown; links?: unknown }>('GET', `/api/v1/animation-files/${manifest}`, undefined, access);
+    return { manifest: r.manifest, links: this.linksOf(r.links) };
   }
 
   // ---------------------------------------------------------------- the free gallery (S5.06)

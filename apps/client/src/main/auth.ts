@@ -6,8 +6,8 @@
 // here as a TokenStore); the access token lives only in memory. A refresh token works once, so
 // refreshes are serialised: two at once would look like a stolen token and end the session.
 import { createHash, randomBytes } from 'node:crypto';
-import { type Account, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type GalleryEntry, type ItemEntry, type JoinTicket, type MyReport, type OutfitEntry, type Person, type ReportBody, type WornEntry, type WorldSummary } from './core-api';
-import type { BodyKit, Licence } from '@flatchat/content';
+import { type Account, type AnimationEntry, type AvatarItem, type BanAppeal, type CoreApi, CoreError, type CoreTokens, type GalleryEntry, type ItemEntry, type JoinTicket, type MyReport, type OutfitEntry, type Person, type ReportBody, type WornEntry, type WorldSummary } from './core-api';
+import type { AnimationUse, BodyKit, Licence } from '@flatchat/content';
 import { listenForCallback } from './loopback';
 
 export interface TokenStore {
@@ -254,6 +254,25 @@ export class Auth {
 
   async deleteOutfit(id: string): Promise<void> {
     return this.api.deleteOutfit(await this.access(), id);
+  }
+
+  // Emotes and dances (S5.07).
+  async animations(): Promise<AnimationEntry[]> {
+    return this.api.animations(await this.access());
+  }
+
+  async uploadAnimation(name: string, bytes: Uint8Array, use: AnimationUse): Promise<string> {
+    const slot = await this.api.animationSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), use });
+    await this.api.sendUpload(slot.url, bytes);
+    return slot.id;
+  }
+
+  async deleteAnimation(id: string): Promise<void> {
+    return this.api.deleteAnimation(await this.access(), id);
+  }
+
+  async animationFiles(manifest: string): Promise<{ manifest: unknown; links: Record<string, string> }> {
+    return this.api.animationFiles(await this.access(), manifest);
   }
 
   // The free gallery (S5.06).

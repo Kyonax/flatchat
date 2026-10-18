@@ -21,12 +21,18 @@
 // points (outfit.ts). Items conflicting in the roster are settled as a toggle settles them, the one
 // worn later winning (resolveOutfit). Each item's manifest and files are parsed once and shared by
 // every avatar wearing it; one outfit is put on at a time. Impostors wear none.
-import type { AvatarManifest, BodyKit, ItemManifest, Level, Rank, Region } from '@flatchat/content';
+//
+// Emotes and dances (S5.07) play on LOD0 to LOD2: the roster says which VRMA and the world tick it
+// started at; three-vrm-animation retargets it onto the avatar's normalized humanoid, set to the
+// time since that tick (a dance loops, an emote plays once and hands back to walking). Each VRMA is
+// parsed once and shared. Impostors keep walking.
+import type { AnimationManifest, AvatarManifest, BodyKit, ItemManifest, Level, Rank, Region } from '@flatchat/content';
 import { rankIndex, resolveOutfit } from '@flatchat/content';
 import type { VRM } from '@pixiv/three-vrm';
+import { createVRMAnimationClip, type VRMAnimation } from '@pixiv/three-vrm-animation';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three/webgpu';
-import { disposeLevel, parseItemFile, parseLevel } from './avatar-loader';
+import { disposeLevel, parseAnimation, parseItemFile, parseLevel } from './avatar-loader';
 import { type BoneAngles, type Expression, gaitOf, handPose, type HandPose, locomotion, mouthShapes, strideRate } from './avatar-pose';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 
@@ -47,6 +53,8 @@ export interface AvatarState {
   height: number;
   /** This player's own avatar: always in full. */
   me: boolean;
+  /** Seconds since the emote or dance it plays started (S5.07), when one plays. */
+  emoteTime?: number;
 }
 
 export interface AvatarPolicy {
@@ -67,6 +75,8 @@ export const DEFAULT_POLICY: AvatarPolicy = { full: 8, lower: 20, springs: 6, mi
 export type Fetcher = (manifest: string, level: Level) => Promise<{ bytes: ArrayBuffer; manifest: AvatarManifest; kit?: BodyKit }>;
 /** An item's manifest (`manifest`), or its manifest and one of its files: a body's fit, or the prop. */
 export type ItemFetcher = (manifest: string, part: 'manifest' | 'prop' | BodyKit) => Promise<{ manifest: ItemManifest; bytes?: ArrayBuffer }>;
+/** An emote's or a dance's manifest and its VRMA (S5.07). */
+export type AnimationFetcher = (manifest: string) => Promise<{ manifest: AnimationManifest; bytes: ArrayBuffer }>;
 /** A worn item, as the roster gives it: its manifest's SHA-256 in hex and a prop's adjustment. */
 export interface Worn {
   item: string;
@@ -132,6 +142,11 @@ interface Entry {
   wornItems: number;
   /** Each bone's place at rest on the current level, for props. */
   rest2: Map<string, THREE.Matrix4> | undefined;
+  /** The emote or dance it plays (S5.07), and its action on the current level once loaded. */
+  emote: string | undefined;
+  playing: { anim: string; vrm: VRM; mixer: THREE.AnimationMixer; action: THREE.AnimationAction; duration: number; loop: boolean } | undefined;
+  /** The emote last loaded or tried for this level: tried once, not every frame. */
+  emoteTried: string | undefined;
 }
 
 const euler = new THREE.Euler();
@@ -163,11 +178,76 @@ export class AvatarLayer {
   private readonly fits = new Map<string, Promise<FitTemplate>>();
   private readonly props = new Map<string, Promise<THREE.Object3D>>();
   private readonly pendingOutfits = new Map<number, Worn[]>();
+  private readonly fetchAnimation: AnimationFetcher | undefined;
+  private readonly animations = new Map<string, Promise<{ animation: VRMAnimation; manifest: AnimationManifest }>>();
+  private readonly pendingEmotes = new Map<number, string | undefined>();
+  /** Emotes that could not be played. */
+  emoteFailures = 0;
 
-  constructor(renderer: THREE.WebGPURenderer, fetch: Fetcher, fetchItem?: ItemFetcher) {
+  constructor(renderer: THREE.WebGPURenderer, fetch: Fetcher, fetchItem?: ItemFetcher, fetchAnimation?: AnimationFetcher) {
     this.renderer = renderer;
     this.fetch = fetch;
     this.fetchItem = fetchItem;
+    this.fetchAnimation = fetchAnimation;
+  }
+
+  /** The emote or dance a player plays changed (a roster entry, S5.07): its manifest, or none. */
+  play(entity: number, anim: string | undefined): void {
+    this.pendingEmotes.set(entity, anim);
+    const e = this.entries.get(entity);
+    if (!e || e.emote === anim) return;
+    e.emote = anim;
+    e.emoteTried = undefined;
+    this.stopPlaying(e);
+  }
+
+  /** Whether a player's avatar is playing an emote or a dance in this frame. */
+  emoting(entity: number): boolean {
+    return this.entries.get(entity)?.playing?.action.isRunning() === true;
+  }
+
+  private stopPlaying(e: Entry): void {
+    if (!e.playing) return;
+    e.playing.action.stop();
+    e.playing.mixer.uncacheRoot(e.playing.vrm.scene);
+    e.playing = undefined;
+  }
+
+  /** The emote's VRMA, parsed once and shared by every avatar playing it. */
+  private animation(hash: string): Promise<{ animation: VRMAnimation; manifest: AnimationManifest }> {
+    let a = this.animations.get(hash);
+    if (!a) {
+      a = (async () => {
+        const got = await this.fetchAnimation!(hash);
+        return { animation: await parseAnimation(this.renderer, got.bytes), manifest: got.manifest };
+      })();
+      a.catch(() => this.animations.delete(hash));
+      this.animations.set(hash, a);
+    }
+    return a;
+  }
+
+  /** Readies an entry's emote on its current level (once per level and emote). */
+  private readyEmote(e: Entry): void {
+    const vrm = e.vrm;
+    const anim = e.emote;
+    if (!vrm || !anim || !this.fetchAnimation || e.emoteTried === anim || (e.playing && e.playing.anim === anim && e.playing.vrm === vrm)) return;
+    if (e.playing) this.stopPlaying(e);
+    e.emoteTried = anim;
+    void this.animation(anim)
+      .then(({ animation, manifest }) => {
+        if (e.vrm !== vrm || e.emote !== anim) return;
+        const mixer = new THREE.AnimationMixer(vrm.scene);
+        const action = mixer.clipAction(createVRMAnimationClip(animation, vrm));
+        action.setLoop(manifest.use === 'dance' ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+        action.clampWhenFinished = false;
+        action.play();
+        e.playing = { anim, vrm, mixer, action, duration: manifest.duration, loop: manifest.use === 'dance' };
+        e.emoteTried = undefined;
+      })
+      .catch(() => {
+        this.emoteFailures += 1;
+      });
   }
 
   /** What a player wears changed (a roster entry, S5.05). */
@@ -212,6 +292,9 @@ export class AvatarLayer {
       worn: [],
       wornItems: 0,
       rest2: undefined,
+      emote: this.pendingEmotes.get(entity),
+      playing: undefined,
+      emoteTried: undefined,
     });
   }
 
@@ -265,6 +348,7 @@ export class AvatarLayer {
   drop(entity: number): void {
     this.pending.delete(entity);
     this.pendingOutfits.delete(entity);
+    this.pendingEmotes.delete(entity);
     const e = this.entries.get(entity);
     if (!e) return;
     this.clear(e);
@@ -276,6 +360,8 @@ export class AvatarLayer {
     e.rest = new Map();
     // The worn items share their parsed files with every other wearer: off before the level goes.
     this.undress(e);
+    this.stopPlaying(e);
+    e.emoteTried = undefined;
     e.rest2 = undefined;
     if (e.vrm) {
       e.holder.remove(e.vrm.scene);
@@ -339,6 +425,7 @@ export class AvatarLayer {
         if (e.level !== 'impostor') springs += 1;
         if (!s.hidden) this.inView += 1;
         if (e.vrm && e.dressed !== this.outfitKey(e)) this.dressUp(s.entity, e);
+        if (e.vrm && e.emote) this.readyEmote(e);
       }
       if (!s.hidden) drawn.add(s.entity);
     }
@@ -441,8 +528,19 @@ export class AvatarLayer {
     if (e.vrm) {
       const vrm = e.vrm;
       vrm.humanoid.resetNormalizedPose();
-      const bones: BoneAngles = { ...pose.bones, ...handPose(s.face.left, s.face.right) };
-      for (const [bone, [x, y, z]] of Object.entries(bones)) vrm.humanoid.getNormalizedBoneNode(bone as Parameters<VRM['humanoid']['getNormalizedBoneNode']>[0])?.rotation.set(x, y, z);
+      // An emote or a dance (S5.07) holds the body while it plays: at the time since it started
+      // (a dance round and round, an emote once); otherwise the shared walk and the hands' pose.
+      const p = e.playing && e.playing.vrm === vrm && s.emoteTime !== undefined ? e.playing : undefined;
+      const t = p ? (p.loop ? s.emoteTime! % Math.max(p.duration, 1 / 30) : s.emoteTime!) : 0;
+      if (p && (p.loop || t <= p.duration)) {
+        if (!p.action.isRunning()) p.action.reset().play();
+        p.action.time = t;
+        p.mixer.update(0);
+      } else {
+        if (p?.action.isRunning()) p.action.stop();
+        const bones: BoneAngles = { ...pose.bones, ...handPose(s.face.left, s.face.right) };
+        for (const [bone, [x, y, z]] of Object.entries(bones)) vrm.humanoid.getNormalizedBoneNode(bone as Parameters<VRM['humanoid']['getNormalizedBoneNode']>[0])?.rotation.set(x, y, z);
+      }
       const ex = vrm.expressionManager;
       if (ex) {
         const mouth = mouthShapes(s.mouth);
@@ -634,5 +732,6 @@ export class AvatarLayer {
     this.fits.clear();
     this.props.clear();
     this.itemManifests.clear();
+    this.animations.clear();
   }
 }

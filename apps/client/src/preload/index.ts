@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('flatchat', {
   outfits: (): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits'),
   saveOutfit: (id: string | null, name: string, items: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:save', id, name, items),
   deleteOutfit: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:delete', id),
+  // Emotes and dances (S5.07).
+  animations: (): Promise<unknown> => ipcRenderer.invoke('flatchat:animations'),
+  uploadAnimation: (use: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animations:upload', use),
+  deleteAnimation: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animations:delete', id),
+  animationFile: (manifest: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animation-file', manifest),
   // The free gallery (S5.06).
   gallery: (q: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery', q),
   publish: (req: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery:publish', req),

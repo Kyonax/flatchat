@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AvatarsPanel from './AvatarsPanel.vue';
 import ItemsPanel from './ItemsPanel.vue';
+import AnimationsPanel from './AnimationsPanel.vue';
 import GalleryPanel from './GalleryPanel.vue';
 import WorldRow from './WorldRow.vue';
 
@@ -291,6 +292,7 @@ onMounted(load);
       </template>
       <AvatarsPanel :key="`avatars-${shelf}`" />
       <ItemsPanel :key="`items-${shelf}`" />
+      <AnimationsPanel />
       <GalleryPanel @taken="shelf += 1" />
       <template v-if="reports.length > 0">
         <h2>{{ t('home.reports') }}</h2>

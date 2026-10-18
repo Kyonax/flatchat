@@ -113,6 +113,10 @@ export interface WorldState {
   outfit: Worn[];
   /** Items drawn on avatars now, everyone's together (S5.05). */
   dressed: number;
+  /** The emote or dance this player plays (its manifest), '' for none (S5.07); and whether the
+   *  avatar shows it in this frame. */
+  emote: string;
+  emoting: boolean;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -201,6 +205,14 @@ export class WorldSession {
   private outfitSentAt = -Infinity;
   private outfitTimer: ReturnType<typeof setTimeout> | undefined;
   private outfitRestored = false;
+  /** Each player's emote or dance (S5.07): the animation and the world tick it started at. */
+  private readonly emotes = new Map<number, { anim: string; tick: number }>();
+  /** The world's clock: the last snapshot's tick and when it came, and the tick rate. */
+  private serverTick = 0;
+  private serverTickAt = 0;
+  private emoteSentAt = -Infinity;
+  private emoteTimer: ReturnType<typeof setTimeout> | undefined;
+  private wantEmote: string | undefined | null = null;
   private closed = false;
   /** Set while the page's chat box has focus: keys go to the text, not the avatar. */
   typing = false;
@@ -264,6 +276,8 @@ export class WorldSession {
       minor: false,
       outfit: [],
       dressed: 0,
+      emote: '',
+      emoting: false,
     });
   }
 
@@ -302,6 +316,13 @@ export class WorldSession {
               const r = await bridge.itemFile(manifest, part);
               if (!r.ok) throw new Error(r.error);
               return { manifest: r.manifest, ...(r.bytes ? { bytes: r.bytes } : {}) };
+            }
+          : undefined,
+        bridge.animationFile
+          ? async (manifest) => {
+              const r = await bridge.animationFile(manifest);
+              if (!r.ok) throw new Error(r.error);
+              return { manifest: r.manifest, bytes: r.bytes };
             }
           : undefined,
       );
@@ -530,8 +551,10 @@ export class WorldSession {
       let axes = this.typing ? { forward: 0, right: 0 } : this.controls.axes();
       const keys = axes.forward !== 0 || axes.right !== 0;
       const jump = !this.typing && this.controls.held('jump');
-      // A key takes over from a walk to a spot; any move stands a seated player up.
+      // A key takes over from a walk to a spot; any move stands a seated player up, and ends an
+      // emote or a dance (S5.07).
       if (keys) this.walker = undefined;
+      if ((keys || jump || this.walker) && this.state.emote && this.wantEmote !== undefined) this.playEmote(undefined);
       if (this.sitting && (keys || jump)) this.sitting = false;
       if (this.walker) {
         axes = this.walker.input(this.me, this.controls.yaw, dt);
@@ -566,6 +589,7 @@ export class WorldSession {
       if (this.avatarLayer) {
         this.state.avatars = this.avatarLayer.counts();
         this.state.dressed = this.avatarLayer.dressedItems();
+        this.state.emoting = this.avatarLayer.emoting(this.entity);
       }
       this.frames = 0;
       this.fpsAt = now;
@@ -591,8 +615,41 @@ export class WorldSession {
         hidden: p.hidden === true,
         height: this.heights.get(p.entity) ?? BODY.height,
         me,
+        ...this.emoteTimeOf(p.entity),
       };
     });
+  }
+
+  /** Seconds since a player's emote started, by the world's clock (S5.07). */
+  private emoteTimeOf(entity: number): { emoteTime?: number } {
+    const e = this.emotes.get(entity);
+    const hz = this.conn?.welcome?.tickHz ?? 20;
+    if (!e || this.serverTickAt === 0) return {};
+    const nowTick = this.serverTick + ((performance.now() - this.serverTickAt) * hz) / 1000;
+    return { emoteTime: Math.max(0, (nowTick - e.tick) / hz) };
+  }
+
+  /** Plays an emote or a dance (its manifest), or stops it (S5.07): sent to the world, which tells
+   *  everyone with the tick it started at. Two changes a second at most; a quicker one waits. */
+  playEmote(anim: string | undefined): void {
+    this.wantEmote = anim;
+    this.state.emote = anim ?? '';
+    this.flushEmote();
+  }
+
+  private flushEmote(): void {
+    if (this.wantEmote === null || this.state.status !== 'joined' || !this.conn) return;
+    const wait = this.emoteSentAt + 550 - performance.now();
+    if (wait > 0) {
+      this.emoteTimer ??= setTimeout(() => {
+        this.emoteTimer = undefined;
+        this.flushEmote();
+      }, wait);
+      return;
+    }
+    this.conn.send({ type: 'emote', ...(this.wantEmote ? { anim: fromHex(this.wantEmote) } : {}) });
+    this.emoteSentAt = performance.now();
+    this.wantEmote = null;
   }
 
   /** The viewer's policy (S4.09), the frame-rate tuner, and the first visit's measurement. */
@@ -745,6 +802,11 @@ export class WorldSession {
   }
 
   private snapshot(s: MessageOf<'snapshot'>): void {
+    // The world's clock, for emotes in step (S5.07).
+    if (s.tick >= this.serverTick) {
+      this.serverTick = s.tick;
+      this.serverTickAt = performance.now();
+    }
     // A refused move: back to where the server has the player.
     if (s.correction && s.correction.seq !== 0) {
       this.me = { x: s.correction.position.x, y: s.correction.position.y, z: s.correction.position.z, vy: 0, grounded: true };
@@ -787,6 +849,11 @@ export class WorldSession {
       // What they wear (S5.05), as the world fitted it.
       const outfit = p.outfit.map((w) => ({ item: toHex(w.item), ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
       this.avatarLayer?.dress(p.entity, outfit);
+      // The emote or dance they play (S5.07), and when it started.
+      if (p.emote) this.emotes.set(p.entity, { anim: toHex(p.emote.anim), tick: p.emote.tick });
+      else this.emotes.delete(p.entity);
+      this.avatarLayer?.play(p.entity, p.emote ? toHex(p.emote.anim) : undefined);
+      if (p.entity === this.entity && this.wantEmote === null) this.state.emote = p.emote ? toHex(p.emote.anim) : '';
       if (p.entity === this.entity) {
         if (!this.wantOutfit) this.state.outfit = outfit;
         // At the first roster: what this account wore last time, from the settings.
@@ -819,6 +886,7 @@ export class WorldSession {
       this.worn.delete(id);
       this.faces.delete(id);
       this.trusts.delete(id);
+      this.emotes.delete(id);
       this.avatarLayer?.drop(id);
     }
     this.rosterSeen = true;
@@ -1091,6 +1159,7 @@ export class WorldSession {
     this.sounds?.close();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     if (this.outfitTimer) clearTimeout(this.outfitTimer);
+    if (this.emoteTimer) clearTimeout(this.emoteTimer);
     for (const track of this.mic?.getTracks() ?? []) track.stop();
     this.chain?.close();
     void this.renderer?.setAnimationLoop(null);

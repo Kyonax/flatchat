@@ -12,6 +12,7 @@ import BanAppeal from './BanAppeal.vue';
 import ReportForm from './ReportForm.vue';
 import type { ReportDraft } from '../world/report';
 import MicQuestion from './MicQuestion.vue';
+import EmoteMenu from './EmoteMenu.vue';
 import OutfitMenu from './OutfitMenu.vue';
 
 const props = defineProps<{
@@ -34,8 +35,9 @@ const tooFast = ref(false);
 const menu = ref(false);
 /** The People panel (S3.06): who is here, their roles, and the roles this player may give. */
 const peopleOpen = ref(false);
-/** The outfits quick menu (S5.05). */
+/** The outfits quick menu (S5.05), and the emotes menu (S5.07). */
 const outfitsOpen = ref(false);
+const emotesOpen = ref(false);
 /** The person a moderator is acting on in the panel (S3.07), and the choice and reason. */
 const moderating = ref('');
 const modChoice = ref<(typeof MODERATION)[number]['id']>('kick');
@@ -90,7 +92,7 @@ const refusedDetail = computed(() => {
 });
 /** While the menu, the chat box, the People panel or a report is open, keys go to the page (its
  *  buttons and fields), not to the avatar: the session leaves them alone. */
-const overlay = computed(() => menu.value || chatOpen.value || peopleOpen.value || outfitsOpen.value || reporting.value !== undefined);
+const overlay = computed(() => menu.value || chatOpen.value || peopleOpen.value || outfitsOpen.value || emotesOpen.value || reporting.value !== undefined);
 
 /** Banned here, now or before: the player may appeal to the world's owner (S3.07). */
 const banned = computed(() => (state.value?.status === 'refused' || state.value?.status === 'lost') && state.value.reason === 'banned' && !props.ticket.local);
@@ -134,6 +136,9 @@ function onKey(e: KeyboardEvent): void {
   } else if (action === 'outfits' || (outfitsOpen.value && e.code === 'Escape')) {
     e.preventDefault();
     toggleOutfits();
+  } else if (action === 'emotes' || (emotesOpen.value && e.code === 'Escape')) {
+    e.preventDefault();
+    toggleEmotes();
   } else if (action === 'menu' && !asking.value) {
     // Esc opens the menu: releasing a held pointer opens it (onLockChange), and with the pointer
     // already free there is no lock to release, so it opens here.
@@ -162,6 +167,21 @@ function toggleOutfits(): void {
 
 function wearOutfit(items: FlatchatWorn[]): void {
   session?.wearOutfit(items);
+}
+
+/** The emotes menu frees the mouse to click in it; a choice plays and closes it. */
+function toggleEmotes(): void {
+  emotesOpen.value = !emotesOpen.value;
+  if (emotesOpen.value) {
+    outfitsOpen.value = false;
+    peopleOpen.value = false;
+    session?.unlock();
+  } else session?.lock();
+}
+
+function playEmote(anim: string | undefined): void {
+  session?.playEmote(anim);
+  if (anim) toggleEmotes();
 }
 
 // What this account wears goes into the settings by account (S5.05): the next world gets it too.
@@ -237,7 +257,7 @@ function give(p: Person, role: string): void {
 function onLockChange(): void {
   // Esc releases the pointer (the browser's own key): that opens the menu, unless chat, the
   // People panel or a report took it.
-  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
+  if (!document.pointerLockElement && !chatOpen.value && !peopleOpen.value && !outfitsOpen.value && !emotesOpen.value && !reporting.value && state.value?.status === 'joined' && !asking.value) menu.value = true;
 }
 
 function look(): void {
@@ -245,6 +265,7 @@ function look(): void {
   menu.value = false;
   peopleOpen.value = false;
   outfitsOpen.value = false;
+  emotesOpen.value = false;
   session?.lock();
 }
 
@@ -351,6 +372,13 @@ onBeforeUnmount(() => {
       :data-items="state.outfit.length"
       :data-dressed="state.dressed"
     />
+    <span
+      v-if="state?.status === 'joined'"
+      hidden
+      data-test="emote"
+      :data-anim="state.emote"
+      :data-playing="state.emoting ? 1 : 0"
+    />
     <div
       v-if="state?.notice"
       class="whud toast"
@@ -376,7 +404,7 @@ onBeforeUnmount(() => {
       {{ state.download ? t('world.downloading', { percent: Math.floor((100 * state.download.done) / Math.max(1, state.download.total)) }) : t('world.connecting', { world: world.name }) }}
     </div>
     <div
-      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !outfitsOpen && !menu && !asking && !paused"
+      v-else-if="state?.status === 'joined' && !state.locked && !chatOpen && !peopleOpen && !outfitsOpen && !emotesOpen && !menu && !asking && !paused"
       class="center whud hint"
       @click="look"
     >
@@ -424,6 +452,12 @@ onBeforeUnmount(() => {
       {{ t('world.heldMute') }}{{ state.heldMute ? ` · ${t('world.reason', { reason: state.heldMute })}` : '' }}
     </div>
 
+    <EmoteMenu
+      v-if="emotesOpen && state?.status === 'joined'"
+      :playing="state.emote"
+      @play="playEmote"
+      @close="toggleEmotes"
+    />
     <OutfitMenu
       v-if="outfitsOpen && state?.status === 'joined'"
       :outfit="state.outfit"

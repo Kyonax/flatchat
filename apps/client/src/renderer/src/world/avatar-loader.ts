@@ -5,8 +5,9 @@
 // only the converter's extensions, the hard limits). MToon becomes node materials on the WebGPU
 // renderer; each avatar gets one skeleton, shared texture objects and no outline pass, as spike
 // S0.09 measured a crowd needs.
-import { checkAvatarLevel, checkItemFit, checkItemProp, readGltf } from '@flatchat/content';
+import { checkAnimationFile, checkAvatarLevel, checkItemFit, checkItemProp, readGltf } from '@flatchat/content';
 import { MToonMaterialLoaderPlugin, type VRM, VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { type VRMAnimation, VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
 import { MToonNodeMaterial } from '@pixiv/three-vrm/nodes';
 import type * as THREE from 'three/webgpu';
 import { shareTextures } from '../crowd/avatar';
@@ -75,4 +76,19 @@ export async function parseItemFile(renderer: THREE.WebGPURenderer, bytes: Array
     if (mesh.isMesh) mesh.frustumCulled = false;
   });
   return gltf.scene;
+}
+
+/** Parses an emote's or a dance's VRMA (S5.07), checked first with the client's own check. */
+export async function parseAnimation(renderer: THREE.WebGPURenderer, bytes: ArrayBuffer): Promise<VRMAnimation> {
+  try {
+    checkAnimationFile(readGltf(new Uint8Array(bytes), 'animation.glb').json as Record<string, unknown>);
+  } catch (err) {
+    throw new AvatarLoadError(`not an animation: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const l = loader(renderer);
+  l.register((parser) => new VRMAnimationLoaderPlugin(parser));
+  const gltf = await l.parseAsync(bytes, '');
+  const animation = (gltf.userData['vrmAnimations'] as VRMAnimation[] | undefined)?.[0];
+  if (!animation) throw new AvatarLoadError('the file has no VRM animation');
+  return animation;
 }

@@ -61,6 +61,21 @@ interface FlatchatItem {
   fromGallery: string | null;
 }
 
+/** One of the account's emotes and dances (S5.07). */
+interface FlatchatAnimation {
+  id: string;
+  name: string;
+  use: 'emote' | 'dance';
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  source: string;
+  duration: number | null;
+  loop: boolean;
+  problems: string[];
+  warnings: string[];
+  manifest: string | null;
+  createdAt: string;
+}
+
 /** One entry of the free gallery (S5.06). */
 interface FlatchatGalleryEntry {
   id: string;
@@ -146,6 +161,11 @@ interface FlatchatBridge {
   outfits(): Promise<FlatchatResult<{ outfits: FlatchatOutfit[] }>>;
   saveOutfit(id: string | null, name: string, items: FlatchatWorn[]): Promise<FlatchatResult<{ outfit: FlatchatOutfit }>>;
   deleteOutfit(id: string): Promise<FlatchatResult<object>>;
+  // Emotes and dances (S5.07).
+  animations(): Promise<FlatchatResult<{ animations: FlatchatAnimation[] }>>;
+  uploadAnimation(use: 'emote' | 'dance'): Promise<FlatchatResult<{ id: string }>>;
+  deleteAnimation(id: string): Promise<FlatchatResult<object>>;
+  animationFile(manifest: string): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AnimationManifest; bytes: ArrayBuffer }>>;
   // The free gallery (S5.06).
   gallery(q: { kind?: string; slot?: string; body?: string; q?: string; before?: string }): Promise<FlatchatResult<{ entries: FlatchatGalleryEntry[]; next: string | null }>>;
   publish(req: { kind: 'avatar' | 'item'; id: string; name: string; licence: import('@flatchat/content').Licence; affirm: boolean }): Promise<FlatchatResult<{ entry: FlatchatGalleryEntry }>>;

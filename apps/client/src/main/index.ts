@@ -13,7 +13,7 @@
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { AVATAR_SOURCE_LIMIT, BODY_KITS, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
+import { ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -439,6 +439,64 @@ ipcMain.handle('flatchat:outfits:save', async (_event, id: unknown, name: unknow
     return failure(err);
   }
 });
+// Emotes and dances (S5.07): the account's own, an upload (a VRMA, GLB, BVH or FBX the person
+// picks, read and sent by this process, with its use: an emote or a dance), deleting, and a ready
+// animation's VRMA through the content cache.
+ipcMain.handle('flatchat:animations', async () => {
+  try {
+    return { ok: true, animations: (await auth?.animations()) ?? [] };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:animations:upload', async (event, use: unknown) => {
+  if (!auth || !(ANIMATION_USES as readonly unknown[]).includes(use)) return { ok: false, error: 'bad-request' };
+  const window = BrowserWindow.fromWebContents(event.sender);
+  // The end-to-end test's file, in place of a dialog it cannot click.
+  const e2e = process.env['FLATCHAT_E2E_ANIMATION'];
+  const picked = e2e
+    ? { canceled: false, filePaths: [e2e] }
+    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an emote or a dance', filters: [{ name: 'Animations (VRMA, GLB, BVH, FBX)', extensions: ['vrma', 'glb', 'bvh', 'fbx'] }], properties: ['openFile'] });
+  const path = picked.canceled ? undefined : picked.filePaths[0];
+  if (!path) return { ok: false, error: 'cancelled' };
+  try {
+    if (statSync(path).size > ANIMATION_SOURCE_LIMIT) return { ok: false, error: 'too-large' };
+    const bytes = new Uint8Array(readFileSync(path));
+    return { ok: true, id: await auth.uploadAnimation(basename(path).replace(/\.(vrma|glb|bvh|fbx)$/i, ''), bytes, use as (typeof ANIMATION_USES)[number]) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+ipcMain.handle('flatchat:animations:delete', async (_event, id: unknown) => {
+  if (typeof id !== 'string' || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    await auth.deleteAnimation(id);
+    return { ok: true };
+  } catch (err) {
+    return failure(err);
+  }
+});
+const animationDeliveries = new Map<string, { at: number; d: Promise<{ manifest: unknown; links: Record<string, string> }> }>();
+ipcMain.handle('flatchat:animation-file', async (_event, manifest: unknown) => {
+  if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || !auth || !cache) return { ok: false, error: 'bad-request' };
+  try {
+    let entry = animationDeliveries.get(manifest);
+    if (!entry || Date.now() - entry.at > 50 * 60_000) {
+      entry = { at: Date.now(), d: auth.animationFiles(manifest) };
+      animationDeliveries.set(manifest, entry);
+      entry.d.catch(() => animationDeliveries.delete(manifest));
+    }
+    const d = await entry.d;
+    const m = checkAnimationManifest(d.manifest);
+    const link = d.links['vrma'];
+    if (!link) return { ok: false, error: 'not-found' };
+    const bytes = await cachedFile(m.file, link);
+    return { ok: true, manifest: m, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+
 // The free gallery (S5.06): browsing, publishing one of the account's own under a licence,
 // taking an entry (the account's own copy), withdrawing one.
 ipcMain.handle('flatchat:gallery', async (_event, q: unknown) => {
