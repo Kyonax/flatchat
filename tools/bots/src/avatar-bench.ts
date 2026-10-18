@@ -6,11 +6,14 @@
 // PC this measures that PC.
 //
 //   node tools/bots/src/avatar-bench.ts --from DIR --out DIR [--no-ktx2]
-//        [--client CLIENT [--seconds 60] [--present 200] [--in-view 55] [--report FILE] [--headroom 1]]
+//        [--client CLIENT [--seconds 60] [--present 200] [--in-view 55] [--tier low|medium|high]
+//                         [--report FILE] [--headroom 1]]
 //
 // --from: a folder of .vrm and .glb files (subfolders included); each converted once into --out
 // (a folder per avatar: manifest.json and its levels as <sha256>.vrm), kept for the next run.
 // With --client: the packaged client runs the converted crowd and the report's pass lines print.
+// Without --tier the policy is 12 full, 20 lower, springs on 6 and every rank drawn in full (harsher
+// than any tier); with it, that tier's policy as it ships (avatar-policy.ts TIER_POLICY).
 import { readdirSync, readFileSync, mkdirSync, existsSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -26,6 +29,7 @@ const { values } = parseArgs({
     seconds: { type: 'string', default: '60' },
     present: { type: 'string', default: '200' },
     'in-view': { type: 'string', default: '55' },
+    tier: { type: 'string' },
     report: { type: 'string' },
     headroom: { type: 'string', default: '1' },
   },
@@ -78,10 +82,11 @@ if (values.client) {
     '--crowd-converted=1',
     `--crowd-present=${values.present}`,
     `--crowd-in-view=${values['in-view']}`,
+    ...(values.tier ? [`--crowd-tier=${values.tier}`] : []),
     `--crowd-headroom=${values.headroom}`,
     `--crowd-out=${report}`,
     '--bench-size=1280x720',
   ]).catch((e: Error) => say('client', { error: e.message.slice(0, 300) }));
   const r = JSON.parse(readFileSync(report, 'utf8')) as Record<string, unknown>;
-  say('avatar-bench', { backend: r['backend'], summary: r['summary'], levels: r['levels'], render: r['render'], loadMs: r['loadMs'], failures: r['failures'], pass: r['pass'] });
+  say('avatar-bench', { backend: r['backend'], policy: r['policy'], summary: r['summary'], levels: r['levels'], render: r['render'], loadMs: r['loadMs'], failures: r['failures'], pass: r['pass'] });
 }
