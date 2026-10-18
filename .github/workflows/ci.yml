@@ -57,6 +57,13 @@ jobs:
       # viewer intact through signed links. The client drawing one is the Linux client job's e2e.
       - name: Stage 4 acceptance, avatars
         run: node tools/bots/src/accept-stage4.ts
+      # S5.10: Stage 5's acceptance lines: a jacket made with the kit converts with a fit per body and
+      # nothing through it in the seven reference poses, and three players on the three bodies take
+      # it from the gallery and wear it, seen by everyone; an outfit toggled changes for everyone; a
+      # rights holder's takedown removes it from the gallery, the copies and the live world; a DAE
+      # of one ripped fit is caught at upload as a copy. The quick menu is the Linux client's e2e.
+      - name: Stage 5 acceptance, bodies, clothes and takedowns
+        run: node tools/bots/src/accept-stage5.ts
 
   host-tool:
     name: Host tool
