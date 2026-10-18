@@ -2,7 +2,7 @@
 title: Repository Layout, npm Workspaces, Licences by Folder and SPDX Headers
 impact: CRITICAL
 impactDescription: A source file without its folder's SPDX header, a new licensed folder missing from layout.json or a top-level folder outside the allowed five fails the layout check and CI, and code merged under the wrong licence cannot be relicensed afterwards.
-tags: repository, layout, shipwright, secret scanner, high-entropy-assignment, publishing, THIRD_PARTY_NOTICES, notices.mjs, packages that ship, monorepo, workspaces, npm workspaces, apps, packages, tools, kits, docs, licence, license, licensing, spdx, spdx header, MPL-2.0, AGPL-3.0-or-later, Apache-2.0, GPL-3.0-or-later, CC-BY-4.0, check-layout, layout.json, LICENSING.md, CREDITS.md, third party, third_party, new folder, new package, new workspace, inbound outbound, README
+tags: repository, layout, shipwright, secret scanner, high-entropy-assignment, publishing, THIRD_PARTY_NOTICES, notices.mjs, packages that ship, monorepo, workspaces, npm workspaces, apps, packages, tools, kits, docs, licence, license, licensing, spdx, spdx header, MPL-2.0, AGPL-3.0-or-later, Apache-2.0, GPL-3.0-or-later, CC-BY-4.0, check-layout, layout.json, LICENSING.md, CREDITS.md, third party, third_party, new folder, new package, new workspace, inbound outbound, README, provenance, kits/provenance, asset-check, assets check, licence gate, P.07, archived licence page, credit line, depicts
 ---
 
 This rule governs where code lives in the repository and which licence covers it. Each folder carries a licence chosen for its role, and the choice is recorded in three places that must agree: the folder's own `LICENSE` file, the table in `LICENSING.md`, and `tools/repo/layout.json`. `npm run check:layout` reads `layout.json` and checks all three, plus an SPDX header in every source file; the harness and CI run it on every change. A contribution takes the licence of the folder it lands in (inbound = outbound); there is no contributor licence agreement.
@@ -76,6 +76,8 @@ Copy a `LICENSE` from a folder with the same licence (for example `tools/bots/LI
 5. Run `npm install` once so `package-lock.json` records it, then `npm run harness`.
 
 ## Third-Party Material
+
+Every asset, the project's own included, has a provenance record in `kits/provenance/` (one JSON per asset or per set made together; the fields are listed at the top of `tools/harness/src/asset-check.ts`): `files` (patterns with `*` and `**`), `title`, `creator`, `licence` (`CC0-1.0`, `CC-BY-4.0`, `CC-BY-3.0`, `LicenseRef-Owner`), then `made` for our own work or `source` (an https URL) with `retrieved`, `changes`, `licencePage.{url,archived}` (a saved copy of the licence page under `kits/provenance/archive/`) and, for CC BY, `credit` (word for word in `CREDITS.md`); `ai` names an AI tool and its terms on that date, `depicts` the others' works an image shows. The harness's `assets` check enforces it (P.07, rr-014: Quaternius' licence changed under its CC0 labels in 2026, so the page as it was is kept).
 
 Third-party code, models, textures, sounds and fonts keep their own licences. Each gets a row in `CREDITS.md` (who made it, where it came from, its licence, what was changed) and lives in a `third_party/` folder (skipped by the header check) or keeps its own header. Assets must be CC0 or CC BY; credit the person who made a work, not the site it was found on. Nothing from other games: no models, textures, sounds, names or logos.
 

@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.27.0"
+  version: "1.28.0"
   verified: "2026-10-17"
 ---
 
@@ -58,7 +58,7 @@ Reference these guidelines when:
 | If working on... | Read these rules |
 |---|---|
 | Finishing any change: what "verified" means, the harness, a trap finding | `rules/harness-and-trap-linter.md` |
-| A new file, folder, package or workspace; a licence or SPDX header; third-party assets | `rules/repository-and-licences.md` |
+| A new file, folder, package or workspace; a licence or SPDX header; any asset, ours or third-party, and its provenance record | `rules/repository-and-licences.md` |
 | The client's main process, preload, IPC, window settings, CSP, menu, smoke or bench flags | `rules/client-electron.md` + `rules/security-untrusted-input.md` |
 | Chat, display names, world or avatar files, uploads, plugins, network messages | `rules/security-untrusted-input.md` |
 | Rendering, three.js, WebGPU or WebGL2, adapters, frame rates and frame times | `rules/rendering-three-webgpu.md` |
@@ -91,7 +91,7 @@ A trap-linter finding names its rule; read that rule.
 
 | Rule | Description |
 |---|---|
-| `repository-and-licences` | Folder map with licences and workspaces, what the layout check enforces, SPDX header per file type, adding folders, third-party assets. |
+| `repository-and-licences` | Folder map with licences and workspaces, what the layout check enforces, SPDX header per file type, adding folders, third-party assets, every asset's provenance record (the `assets` check, P.07). |
 | `toolchain-versions` | Node 24 via `.tool-versions`, npm workspaces commands, every pinned version and why (TypeScript ~6.0), install quirks, upgrades. |
 | `client-electron` | Main/preload/renderer split, locked window settings, the bridge and IPC, CSP, menu, smoke and bench flags and exit codes (T01–T04, T07–T10, T16). |
 | `rendering-three-webgpu` | WebGPURenderer start-up, backend and adapter, software renderers per machine, fixed-size bench, frame-time statistics. |
