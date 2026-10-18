@@ -63,17 +63,26 @@ node --permission --allow-fs-read=. --allow-fs-read=MY.vrm --allow-fs-write=OUT 
 
 ## Measuring a crowd of avatars
 
-The avatar bench converts a folder of real avatars once, then has the packaged client draw them with the world's own avatar layer: 200 present, 55 of them in view, the viewer's full quota within 8 m (the worst the policy allows), at 1280×720 with no frame-rate cap.
+The avatar bench converts a folder of real avatars once. The packaged client then draws them with the world's own avatar layer at 1280×720 with no frame-rate cap: 200 present, 55 of them in view and the rest around the camera but out of its view. It is the worst case the viewer's policy allows. Within the 8 m drawn in full stand the policy's full quota, the heaviest avatars it draws in full. Within 9 to 13 m stand its lower quota, the heaviest of all, since LOD1 has no rank gate. The rest of those in view stand farther off as impostors.
 
 ```sh
 npm run dist:linux -w @flatchat/client
 node tools/bots/src/avatar-bench.ts --from MY_AVATARS --out CONVERTED \
-  --client apps/client/release/linux-unpacked/flatchat --seconds 60 --present 200 --in-view 55
+  --client apps/client/release/linux-unpacked/flatchat --seconds 60 --present 200 --in-view 55 [--tier low|medium|high]
 ```
 
-It prints the plan's pass lines: frame time p95 at most 33.3 ms (30 fps), the worst frame after the warm-up at most 100 ms, at least 8 avatars drawn in full, and every FlatChat process together within 2 GB. On the reference laptop's stand-in, add `--headroom 1.5` (OQ-24).
+`--tier` uses that tier's policy as it ships (low: 4 in full, 12 lower, springs on 2, nothing below Good in full; medium: 8, 20, 6, Medium; high: 12, 28, 8, Poor). Without it, the policy is 12 in full, 20 lower and springs on 6, with every rank allowed in full, which is harsher than any tier. The pass lines: frame time p95 at most 33.3 ms (30 fps), the worst frame after the warm-up at most 100 ms, the policy's full quota drawn in full, and every FlatChat process together within 2 GB. On the reference laptop's stand-in, add `--headroom 1.5` (OQ-24).
 
-Measured on the development desktop (2026-10-17, WebGPU): 68 real avatars (VRoid Studio and Blender exports: 60 ranked Excellent, 2 Poor, 6 Very Poor) converted with KTX2 (5.5 s each at the median, 118 s the slowest), then 200 present with 12 in full, 20 at LOD1 and 168 as impostors: p95 13.2 ms, worst frame 52 ms, 218 draw calls, 370,201 triangles, 1,164 MB. The reference laptop's numbers are still to come.
+Measured on the development desktop on 2026-10-17 (WebGPU, NVIDIA). The set was 68 real avatars from VRoid Studio and Blender exports, converted with KTX2: 60 ranked Excellent, 2 Poor and 6 Very Poor; 5.5 s each at the median, 118 s the slowest. Each run measured 60 s:
+
+| Policy | In full / LOD1 / impostors | p95 | Worst frame | Draw calls | Triangles | Memory |
+|---|---|---|---|---|---|---|
+| Low tier | 4 / 13 / 183 | 12.4 ms | 55.5 ms | 119 | 221,820 | 1,184 MB |
+| Medium tier | 8 / 21 / 171 | 14.0 ms | 53.8 ms | 119 | 245,659 | 1,211 MB |
+| High tier | 12 / 28 / 160 | 17.0 ms | 25.3 ms | 163 | 289,475 | 1,435 MB |
+| Every rank in full | 12 / 20 / 168 | 23.5 ms | 33.8 ms | 669 | 444,517 | 1,629 MB |
+
+The main thread's render call takes most of each frame: about 30 to 70 µs per skinned avatar drawn (three.js's WebGPU renderer, whatever the material). Spring bones are cheaper: in the every-rank run (whose six VRoid avatars have 51 to 111 spring joints each), springs on 0, 6 and 12 of the nearest took the layer's update from 2.8 to 3.6 and 5.0 ms, and p95 from 24.3 to 24.6 and 26.5 ms. The reference laptop's numbers are still to come.
 
 ## Stage 4's acceptance
 
