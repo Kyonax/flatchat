@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Players' own avatars in the world (S4.05 runtime avatars, S4.06 shared locomotion, S4.07 faces
+// Players' own avatars in the world (S4.05 runtime avatars, shared locomotion: the default clips of P.05, S4.07 faces
 // and hands, S4.08 spring bones). Each player's worn avatar comes from the core by its manifest's
 // hash (the main process fetches and caches the files); the layer picks a level for each by
 // distance and the viewer's policy (S4.09): the nearest few in full (LOD0), the next at LOD1 or
@@ -33,7 +33,8 @@ import { createVRMAnimationClip, type VRMAnimation } from '@pixiv/three-vrm-anim
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import * as THREE from 'three/webgpu';
 import { disposeLevel, parseAnimation, parseItemFile, parseLevel } from './avatar-loader';
-import { type BoneAngles, type Expression, gaitOf, handPose, type HandPose, locomotion, mouthShapes, strideRate } from './avatar-pose';
+import { type BoneAngles, type Expression, handPose, type HandPose, mouthShapes } from './avatar-pose';
+import { Motion } from './motion';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
 
 export interface AvatarState {
@@ -129,7 +130,8 @@ interface Entry {
   rest: Map<string, THREE.Vector3>;
   /** How much the legs grew, in the avatar's metres: the holder rises by it. */
   lift: number;
-  phase: number;
+  /** The body's own motion: the default clips by gait (Track P's P.05). */
+  motion: Motion;
   speed: number;
   last: { x: number; z: number; t: number } | undefined;
   blinkAt: number;
@@ -282,7 +284,7 @@ export class AvatarLayer {
       proportions: this.pending.get(entity) ?? AS_MADE,
       rest: new Map(),
       lift: 0,
-      phase: 0,
+      motion: new Motion(),
       speed: 0,
       last: undefined,
       blinkAt: 0,
@@ -514,13 +516,12 @@ export class AvatarLayer {
       e.speed = e.speed * 0.8 + Math.min(12, v) * 0.2;
     }
     e.last = { x: s.x, z: s.z, t: now };
-    const gait = gaitOf(e.speed, s.stance);
-    e.phase = (e.phase + strideRate(e.speed) * dt) % (Math.PI * 2);
-    const pose = locomotion(gait, e.phase, now / 1000);
     const height = e.info?.height && e.info.height > 0.3 ? e.info.height : 1.7;
     const scale = s.height > 0.2 ? s.height / height : 1;
-    // A seated avatar's hips come down to the seat.
-    const sink = gait === 'sit' ? (e.hipsHeight - 0.1) * scale : 0;
+    // The clips at the pace of this body's legs, in the world's metres.
+    const pose = e.motion.update(dt, e.speed, s.stance, (e.hipsHeight + e.lift) * scale);
+    // A seated avatar's hips come down to the seat, as it sits down.
+    const sink = pose.seated * (e.hipsHeight - 0.1) * scale;
     e.holder.position.set(s.x, s.y - sink + (pose.bob * e.hipsHeight + e.lift) * scale, s.z);
     // VRM faces +Z; a player's yaw 0 faces -Z (the placeholder's visor).
     e.holder.rotation.set(0, s.yaw + Math.PI, 0);
