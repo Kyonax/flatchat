@@ -42,6 +42,10 @@ An avatar takes the worst rank of any of its numbers (the manifest names which).
 
 Every viewer chooses the lowest rank they draw in full; the rest show at a lighter level (S4.09).
 
+## In the world
+
+Everyone sees the avatar you wear: the world learns it from your connect token (the core vouches you own it), and each client fetches it from FlatChat by its hash and keeps it in its cache. The nearest few are drawn in full, the next ones lighter (LOD1, LOD2), everyone else as their impostor; an avatar below your minimum rank is never drawn in full. Everyone shares one walk, run, jump and sit (Stage 4's stand-in for the default animations to come), retargeted onto each body. Your voice moves your mouth; keys 1 to 5 make your face happy, angry, sad, relaxed or surprised (press again for neutral) and R changes your hands' pose. Spring bones (hair, clothes) move on the nearest six.
+
 ## Converting on your own PC
 
 ```sh
