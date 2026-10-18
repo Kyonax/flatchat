@@ -77,9 +77,27 @@ export interface ViewSettings {
 /** How tall the player is (S2.07, Q-M30): free within this range; each world fits it into its own. */
 export const HEIGHT_RANGE = { min: 0.3, max: 5, default: 1.75 } as const;
 
+/** The ranks a viewer may set as the worst drawn in full (packages/content's RANKS). */
+export const RANK_CHOICES = ['excellent', 'good', 'medium', 'poor', 'veryPoor'] as const;
+/** This computer's hardware tier, measured on the first visit to a world (S4.05). */
+export const TIERS = ['unset', 'low', 'medium', 'high'] as const;
+export type Tier = (typeof TIERS)[number];
+
 export interface AvatarSettings {
   /** Metres. */
   height: number;
+  /** The tier the first visit measured; unset until then. */
+  tier: Tier;
+  /** The worst rank drawn in full (S4.09); worse avatars show lighter. */
+  minRank: (typeof RANK_CHOICES)[number];
+  /** How many avatars are drawn in full at most, nearest first (S4.09). */
+  full: number;
+  /** Strangers (not friends) below this trust level show as impostors; 0 for no shield (S4.09). */
+  shield: number;
+  /** Accounts whose avatars this player hides: they show as impostors (S4.09), 500 at most. */
+  hidden: string[];
+  /** While frames are slow, fewer avatars in full (S4.09). */
+  autoTune: boolean;
 }
 
 /** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes. */
@@ -108,7 +126,7 @@ export function defaultSettings(): Settings {
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
-    avatar: { height: HEIGHT_RANGE.default },
+    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true },
     sound: { world: 0.8, ui: 0.5 },
   };
 }
@@ -174,6 +192,12 @@ export function cleanSettings(raw: unknown): Settings {
     avatar: {
       // Centimetre steps, as the protocol carries it.
       height: Math.round(num(avatar['height'], HEIGHT_RANGE.min, HEIGHT_RANGE.max, d.avatar.height) * 100) / 100,
+      tier: pick(avatar['tier'], TIERS, d.avatar.tier),
+      minRank: pick(avatar['minRank'], RANK_CHOICES, d.avatar.minRank),
+      full: Math.round(num(avatar['full'], 0, 24, d.avatar.full)),
+      shield: Math.round(num(avatar['shield'], 0, 4, d.avatar.shield)),
+      hidden: Array.isArray(avatar['hidden']) ? [...new Set(avatar['hidden'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
+      autoTune: bool(avatar['autoTune'], d.avatar.autoTune),
     },
     sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui) },
   };

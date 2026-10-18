@@ -4,6 +4,7 @@ import { PLAZA } from '@flatchat/sim';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { actionFor, type Settings } from '../../../shared/settings';
+import { TIER_POLICY } from '../world/avatar-policy';
 import { canGiveTo, canModerate, MODERATION, type Person, type Role, rolesToGive } from '../world/people';
 import { CHAT_MAX, type Travel, WorldSession, type WorldState } from '../world/session';
 import { keyLabel } from './keys';
@@ -172,6 +173,21 @@ async function fileReport(draft: ReportDraft): Promise<{ ok: true; receipt: stri
 function volumeOf(p: Person): number {
   return Math.round((props.settings.voice.volumes[p.account] ?? 1) * 100);
 }
+
+/** Hides or shows a person's avatar on this screen (S4.09): hidden, it shows as the impostor. */
+function toggleAvatar(p: Person): void {
+  const hidden = props.settings.avatar.hidden;
+  emit('change', { avatar: { ...props.settings.avatar, hidden: hidden.includes(p.account) ? hidden.filter((a) => a !== p.account) : [...hidden, p.account] } });
+}
+
+// The first visit's measurement (S4.05) goes into the settings, with its tier's defaults.
+watch(
+  () => state.value?.measuredTier,
+  (tier) => {
+    if (!tier || props.settings.avatar.tier !== 'unset') return;
+    emit('change', { avatar: { ...props.settings.avatar, tier, full: TIER_POLICY[tier].full, minRank: TIER_POLICY[tier].minRank } });
+  },
+);
 
 function setVolume(p: Person, percent: number): void {
   emit('change', { voice: { ...props.settings.voice, volumes: { ...props.settings.voice.volumes, [p.account]: Math.min(2, Math.max(0, percent / 100)) } } });
@@ -422,6 +438,15 @@ onBeforeUnmount(() => {
             {{ t('people.moderate') }}
           </button>
           <template v-if="!p.me">
+            <button
+              type="button"
+              class="small"
+              data-test="hide-avatar"
+              :data-on="settings.avatar.hidden.includes(p.account)"
+              @click="toggleAvatar(p)"
+            >
+              {{ settings.avatar.hidden.includes(p.account) ? t('people.showAvatar') : t('people.hideAvatar') }}
+            </button>
             <button
               v-if="!ticket.local"
               type="button"

@@ -20,6 +20,7 @@ import { VoiceChain } from '../voice/chain';
 import { cameraPose } from './camera';
 import { Controls } from './controls';
 import { AvatarLayer, type AvatarState } from './avatar-layer';
+import { FrameTuner, type MeasuredTier, tierOf, viewerPolicy } from './avatar-policy';
 import type { Expression, HandPose } from './avatar-pose';
 import { type AvatarPose, canvasTag, CrowdView } from './crowd-view';
 import { Downloader, type Progress } from './download';
@@ -92,6 +93,8 @@ export interface WorldState {
   heldMute: string | undefined;
   /** This player's expression (S4.07), for the HUD. */
   expression: Expression;
+  /** The tier the first visit measured (S4.05), once it has: the page keeps it in the settings. */
+  measuredTier: MeasuredTier | undefined;
   /** The accounts this player muted, in every world (S3.08). */
   silenced: string[];
   /** Earmuffs on: far voices drop to a murmur (S3.08). */
@@ -158,6 +161,12 @@ export class WorldSession {
   /** Each player's worn avatar (its manifest's hash) and face (S4.07), from the roster. */
   private readonly worn = new Map<number, string>();
   private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
+  /** Each player's trust level, from the roster: the viewer's shield reads it (S4.09). */
+  private readonly trusts = new Map<number, number>();
+  private readonly tuner = new FrameTuner();
+  /** The first visit's measurement (S4.05): frames from the third second to the fifteenth. */
+  private bench: { from: number; samples: number[] } | undefined;
+  private policyAt = 0;
   /** This player's own face, as sent. */
   private face: { expression: Expression; left: HandPose; right: HandPose } = { expression: 'neutral', left: 'relaxed', right: 'relaxed' };
   private conn: WorldConnection | undefined;
@@ -234,6 +243,7 @@ export class WorldSession {
       role: 'visitor',
       heldMute: undefined,
       expression: 'neutral',
+      measuredTier: undefined,
       silenced: [],
       earmuffs: false,
       hidden: [],
@@ -515,6 +525,7 @@ export class WorldSession {
     camera.lookAt(pose.target.x, pose.target.y, pose.target.z);
     if (this.sounds && this.state.status === 'joined') this.footsteps(now, pose.position);
     const poses = this.avatars(now);
+    if (this.avatarLayer) this.tunePolicy(dt * 1000, now);
     const drawn = this.avatarLayer?.update(this.avatarStates(poses), camera, dt, now);
     if (drawn) for (const p of poses) if (drawn.has(p.entity)) p.avatarDrawn = true;
     this.crowd?.update(poses, camera.position);
@@ -548,6 +559,27 @@ export class WorldSession {
         height: this.heights.get(p.entity) ?? BODY.height,
         me,
       };
+    });
+  }
+
+  /** The viewer's policy (S4.09), the frame-rate tuner, and the first visit's measurement. */
+  private tunePolicy(frameMs: number, now: number): void {
+    const s = this.settings.avatar;
+    if (s.autoTune) this.tuner.push(frameMs, now);
+    if (s.tier === 'unset' && this.state.status === 'joined' && this.state.measuredTier === undefined) {
+      this.bench ??= { from: now, samples: [] };
+      const since = now - this.bench.from;
+      if (since > 3000 && since < 15_000) this.bench.samples.push(frameMs);
+      else if (since >= 15_000) this.state.measuredTier = tierOf(this.bench.samples);
+    }
+    if (now - this.policyAt < 250 || !this.avatarLayer) return;
+    this.policyAt = now;
+    const friends = new Set(this.state.friends);
+    this.avatarLayer.policy = viewerPolicy(s, s.autoTune ? this.tuner.factor : 1, {
+      accountOf: (e) => this.people.get(e)?.account,
+      trustOf: (e) => this.trusts.get(e) ?? 0,
+      friends,
+      me: this.entity,
     });
   }
 
@@ -694,6 +726,7 @@ export class WorldSession {
       else this.worn.delete(p.entity);
       this.avatarLayer?.wear(p.entity, manifest);
       this.faces.set(p.entity, p.face);
+      this.trusts.set(p.entity, p.trust);
       // A change lists a player again (a new height, a role): only a new entity is an arrival.
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
@@ -716,6 +749,7 @@ export class WorldSession {
       this.remotes.forget(id);
       this.worn.delete(id);
       this.faces.delete(id);
+      this.trusts.delete(id);
       this.avatarLayer?.drop(id);
     }
     this.rosterSeen = true;

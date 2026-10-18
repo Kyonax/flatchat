@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, type Settings, unbind, validCode } from '../../../shared/settings';
+import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, RANK_CHOICES, type Settings, unbind, validCode } from '../../../shared/settings';
 import { keyLabel, mouseCode } from './keys';
 
 const props = defineProps<{ settings: Settings }>();
@@ -199,6 +199,73 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
       <p class="muted small">
         {{ t('settings.heightHint') }}
       </p>
+
+      <h2>{{ t('settings.avatars') }}</h2>
+      <p class="muted small">
+        {{ settings.avatar.tier === 'unset' ? t('settings.tierUnset') : t('settings.tier', { tier: t(`settings.tiers.${settings.avatar.tier}`) }) }}
+        <button
+          v-if="settings.avatar.tier !== 'unset'"
+          type="button"
+          class="small"
+          data-test="measure-again"
+          @click="avatar({ tier: 'unset' })"
+        >
+          {{ t('settings.measureAgain') }}
+        </button>
+      </p>
+      <label class="row">
+        <span class="grow">{{ t('settings.fullAvatars', { n: settings.avatar.full }) }}</span>
+        <input
+          type="range"
+          min="0"
+          max="24"
+          step="1"
+          :value="settings.avatar.full"
+          data-test="full-avatars"
+          @change="avatar({ full: num($event) })"
+        >
+      </label>
+      <label class="row">
+        <span class="grow">{{ t('settings.minRank') }}</span>
+        <select
+          :value="settings.avatar.minRank"
+          data-test="min-rank"
+          @change="avatar({ minRank: str($event) as Settings['avatar']['minRank'] })"
+        >
+          <option
+            v-for="r in RANK_CHOICES"
+            :key="r"
+            :value="r"
+          >
+            {{ t(`avatars.rank.${r}`) }}
+          </option>
+        </select>
+      </label>
+      <label class="row">
+        <span class="grow">{{ t('settings.shield') }}</span>
+        <select
+          :value="settings.avatar.shield"
+          data-test="shield"
+          @change="avatar({ shield: Number(str($event)) })"
+        >
+          <option
+            v-for="n in [0, 1, 2, 3, 4]"
+            :key="n"
+            :value="n"
+          >
+            {{ n === 0 ? t('settings.shieldOff') : t('settings.shieldLevel', { n }) }}
+          </option>
+        </select>
+      </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.avatar.autoTune"
+          data-test="auto-tune"
+          @change="avatar({ autoTune: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t('settings.autoTune') }}</span>
+      </label>
 
       <h2>{{ t('settings.voice') }}</h2>
       <div class="row">
