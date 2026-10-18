@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sampleBvh } from '@flatchat/converter/animation-samples';
+import { sampleBvh, sampleSong } from '@flatchat/converter/animation-samples';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInvitation } from '../src/accounts.ts';
@@ -23,6 +23,8 @@ import { freshDb } from './db.ts';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const FBX = new Uint8Array(readFileSync(join(ROOT, 'tools', 'converter', 'test', 'fixtures', 'animation', 'wave.fbx')));
 const BLENDER = process.env['FLATCHAT_BLENDER'] ?? join(homedir(), '.local', 'opt', 'flatchat-blender', 'blender-5.2.2-linux-x64', 'blender');
+const RHUBARB = process.env['FLATCHAT_RHUBARB'] ?? join(homedir(), '.local', 'opt', 'rhubarb-1.14.0', 'rhubarb');
+const SONG = sampleSong();
 const BVH = new TextEncoder().encode(sampleBvh());
 const PUBLIC = 'http://127.0.0.1:1';
 const clock = new Date('2026-10-18T12:00:00Z');
@@ -31,10 +33,10 @@ const secret = randomBytes(32);
 let db: Db;
 const apps: FastifyInstance[] = [];
 const dirs: string[] = [];
-async function core(blender?: string): Promise<FastifyInstance> {
+async function core(blender?: string, rhubarb?: string): Promise<FastifyInstance> {
   const dir = mkdtempSync(join(tmpdir(), 'fccoreanim-'));
   dirs.push(dir);
-  const app = await buildCore({ db, secret, publicUrl: PUBLIC, operator: 'T', contact: 't@example.org', cost: TEST_COST, ice: { stun: [], turnUrls: [] }, now: () => clock, store: localStore(dir, secret, PUBLIC), avatars: { ktx2: false }, ...(blender ? { animations: { blender } } : {}) });
+  const app = await buildCore({ db, secret, publicUrl: PUBLIC, operator: 'T', contact: 't@example.org', cost: TEST_COST, ice: { stun: [], turnUrls: [] }, now: () => clock, store: localStore(dir, secret, PUBLIC), avatars: { ktx2: false }, animations: { ...(blender ? { blender } : {}), ...(rhubarb ? { rhubarb } : {}) } });
   apps.push(app);
   return app;
 }
@@ -72,11 +74,17 @@ async function account(app: FastifyInstance, name: string, trust = 0): Promise<W
 const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 const local = (url: string): string => url.slice(PUBLIC.length);
 
-async function upload(app: FastifyInstance, who: Who, bytes: Uint8Array, name: string, use = 'emote'): Promise<Record<string, unknown>> {
-  const slot = await app.inject({ method: 'POST', url: '/api/v1/animations', headers: who.auth, payload: { name, bytes: bytes.length, sha256: sha(bytes), use } });
+async function upload(app: FastifyInstance, who: Who, bytes: Uint8Array, name: string, use = 'emote', sound?: Uint8Array): Promise<Record<string, unknown>> {
+  const slot = await app.inject({ method: 'POST', url: '/api/v1/animations', headers: who.auth, payload: { name, bytes: bytes.length, sha256: sha(bytes), use, ...(sound ? { audio: { bytes: sound.length, sha256: sha(sound) } } : {}) } });
   expect(slot.statusCode, slot.body).toBe(201);
-  const { id, upload: u } = slot.json() as { id: string; upload: { url: string } };
+  const { id, upload: u, audio } = slot.json() as { id: string; upload: { url: string }; audio?: { url: string } };
   expect((await app.inject({ method: 'PUT', url: local(u.url), headers: { 'content-type': 'application/octet-stream' }, payload: Buffer.from(bytes) })).statusCode).toBe(202);
+  // With a sound declared, nothing converts until the sound is in too.
+  if (sound) {
+    const waiting = ((await app.inject({ method: 'GET', url: '/api/v1/animations', headers: who.auth })).json() as { animations: Array<Record<string, unknown>> }).animations.find((v) => v['id'] === id);
+    expect(waiting?.['status']).toBe('uploading');
+    expect((await app.inject({ method: 'PUT', url: local(audio!.url), headers: { 'content-type': 'application/octet-stream' }, payload: Buffer.from(sound) })).statusCode).toBe(202);
+  }
   const end = Date.now() + 180_000;
   for (;;) {
     const list = (await app.inject({ method: 'GET', url: '/api/v1/animations', headers: who.auth })).json() as { animations: Array<Record<string, unknown>> };
@@ -124,4 +132,16 @@ describe('animation uploads', () => {
     const ready = await upload(app, maker, FBX, 'Wave FBX');
     expect(ready).toMatchObject({ status: 'ready', source: 'fbx', duration: 2, loop: true });
   }, 180_000);
+
+  it('take a dance with its sound, delivered with it; the mouth follows it where the core has Rhubarb', async () => {
+    const app = await core(undefined, existsSync(RHUBARB) ? RHUBARB : undefined);
+    const dancer = await account(app, 'singer', 1);
+    const ready = await upload(app, dancer, BVH, 'Wave with a song', 'dance', SONG);
+    expect(ready).toMatchObject({ status: 'ready', sound: true, mouth: existsSync(RHUBARB) });
+    const d = await app.inject({ method: 'GET', url: `/api/v1/animation-files/${String(ready['manifest'])}`, headers: dancer.auth });
+    const { manifest, links } = d.json() as { manifest: { audio: { file: string; type: string }; mouth: boolean }; links: Record<string, string> };
+    expect(manifest.audio.type).toBe('audio/wav');
+    expect(manifest.mouth).toBe(existsSync(RHUBARB));
+    expect(sha((await app.inject({ method: 'GET', url: local(links['audio']!) })).rawPayload)).toBe(sha(SONG));
+  }, 120_000);
 });

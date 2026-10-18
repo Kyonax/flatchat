@@ -6,7 +6,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import websocket from '@fastify/websocket';
-import { ANIMATION_SOURCE_LIMIT, AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
@@ -123,8 +123,9 @@ export interface CoreOptions {
   store?: FileStore;
   /** Avatar and item conversion (S4.01, S5.05): KTX2 textures on (the default) or off (tests). */
   avatars?: { ktx2?: boolean };
-  /** Animation conversion (S5.07): headless Blender's executable, for FBX; without it FBX is refused. */
-  animations?: { blender?: string };
+  /** Animation conversion (S5.07): headless Blender's executable, for FBX (without it FBX is refused),
+   *  and Rhubarb Lip Sync's, for a sound's mouth track (without it the mouth does not follow). */
+  animations?: { blender?: string; rhubarb?: string };
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -174,7 +175,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   const store = o.store ?? localStore(join(tmpdir(), `flatchat-core-store-${process.pid}`), o.secret, publicUrl);
   const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
   const items = new Items({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
-  const animations = new Animations({ db: o.db, store, secret: o.secret, publicUrl, ...(o.animations?.blender ? { blender: o.animations.blender } : {}), ...(o.log ? { log: o.log } : {}) });
+  const animations = new Animations({ db: o.db, store, secret: o.secret, publicUrl, ...(o.animations?.blender ? { blender: o.animations.blender } : {}), ...(o.animations?.rhubarb ? { rhubarb: o.animations.rhubarb } : {}), ...(o.log ? { log: o.log } : {}) });
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
@@ -918,9 +919,14 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
     if (limited(limits.uploadByAccount, a.id, reply)) return reply;
     const b = (req.body ?? {}) as Record<string, unknown>;
+    const sound = b['audio'] && typeof b['audio'] === 'object' ? (b['audio'] as Record<string, unknown>) : undefined;
     try {
-      const slot = await animations.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64), use: b['use'] }, now());
-      return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
+      const slot = await animations.slot(
+        { id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status },
+        { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64), use: b['use'], ...(sound ? { audio: { bytes: Number(sound['bytes']), sha256: str(sound['sha256'], 64) } } : {}) },
+        now(),
+      );
+      return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() }, ...(slot.audio ? { audio: { url: slot.audio, method: 'PUT' } } : {}) });
     } catch (err) {
       return contentProblem(reply, err);
     }
@@ -933,6 +939,19 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     try {
       await animations.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now());
       return reply.code(202).send({ status: 'converting' });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  // The sound, to its own slot (S5.07).
+  app.put('/api/v1/animations/:id/audio', { bodyLimit: ANIMATION_AUDIO_LIMIT + 1024 }, async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const q = req.query as Record<string, unknown>;
+    if (!Buffer.isBuffer(req.body)) return sendProblem(reply, problem(415, 'bad-request', 'send the file as application/octet-stream'));
+    try {
+      await animations.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now(), 'audio');
+      return reply.code(202).send({ status: 'received' });
     } catch (err) {
       return contentProblem(reply, err);
     }

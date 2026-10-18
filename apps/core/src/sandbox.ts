@@ -125,3 +125,25 @@ export async function runBlender(blender: string, script: string, args: string[]
     });
   });
 }
+
+/** Runs Rhubarb Lip Sync on a sound (S5.07, rr-013): its phonetic recogniser (any language, any
+ *  singing), the extended shapes, JSON out; no network, a 2 GB address-space cap, PATH and HOME
+ *  only, a time limit. A native program, like Blender, outside Node.js's permission model. */
+export async function runRhubarb(rhubarb: string, sound: string, out: string, o: { isolated: boolean; timeoutMs: number; home: string }): Promise<{ code: number | null; stderr: string }> {
+  const capped = ['--as=2147483648', '--', rhubarb, '-f', 'json', '-r', 'phonetic', '--extendedShapes', 'GHX', '--machineReadable', '-q', '-o', out, sound];
+  const [cmd, argv] = o.isolated ? ['unshare', ['-rn', '--', 'prlimit', ...capped]] : ['prlimit', capped];
+  return new Promise((resolve) => {
+    const child = spawn(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: '/usr/bin:/bin', HOME: o.home }, cwd: o.home });
+    let err = '';
+    child.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-4000)));
+    const timer = setTimeout(() => child.kill('SIGKILL'), o.timeoutMs);
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ code: -1, stderr: `Rhubarb could not start (${e.message.slice(0, 120)})` });
+    });
+    child.on('close', (c) => {
+      clearTimeout(timer);
+      resolve({ code: c, stderr: err });
+    });
+  });
+}

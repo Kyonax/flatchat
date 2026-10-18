@@ -32,6 +32,7 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_STORE` | The file store's folder (S4.04): avatars' levels, items' fits and props (S5.05), manifests, thumbnails and the uploads they came from, each named by its SHA-256 (default `~/.local/share/flatchat/core-store`) |
 | `FLATCHAT_CORE_KTX2` | `off` keeps avatars' and items' textures as PNG: conversions take seconds instead of minutes (default on) |
 | `FLATCHAT_CORE_BLENDER` | Headless Blender's executable (5.2 LTS), which reads FBX emotes and dances (S5.07). Unset, FBX uploads are refused with that reason; VRMA, GLB and BVH need no Blender |
+| `FLATCHAT_CORE_RHUBARB` | Rhubarb Lip Sync's executable (1.14.0, MIT), which makes a dance's mouth track from its sound (S5.07). Unset, a sound still plays, but the mouth does not follow it. `node apps/core/scripts/tools.ts` fetches both programs at their pinned versions, checks their SHA-256 and prints the two lines |
 
 Then:
 
@@ -94,7 +95,7 @@ An item (clothes, hair, a hat, a prop) is uploaded the way an avatar is: a slot 
 
 ## Emotes and Dances (S5.07)
 
-An animation (a VRMA, a GLB clip, a BVH or an FBX, up to 64 MB) is uploaded the way an avatar is, with its use: an emote, played once, or a dance, played on a loop. The animation converter (`tools/converter/src/animation-cli.ts`) runs in the same sandbox and writes one VRMA. An FBX is read first by headless Blender (`tools/blender/animation/fbx2glb.py`), in a process of its own: an empty network namespace, a 6 GB address-space cap, a clean environment whose home is the job's folder, factory settings, scripts in files never run (`-Y`) and offline mode, with two minutes to finish. Anyone signed in fetches a ready animation's VRMA through a signed link. The client plays it on any avatar.
+An animation (a VRMA, a GLB clip, a BVH or an FBX, up to 64 MB) is uploaded the way an avatar is, with its use: an emote, played once, or a dance, played on a loop. The animation converter (`tools/converter/src/animation-cli.ts`) runs in the same sandbox and writes one VRMA. An FBX is read first by headless Blender (`tools/blender/animation/fbx2glb.py`), in a process of its own: an empty network namespace, a 6 GB address-space cap, a clean environment whose home is the job's folder, factory settings, scripts in files never run (`-Y`) and offline mode, with two minutes to finish. Anyone signed in fetches a ready animation's VRMA through a signed link. The client plays it on any avatar. An animation may bring a sound (a WAV or an Ogg, up to 8 MB and two minutes), asked for with it and sent to a slot of its own; the conversion starts once both have arrived. Rhubarb Lip Sync turns the sound into a mouth track, baked into the VRMA's mouth expressions. Like Blender, it runs in a sandbox of its own (no network, a 2 GB address-space cap, a clean environment, two minutes). The sound is delivered beside the VRMA.
 
 ## The Free Gallery (S5.06)
 
@@ -134,10 +135,11 @@ Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packag
 | `GET /api/v1/item-files/:manifest` | Bearer | A ready item's manifest and signed links to it and to each fit by body (`feminine`, `masculine`, `neutral`) or its `prop`; never its source |
 | `GET /api/v1/outfits` | Bearer | The account's outfits: `{ id, name, items: [{ item, adjust? }], updatedAt }`, 30 at most |
 | `POST /api/v1/outfits`, `PUT /api/v1/outfits/:id`, `DELETE /api/v1/outfits/:id` | Bearer | Save an outfit, new or in place (`{ name, items }`: the account's ready items as manifest SHA-256s, a prop's `adjust` in centimetres, degrees and percent), or delete one |
-| `POST /api/v1/animations` | Bearer | An animation upload slot (S5.07): `{ name, bytes, sha256, use: emote \| dance }` → `{ id, upload }`; trust level 1 or a tester, 100 animations, 64 MB, the same ten uploads a day |
+| `POST /api/v1/animations` | Bearer | An animation upload slot (S5.07): `{ name, bytes, sha256, use: emote \| dance, audio?: { bytes, sha256 } }` → `{ id, upload, audio? }` (a second slot for the sound); trust level 1 or a tester, 100 animations, 64 MB (a sound 8 MB), the same ten uploads a day |
+| `PUT /api/v1/animations/:id/audio?e=…&s=…` | The slot's signature | The sound itself; the conversion starts once the animation is in too |
 | `PUT /api/v1/animations/:id/source?e=…&s=…` | The slot's signature | The file itself; then it converts (an FBX through Blender first) |
 | `GET /api/v1/animations`, `DELETE /api/v1/animations/:id` | Bearer | The account's animations (status, use, the source's format, duration, whether it loops, reasons, warnings, manifest), and deleting one |
-| `GET /api/v1/animation-files/:manifest` | Bearer | A ready animation's manifest and signed links to it and to its VRMA (`vrma`); never its source |
+| `GET /api/v1/animation-files/:manifest` | Bearer | A ready animation's manifest and signed links to it, to its VRMA (`vrma`) and to its sound (`audio`); never its source |
 | `GET /api/v1/gallery?kind=&slot=&body=&q=&before=` | Bearer | The free gallery (S5.06): `{ entries: [{ id, kind, name, authors, licence, slot, fits, rank, takes, publishedAt, publisher, manifest, mine, taken }], next }`; `next` goes back as `before` |
 | `GET /api/v1/gallery/:id` | Bearer | One live entry |
 | `POST /api/v1/gallery` | Bearer | Publish: `{ kind: avatar \| item, id, name?, licence, affirm: true }` → the entry; trust level 2 or a tester (`publish-trust`), the licence complete (`bad-request`) and fit for the gallery and the file (`licence`) |

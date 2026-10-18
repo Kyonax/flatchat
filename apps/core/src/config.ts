@@ -16,6 +16,7 @@
 //   FLATCHAT_CORE_STORE     the file store's folder (S4.04; default ~/.local/share/flatchat/core-store)
 //   FLATCHAT_CORE_KTX2      off to keep avatars' textures as PNG (quicker conversions; default on)
 //   FLATCHAT_CORE_BLENDER   headless Blender's executable (5.2 LTS), for FBX emotes and dances (S5.07; unset: FBX refused)
+//   FLATCHAT_CORE_RHUBARB   Rhubarb Lip Sync's executable (1.14.0), for a dance's mouth track (S5.07; unset: no mouth track)
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -43,6 +44,8 @@ export interface CoreEnv {
   ktx2: boolean;
   /** Headless Blender for FBX animations (S5.07), when set. */
   blender: string | undefined;
+  /** Rhubarb Lip Sync for sounds' mouth tracks (S5.07), when set. */
+  rhubarb: string | undefined;
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -84,6 +87,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     store: env['FLATCHAT_CORE_STORE'] || join(env['XDG_DATA_HOME'] || join(homedir(), '.local', 'share'), 'flatchat', 'core-store'),
     ktx2: env['FLATCHAT_CORE_KTX2'] !== 'off',
     blender: env['FLATCHAT_CORE_BLENDER'] || undefined,
+    rhubarb: env['FLATCHAT_CORE_RHUBARB'] || undefined,
   };
 }
 
