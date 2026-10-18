@@ -1,0 +1,7 @@
+{
+  "files": ["kits/overlays/star-badge.png", "kits/overlays/heart-badge.png"],
+  "title": "The starter overlays (S6.02): a star badge and a heart, 128 px a side",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "node tools/converter/scripts/make-overlays.ts: drawn in code (a five-pointed star and the heart curve, four times supersampled, a light rim), the same bytes each time"
+}

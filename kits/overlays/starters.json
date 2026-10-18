@@ -1,0 +1,6 @@
+{
+  "starters": [
+    { "id": "star-badge", "name": "Star badge", "image": "star-badge.png", "hud": "top-right", "size": 0.08, "opacity": 0.9, "motion": "pulse", "audience": "everyone", "authors": ["the FlatChat contributors"] },
+    { "id": "heart-badge", "name": "Heart", "image": "heart-badge.png", "hud": "top-left", "size": 0.08, "opacity": 0.9, "motion": "bob", "audience": "everyone", "authors": ["the FlatChat contributors"] }
+  ]
+}
