@@ -58,6 +58,7 @@ export {
   type MessageDef,
   MESSAGES,
   MOD_ACTIONS,
+  OUTFIT_MAX,
   position,
   PROPORTIONS,
   PROTOCOL_VERSION,
