@@ -84,6 +84,7 @@ onMounted(async () => {
       lower: num('lod', 20),
       springs: num('springs', 6),
       ...(tierParam === 'low' || tierParam === 'medium' || tierParam === 'high' ? { tier: tierParam } : {}),
+      proportions: params.get('proportions') === '1',
       onProgress: (line) => {
         crowdLine.value = line;
       },

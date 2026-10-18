@@ -32,11 +32,12 @@
 //           [--crowd-springs=6] [--crowd-swap=15] [--crowd-texture-mb=16] [--crowd-lod-ratio=0.3] [--crowd-merge=1]
 //           [--crowd-headroom=1] [--crowd-out=FILE] [--crowd-shot=FILE.png] [--bench-size=WxH]
 //                                                    spike S0.09: a crowd of the folder's VRM avatars
-//           [--crowd-converted=1 [--crowd-in-view=55] [--crowd-tier=low|medium|high]]
+//           [--crowd-converted=1 [--crowd-in-view=55] [--crowd-tier=low|medium|high] [--crowd-proportions=1]]
 //                                                    S4.05/S4.12: the folder holds converted avatars
 //                                                    (tools/bots/src/avatar-bench.ts), drawn by the world's own avatar layer
 //                                                    (with --crowd-tier: that tier's policy as it ships,
-//                                                    its lowest rank drawn in full included)
+//                                                    its lowest rank drawn in full included; with
+//                                                    --crowd-proportions, everyone at the sliders' ends)
 //                                                    on the low preset, no frame-rate cap; reports
 //                                                    frame times, loads, memory and the pass lines
 
@@ -103,6 +104,8 @@ export interface CrowdFlags {
   /** A tier's viewer policy as it ships (its counts and its lowest rank drawn in full), in place of
    *  --crowd-full, --crowd-lod and --crowd-springs with every rank allowed in full. */
   tier?: 'low' | 'medium' | 'high';
+  /** S4.10's look check: everyone at the ends of the proportion sliders (80 and 125 %). */
+  proportions?: boolean;
 }
 
 export const DEFAULT_BENCH_SIZE: Size = { width: 1280, height: 720 };
@@ -232,6 +235,7 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
       converted: number('crowd-converted', 0, 0, 1) === 1,
       inView: number('crowd-in-view', Math.min(55, present), 0, 1000),
     };
+    if (number('crowd-proportions', 0, 0, 1) === 1) flags.crowd.proportions = true;
     const tier = value(argv, 'crowd-tier');
     if (tier === 'low' || tier === 'medium' || tier === 'high') flags.crowd.tier = tier;
     else if (tier !== undefined) errors.push(`--crowd-tier must be low, medium or high, got ${tier}`);
@@ -267,7 +271,7 @@ export function rendererQuery(flags: ClientFlags): Record<string, string> {
       texturemb: String(c.textureMB),
       lodratio: String(c.lodRatio),
       merge: c.merge ? '1' : '0',
-      ...(c.converted ? { converted: '1', inview: String(c.inView), ...(c.tier ? { tier: c.tier } : {}) } : {}),
+      ...(c.converted ? { converted: '1', inview: String(c.inView), ...(c.tier ? { tier: c.tier } : {}), ...(c.proportions ? { proportions: '1' } : {}) } : {}),
     };
   }
   if (flags.bench !== undefined) {

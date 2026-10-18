@@ -29,6 +29,8 @@ describe('the crowd flags', () => {
     expect(tiered.errors).toEqual([]);
     expect(rendererQuery(tiered.flags)).toMatchObject({ converted: '1', tier: 'medium' });
     expect(parseFlags(argv('--crowd=60', '--avatars=/tmp/c', '--crowd-converted=1', '--crowd-tier=ultra')).errors).toEqual(['--crowd-tier must be low, medium or high, got ultra']);
+    // S4.10's look check: everyone at the sliders' ends.
+    expect(rendererQuery(parseFlags(argv('--crowd=60', '--avatars=/tmp/c', '--crowd-converted=1', '--crowd-proportions=1')).flags)).toMatchObject({ proportions: '1' });
   });
 
   it('refuses a crowd without avatars, a crowd too small for its tiers and mixed modes', () => {

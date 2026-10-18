@@ -24,6 +24,8 @@ export interface ConvertedOptions {
   springs: number;
   /** A tier's policy as it ships, in place of full, lower and springs with every rank in full. */
   tier?: keyof typeof TIER_POLICY;
+  /** S4.10's look check: everyone at the ends of the proportion sliders, in every combination. */
+  proportions?: boolean;
   onProgress: (line: string) => void;
 }
 
@@ -96,6 +98,10 @@ export async function runConvertedCrowd(canvas: HTMLCanvasElement, o: ConvertedO
       return { entity: i + 1, folder, cx: Math.cos(angle) * d, cz: Math.sin(angle) * d, r, phase: random() * Math.PI * 2 };
     });
     for (const p of people) layer.wear(p.entity, p.folder);
+    if (o.proportions) {
+      const end = (bit: number): number => (bit ? 125 : 80);
+      people.forEach((p, i) => layer.reshape(p.entity, { width: end(i & 1), arms: end(i & 2), legs: end(i & 4), head: end(i & 8) }));
+    }
     // The pass line's count in full: the near ones the policy draws in full.
     report['fullExpected'] = people.slice(0, Math.min(policy.full, o.inView)).filter((p) => fullOk(p.folder)).length;
     const neutral = { expression: 'neutral' as const, left: 'relaxed' as const, right: 'relaxed' as const };
