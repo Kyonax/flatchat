@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-// Outfits between real bots (S5.05): six bots join a world server over UDP and each puts on its own
-// outfit; every bot's roster then shows every other's as the world fitted it (a prop's adjustment
-// past the platform's limits clamped, an item worn twice kept once), and a bot joining later reads
-// everyone's in its first roster.
+// Outfits and emotes between real bots (S5.05, S5.07): six bots join a world server over UDP and
+// each puts on its own outfit; every bot's roster then shows every other's as the world fitted it
+// (a prop's adjustment past the platform's limits clamped, an item worn twice kept once), and a bot
+// joining later reads everyone's in its first roster. Then each plays an emote: every bot sees
+// every other's with the same start tick, and one stopped is gone for all.
 import { randomUUID } from 'node:crypto';
 import { newWorldKey } from '@flatchat/protocol';
 import { UdpServer } from '@flatchat/world-server/net';
@@ -87,5 +88,19 @@ describe('outfits between bots', () => {
     const late = await enter(BOTS);
     await waitFor('the late bot to see everyone', 10_000, async () => (late.people.size === BOTS + 1 ? true : undefined));
     for (let i = 0; i < BOTS; i++) expect(late.people.get(accounts[i]!)!.outfit).toEqual(expected(i));
+  }, 30_000);
+
+  it('show every bot’s emote to every other with the same start tick, and its stop', async () => {
+    bots.forEach((b, i) => b.act({ type: 'emote', anim: bytes(0xe0 + i) }));
+    const sees = (b: Bot): boolean => bots.every((_, i) => b.people.get(accounts[i]!)?.emote?.anim === hex(0xe0 + i));
+    await waitFor('every bot to see every emote', 10_000, async () => (bots.every(sees) ? true : undefined));
+    for (let i = 0; i < bots.length; i++) {
+      const ticks = new Set(bots.map((b) => b.people.get(accounts[i]!)!.emote!.tick));
+      expect(ticks.size).toBe(1);
+    }
+    await new Promise((r) => setTimeout(r, 550));
+    bots[0]!.act({ type: 'emote' });
+    await waitFor('the stop to reach everyone', 10_000, async () => (bots.every((b) => b.people.get(accounts[0]!)!.emote === undefined) ? true : undefined));
+    expect(bots[1]!.people.get(accounts[1]!)!.emote?.anim).toBe(hex(0xe1));
   }, 30_000);
 });

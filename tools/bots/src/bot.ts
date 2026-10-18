@@ -128,8 +128,9 @@ export class Bot {
   heldMute: string | undefined;
   /** How the world removed the bot, when it did (kicked, banned, closing). */
   removed: { reason: string; detail: string } | undefined;
-  /** Who is in the world, by account: their entities, roles, worn avatars and outfits (the roster). */
-  readonly people = new Map<string, { entity: number; role: string; avatar: string | undefined; outfit: WornItem[] }>();
+  /** Who is in the world, by account: their entities, roles, worn avatars, outfits and the emote
+   *  each plays (the animation in hex and the tick it started at; S5.07), as the roster says. */
+  readonly people = new Map<string, { entity: number; role: string; avatar: string | undefined; outfit: WornItem[]; emote: { anim: string; tick: number } | undefined }>();
   /** Where the server placed the bot at its join. */
   spawnAt: { x: number; z: number } | undefined;
   private joinedAt = 0;
@@ -364,7 +365,8 @@ export class Bot {
         if (m.full) this.people.clear();
         for (const p of m.players) {
           const outfit = p.outfit.map((w) => ({ item: Buffer.from(w.item).toString('hex'), ...(w.adjust ? { adjust: { ...w.adjust } } : {}) }));
-          this.people.set(p.account, { entity: p.entity, role: p.role, avatar: p.avatar ? Buffer.from(p.avatar).toString('hex') : undefined, outfit });
+          const emote = p.emote ? { anim: Buffer.from(p.emote.anim).toString('hex'), tick: p.emote.tick } : undefined;
+          this.people.set(p.account, { entity: p.entity, role: p.role, avatar: p.avatar ? Buffer.from(p.avatar).toString('hex') : undefined, outfit, emote });
         }
         for (const gone of m.left) for (const [account, p] of this.people) if (p.entity === gone) this.people.delete(account);
         break;
