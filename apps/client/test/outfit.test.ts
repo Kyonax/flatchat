@@ -2,8 +2,9 @@
 // Outfits on avatars (S5.05), without a window: the test tee's fit for the feminine body, as the
 // item converter writes it, put on the feminine body's own converted level by bone names, stays
 // 8 mm out from the skin (it was made 8 mm out along the body's normals) at rest and in poses, as
-// the skin under it moves; bound wrongly, it would not. The regions it hides leave the body's
-// triangles, and come back; a prop rides its point's bone.
+// the skin under it moves; bound wrongly, it would not. At the ends of the arms slider the limbs'
+// skin stretches along each bone and the sleeves with it (segments.ts, P.08). The regions it hides
+// leave the body's triangles, and come back; a prop rides its point's bone.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as THREE from 'three/webgpu';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fitTemplate, hideRegions, REGION_NAMES, regionsOf, restPlaces, wearFit, wearProp } from '../src/renderer/src/world/outfit';
+import { addSegments, setSegments, useSegments } from '../src/renderer/src/world/segments';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const read = (...p: string[]): Uint8Array => new Uint8Array(readFileSync(join(ROOT, ...p)));
@@ -113,6 +115,57 @@ describe('a fit on its body', () => {
     const robot = new THREE.Group();
     robot.add(new THREE.Bone());
     expect(wearFit(fitTemplate(fit), robot)).toBeUndefined();
+  });
+});
+
+describe('limbs at the sliders’ ends', () => {
+  it('stretch along each bone, the sleeves over them with the skin', () => {
+    const humanoid: Record<string, string> = {
+      leftUpperArm: 'upperarm_l', leftLowerArm: 'lowerarm_l', leftHand: 'hand_l', rightUpperArm: 'upperarm_r', rightLowerArm: 'lowerarm_r', rightHand: 'hand_r',
+      leftUpperLeg: 'thigh_l', leftLowerLeg: 'calf_l', leftFoot: 'foot_l', rightUpperLeg: 'thigh_r', rightLowerLeg: 'calf_r', rightFoot: 'foot_r',
+    };
+    const segments = addSegments(body, (b) => (humanoid[b] ? body.getObjectByName(humanoid[b]) : undefined));
+    expect(segments.size).toBe(8);
+    const meshes = wearFit(fitTemplate(fit), body)!;
+    body.add(...meshes);
+    // Clothes put on afterwards move onto the stretch nodes too.
+    useSegments(body, segments);
+    const skin = skinOf(body);
+    expect(skin.skeleton.bones.filter((b) => b.userData['flatchatSegment']).length).toBe(8);
+    // The client's joint moves for the arms (avatar-layer.ts), then the stretch.
+    const joints = ['lowerarm_l', 'hand_l', 'lowerarm_r', 'hand_r'].map((n) => [bone(n), bone(n).position.clone()] as const);
+    const shape = (arms: number): void => {
+      for (const [n, p] of joints) n.position.copy(p).multiplyScalar(arms);
+      setSegments(segments, { width: 1, arms, legs: 1, head: 1 });
+      body.updateMatrixWorld(true);
+    };
+    // The forearm's own skin (wholly on the lower arm): how far along it from the elbow.
+    const forearm: number[] = [];
+    const lower = skin.skeleton.bones.findIndex((b) => b.name === 'lowerarm_l');
+    const index = skin.geometry.getAttribute('skinIndex');
+    const weight = skin.geometry.getAttribute('skinWeight');
+    for (let v = 0; v < index.count; v++) if (index.getComponent(v, 0) === lower && weight.getComponent(v, 0) > 0.999) forearm.push(v);
+    expect(forearm.length).toBeGreaterThan(50);
+    const along = (): number[] => {
+      const p = posed(skin);
+      const elbow = bone('lowerarm_l').getWorldPosition(new THREE.Vector3());
+      const dir = bone('hand_l').getWorldPosition(new THREE.Vector3()).sub(elbow).normalize();
+      return forearm.map((v) => new THREE.Vector3(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]).sub(elbow).dot(dir));
+    };
+    shape(1);
+    const asMade = along();
+    for (const arms of [0.8, 1.25]) {
+      shape(arms);
+      // The forearm is that much shorter or longer: each point of it, that share as far along.
+      along().forEach((d, i) => expect(Math.abs(d - asMade[i]! * arms)).toBeLessThan(0.001));
+      // And the sleeves stay 8 mm out from the skin under them.
+      const g = gaps(posed(skin), posed(meshes[0]!));
+      expect(g[Math.floor(g.length / 2)]!).toBeGreaterThan(6);
+      expect(g[Math.floor(g.length / 2)]!).toBeLessThan(9);
+      expect(g.at(-1)!).toBeLessThan(12);
+    }
+    shape(1);
+    body.remove(...meshes);
   });
 });
 

@@ -8,8 +8,9 @@
 // posed and drawn (the layer culls each one's holder: three.js culls no groups).
 //
 // Proportions (S4.10) move joints, not scales: the elbows, wrists, knees and ankles along their
-// bones, the shoulders and hips apart, the head's size; skinning stretches each segment, and an
-// avatar with longer legs is raised so its feet stay on the ground.
+// bones, the shoulders and hips apart, the head's size; each arm and leg bone's skin is stretched
+// along it by the same share (segments.ts, P.08), so a limb and the sleeve over it change length
+// together, and an avatar with longer legs is raised so its feet stay on the ground.
 //
 // LOD0 to LOD2 are each player's own three-vrm VRM (its expressions, its spring bones); impostors
 // of one avatar share one parsed template (geometry, material and texture once on the GPU) and are
@@ -27,7 +28,7 @@
 // time since that tick (a dance loops, an emote plays once and hands back to walking). Each VRMA is
 // parsed once and shared. Impostors keep walking.
 import type { AnimationManifest, AvatarManifest, BodyKit, ItemManifest, Level, Rank, Region } from '@flatchat/content';
-import { rankIndex, resolveOutfit } from '@flatchat/content';
+import { PROPORTION_JOINTS, rankIndex, resolveOutfit, WIDTH_FALLBACK } from '@flatchat/content';
 import type { VRM } from '@pixiv/three-vrm';
 import { createVRMAnimationClip, type VRMAnimation } from '@pixiv/three-vrm-animation';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -37,6 +38,7 @@ import { type BoneAngles, type Expression, handPose, type HandPose, mouthShapes 
 import { builtInEmote } from './clips';
 import { Motion } from './motion';
 import { type FitTemplate, fitTemplate, hideRegions, restPlaces, wearFit, wearProp } from './outfit';
+import { addSegments, type Segments, setSegments, useSegments } from './segments';
 
 export interface AvatarState {
   entity: number;
@@ -91,13 +93,6 @@ export interface Proportions {
   head: number;
 }
 const AS_MADE: Proportions = { width: 100, arms: 100, legs: 100, head: 100 };
-/** The joints proportions move: along their bone for length, sideways for width. */
-const LENGTH_JOINTS: Record<'arms' | 'legs', string[]> = {
-  arms: ['leftLowerArm', 'leftHand', 'rightLowerArm', 'rightHand'],
-  legs: ['leftLowerLeg', 'leftFoot', 'rightLowerLeg', 'rightFoot'],
-};
-const WIDTH_JOINTS = ['leftShoulder', 'rightShoulder', 'leftUpperLeg', 'rightUpperLeg'];
-const WIDTH_FALLBACK: Record<string, string> = { leftShoulder: 'leftUpperArm', rightShoulder: 'rightUpperArm' };
 
 const FULL_WITHIN = 8;
 const LOWER_WITHIN = 18;
@@ -131,6 +126,8 @@ interface Entry {
   rest: Map<string, THREE.Vector3>;
   /** How much the legs grew, in the avatar's metres: the holder rises by it. */
   lift: number;
+  /** The current level's limb stretch nodes (segments.ts), which its skins and clothes use. */
+  segments: Segments | undefined;
   /** The body's own motion: the default clips by gait (Track P's P.05). */
   motion: Motion;
   speed: number;
@@ -288,6 +285,7 @@ export class AvatarLayer {
       proportions: this.pending.get(entity) ?? AS_MADE,
       rest: new Map(),
       lift: 0,
+      segments: undefined,
       motion: new Motion(),
       speed: 0,
       last: undefined,
@@ -330,8 +328,9 @@ export class AvatarLayer {
     };
     const p = e.proportions;
     let legLength = 0;
+    // Along their bone for length, sideways for width (the rule the converter's checks share).
     for (const kind of ['arms', 'legs'] as const) {
-      for (const bone of LENGTH_JOINTS[kind]) {
+      for (const bone of PROPORTION_JOINTS[kind]) {
         const n = node(bone);
         if (!n) continue;
         const r = restOf(bone, n);
@@ -339,7 +338,7 @@ export class AvatarLayer {
         if (kind === 'legs') legLength += r.length() / 2;
       }
     }
-    for (const bone of WIDTH_JOINTS) {
+    for (const bone of PROPORTION_JOINTS.width) {
       const name = node(bone) ? bone : WIDTH_FALLBACK[bone];
       const n = name ? node(name) : undefined;
       if (!n || !name) continue;
@@ -347,6 +346,7 @@ export class AvatarLayer {
       n.position.set(r.x * (p.width / 100), r.y, r.z);
     }
     node('head')?.scale.setScalar(p.head / 100);
+    if (e.segments) setSegments(e.segments, { width: p.width / 100, arms: p.arms / 100, legs: p.legs / 100, head: p.head / 100 });
     e.lift = legLength * (p.legs / 100 - 1);
   }
 
@@ -364,6 +364,7 @@ export class AvatarLayer {
 
   private clear(e: Entry): void {
     e.rest = new Map();
+    e.segments = undefined;
     // The worn items share their parsed files with every other wearer: off before the level goes.
     this.undress(e);
     this.stopPlaying(e);
@@ -456,6 +457,7 @@ export class AvatarLayer {
           }
           root.traverse((o) => ((o as THREE.Mesh).frustumCulled = false));
           e.impostor = { root, nodes };
+          e.segments = addSegments(root, (b) => nodes.get(b));
           e.hipsHeight = t.hipsHeight;
           e.holder.add(root);
           t.users += 1;
@@ -471,8 +473,10 @@ export class AvatarLayer {
           e.vrm = parsed.vrm;
           e.hipsHeight = parsed.hipsHeight;
           e.kit = got.kit;
-          // Taken while the level stands at rest: where each prop's point is measured from.
+          // Taken while the level stands at rest: where each prop's point is measured from, and
+          // each limb's direction for its stretch.
           e.rest2 = restPlaces(parsed.vrm.scene);
+          e.segments = addSegments(parsed.vrm.scene, (b) => parsed.vrm.humanoid.getRawBoneNode(b as Parameters<VRM['humanoid']['getRawBoneNode']>[0]) ?? undefined);
           e.holder.add(parsed.vrm.scene);
         }
         e.level = level;
@@ -661,6 +665,8 @@ export class AvatarLayer {
           return;
         }
         this.undress(e);
+        // The clothes stretch with the limbs, as the skin under them does.
+        if (e.segments) useSegments(vrm.scene, e.segments);
         vrm.scene.traverse((o) => {
           const m = o as THREE.SkinnedMesh;
           if (m.isSkinnedMesh && m.name !== 'flatchat-fit') hideRegions(m, hidden);
