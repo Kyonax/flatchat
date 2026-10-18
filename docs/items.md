@@ -37,6 +37,21 @@ The regions are `head`, `chest`, `belly`, `hips`, `upper_arm_l`, `upper_arm_r`, 
 
 Each region is the part of the body its bones move most. A region is hidden whole, so hide only what the item covers completely, or a hole shows. The regions are cut where garments end: a tee ends at the waist (chest and belly), and trousers start at the hips.
 
+## Attachments
+
+An attachment is a prop worn at a point: a hat on the head's top, glasses on the face, a sword at a hip, a backpack on the back. It is one rigid mesh with no skin. Model it with its origin where it meets the body, facing +Z with +Y up. Unlike clothes, it is worn on any avatar, free shapes included. Declare it with `"slot": "attachment"` and `"attach"` set to one of these points:
+
+| Point | Follows |
+|---|---|
+| `head_top`, `face` | the head |
+| `neck` | the neck (or the head) |
+| `chest`, `back` | the upper chest (or the chest, or the spine) |
+| `hips`, `hip_l`, `hip_r` | the hips and the thighs |
+| `hand_l`, `hand_r` | the hands |
+| `foot_l`, `foot_r` | the feet |
+
+A standard body carries each point as a marker (its `attach_*` nodes). On any other avatar a point is its bone's place plus an offset scaled by the avatar's height, and it moves with the bone. A player may move a prop up to 10 cm from its point, turn it up to 45° on each axis and size it from 0.8 to 1.25 (`packages/content/src/attach.ts`). An attachment may have up to 3,000 triangles, one material and a 512 px texture.
+
 ## Skin layers
 
 Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV space, 1,024 px like `kits/bodies/<name>/<name>-skin.png`, transparent where they leave the skin alone. Whenever an outfit changes, the platform composites a body's layers into one texture, the same bytes on every machine (`compositeSkin` in `packages/content/src/layers.ts`). They stack as skin, then tattoos, then makeup, then underwear on top, which covers what lies under it. Each layer can blend normally or multiply (ink), at an opacity. It can also bring a roughness and metalness image (glTF's ORM), composited beside the colour, so a shiny or metallic layer stays so. A standard body is never shown without its underwear layer.
