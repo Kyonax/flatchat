@@ -35,6 +35,7 @@ import { dedup, prune } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { PNG } from 'pngjs';
+import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { decodeImage, fitTextures, halve } from '../textures.ts';
 import { completeFreeShape, facesPlusZ, mapByNames, REQUIRED_BONES, restBox, turnAround, turnVrmAround } from './humanoid.ts';
 import { makeImpostor, makeLod1, makeLod2 } from './lod.ts';
@@ -54,6 +55,8 @@ export class AvatarError extends Error {
 export interface AvatarOptions {
   /** Skip KTX2 (tests): textures are fitted and kept as PNG. */
   ktx2?: boolean;
+  /** The upload itself when the bytes are the GLB the core's Blender made from it (S5.08). */
+  source?: UploadSource;
   log?: (event: string, fields: Record<string, unknown>) => void;
 }
 
@@ -399,13 +402,17 @@ function levelOf(doc: Document, bytes: Uint8Array, textureBytes: number): Avatar
 
 // ------------------------------------------------------------------------------ the pipeline
 
-export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): Promise<AvatarResult> {
+export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): Promise<AvatarResult> {
   const ktx2 = o.ktx2 ?? true;
   const warnings: string[] = [];
   const warn = (w: string): void => {
     if (!warnings.includes(w)) warnings.push(w);
   };
-  if (bytes.length > AVATAR_SOURCE_LIMIT) throw new AvatarError([`the file is over ${AVATAR_SOURCE_LIMIT / 1048576} MB`]);
+  if (upload.length > AVATAR_SOURCE_LIMIT) throw new AvatarError([`the file is over ${AVATAR_SOURCE_LIMIT / 1048576} MB`]);
+  // A DAE becomes a GLB here; an FBX, OBJ or .blend arrives as the GLB the core's Blender made (S5.08).
+  const { glb: bytes, source } = await uploadGlb(upload, o.source).catch((err: unknown) => {
+    throw new AvatarError([err instanceof UploadError ? err.message : String(err)]);
+  });
   let parsed: { json: Gltf; bin?: Uint8Array };
   try {
     parsed = readGltf(bytes, 'avatar.glb');
@@ -518,7 +525,7 @@ export async function convertAvatar(bytes: Uint8Array, o: AvatarOptions = {}): P
   const manifest: AvatarManifest = {
     format: AVATAR_FORMAT,
     converter: AVATAR_CONVERTER_VERSION,
-    source: { sha256: sha256(bytes), bytes: bytes.length, kind, generator: String(((json['asset'] ?? {}) as Record<string, unknown>)['generator'] ?? '').slice(0, 120) },
+    source: { sha256: source.sha256, bytes: source.bytes, kind, generator: String(((json['asset'] ?? {}) as Record<string, unknown>)['generator'] ?? '').slice(0, 120), ...(source.from ? { from: source.from } : {}) },
     name: String(meta['name'] ?? 'Untitled').slice(0, 120),
     licence: Object.fromEntries(Object.entries(sourceMeta).filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v) || Array.isArray(v)).map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 500) : v])) as AvatarManifest['licence'],
     stats,

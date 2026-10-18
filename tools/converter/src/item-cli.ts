@@ -2,9 +2,11 @@
 // The item converter as a program of its own (S5.05): the core runs it on each item upload the way
 // it runs avatar-cli.ts, in a separate process under Node.js's permission model, reading only the
 // converter, the upload and the standard bodies (for the skeleton and clipping checks), writing
-// only its output folder, with a time and memory limit.
+// only its output folder, with a time and memory limit. Its formats are avatar-cli.ts's (S5.08); a
+// file that keeps no declaration of its own (an FBX, an OBJ, a DAE) is given one at upload.
 //
-//   node src/item-cli.ts UPLOAD OUTDIR KITS [--no-ktx2]
+//   node src/item-cli.ts UPLOAD OUTDIR KITS [--no-ktx2] [--from fbx|obj|blend --source SHA256:BYTES]
+//                        [--declare DECLARATION.json]
 //
 // KITS is kits/bodies/: each body's VRM, checked against kits.json's SHA-256 before it is used.
 // Writes OUTDIR/<sha256> for each fit (or the prop), OUTDIR/manifest.json, and last
@@ -13,14 +15,23 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parseArgs } from 'node:util';
 import { BODY_KITS, type BodyKit } from '@flatchat/content';
 import { readAvatarLevel } from './avatar/convert.ts';
 import { type KitBody, kitBody } from './item/clipping.ts';
 import { convertItem, ItemError } from './item/convert.ts';
+import { sourceArgs } from './source/upload.ts';
 
-const [input, out, kitsDir, flag] = process.argv.slice(2);
-if (!input || !out || !kitsDir || (flag !== undefined && flag !== '--no-ktx2')) {
-  process.stderr.write('usage: item-cli.ts UPLOAD OUTDIR KITS [--no-ktx2]\n');
+let parsed;
+try {
+  parsed = parseArgs({ allowPositionals: true, options: { 'no-ktx2': { type: 'boolean' }, from: { type: 'string' }, source: { type: 'string' }, declare: { type: 'string' } } });
+} catch {
+  parsed = undefined;
+}
+const [input, out, kitsDir] = parsed?.positionals ?? [];
+const source = sourceArgs(parsed?.values.from, parsed?.values.source);
+if (!parsed || !input || !out || !kitsDir || parsed.positionals.length !== 3 || source === false) {
+  process.stderr.write('usage: item-cli.ts UPLOAD OUTDIR KITS [--no-ktx2] [--from fbx|obj|blend --source SHA256:BYTES] [--declare DECLARATION.json]\n');
   process.exit(2);
 }
 const write = (name: string, bytes: Uint8Array | string): void => writeFileSync(join(out, name), bytes, { flag: 'wx' });
@@ -42,7 +53,15 @@ async function readKits(dir: string): Promise<Partial<Record<BodyKit, KitBody>>>
 
 try {
   const kits = await readKits(kitsDir);
-  const r = await convertItem(new Uint8Array(readFileSync(input)), { ktx2: flag !== '--no-ktx2', kits });
+  let declaration: unknown;
+  if (parsed.values.declare !== undefined) {
+    try {
+      declaration = JSON.parse(readFileSync(parsed.values.declare, 'utf8')) as unknown;
+    } catch {
+      throw new ItemError(['the declaration given at upload is not JSON']);
+    }
+  }
+  const r = await convertItem(new Uint8Array(readFileSync(input)), { ktx2: parsed.values['no-ktx2'] !== true, kits, ...(source ? { source } : {}), ...(declaration !== undefined ? { declaration } : {}) });
   for (const [hash, bytes] of r.files) write(hash, bytes);
   write('manifest.json', r.manifestBytes);
   write('result.json', JSON.stringify({ ok: true, id: r.id, manifest: r.manifest }));

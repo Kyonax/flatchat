@@ -1,0 +1,130 @@
+{
+  "dae avatar": {
+    "from": "dae",
+    "kind": "glb",
+    "rank": "excellent",
+    "levels": {
+      "lod0": {
+        "triangles": 2880,
+        "bones": 53,
+        "materialSlots": 2
+      },
+      "lod1": {
+        "triangles": 1440,
+        "bones": 53,
+        "materialSlots": 1
+      },
+      "lod2": {
+        "triangles": 710,
+        "bones": 53,
+        "materialSlots": 1
+      },
+      "impostor": {
+        "triangles": 1500,
+        "bones": 20,
+        "materialSlots": 1
+      }
+    },
+    "bones": 54,
+    "expressions": [],
+    "height": 1.835,
+    "warnings": []
+  },
+  "fbx avatar": {
+    "from": "fbx",
+    "kind": "glb",
+    "rank": "excellent",
+    "levels": {
+      "lod0": {
+        "triangles": 2880,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "lod1": {
+        "triangles": 1440,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "lod2": {
+        "triangles": 654,
+        "bones": 57,
+        "materialSlots": 1
+      },
+      "impostor": {
+        "triangles": 1500,
+        "bones": 20,
+        "materialSlots": 1
+      }
+    },
+    "bones": 54,
+    "expressions": [
+      "aa",
+      "blinkLeft"
+    ],
+    "height": 1.835,
+    "warnings": []
+  },
+  "dae prop": {
+    "from": "dae",
+    "name": "Sample cube",
+    "slot": "attachment",
+    "attach": "head_top",
+    "prop": {
+      "triangles": 12,
+      "materialSlots": 1,
+      "joints": 0
+    },
+    "fits": {},
+    "clipping": {},
+    "warnings": []
+  },
+  "obj prop": {
+    "from": "obj",
+    "name": "Sample cube",
+    "slot": "attachment",
+    "attach": "head_top",
+    "prop": {
+      "triangles": 12,
+      "materialSlots": 1,
+      "joints": 0
+    },
+    "fits": {},
+    "clipping": {},
+    "warnings": []
+  },
+  "blend prop": {
+    "from": "blend",
+    "name": "Sample cube",
+    "slot": "attachment",
+    "attach": "head_top",
+    "prop": {
+      "triangles": 12,
+      "materialSlots": 1,
+      "joints": 0
+    },
+    "fits": {},
+    "clipping": {},
+    "warnings": []
+  },
+  "fbx tee": {
+    "from": "fbx",
+    "name": "Test tee",
+    "slot": "top",
+    "fits": {
+      "feminine": {
+        "triangles": 3630,
+        "materialSlots": 1,
+        "joints": 53
+      }
+    },
+    "clipping": {
+      "feminine": {
+        "poses": 7,
+        "checked": 0,
+        "through": 0,
+        "worstMm": 0
+      }
+    },
+    "warnings": []
+  }
+}

@@ -10,8 +10,9 @@
 import { createHash } from 'node:crypto';
 import type { Document, Node } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
-import { BODY_KITS, type BodyKit, checkItemFit, checkItemProp, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
+import { BODY_KITS, type BodyKit, checkItemFit, checkItemProp, fileDeclaration, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, MODEL_FORMAT_NAMES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
 import { avatarIO, validateGltf } from '../avatar/convert.ts';
+import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { fitTextures } from '../textures.ts';
 import { CLIP_TOLERANCE, clippingOf, type KitBody, skeletonOffset } from './clipping.ts';
 
@@ -36,6 +37,11 @@ export interface ItemOptions {
   ktx2?: boolean;
   /** The standard bodies, for the clipping check (kits/bodies/, read with kitBody). */
   kits?: Partial<Record<BodyKit, KitBody>>;
+  /** The declaration given at upload (S5.08), used when the file carries none: an FBX, OBJ or DAE
+   *  has nowhere to keep one. */
+  declaration?: unknown;
+  /** The upload itself when the bytes are the GLB the core's Blender made from it (S5.08). */
+  source?: UploadSource;
 }
 
 /** What refuses an item in the reference poses: more than CLIP_REFUSE_POINTS body points out
@@ -50,30 +56,18 @@ export const SKELETON_TOLERANCE = 0.01;
 
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 
-/** The declaration on the scene (a Blender scene's custom property) or on the file. */
-function declaration(json: Record<string, unknown>): unknown {
-  const scenes = Array.isArray(json['scenes']) ? (json['scenes'] as Array<Record<string, unknown>>) : [];
-  const scene = scenes[typeof json['scene'] === 'number' ? json['scene'] : 0];
-  const fromScene = (scene?.['extras'] as Record<string, unknown> | undefined)?.['flatchat_item'];
-  const raw = fromScene ?? (json['extras'] as Record<string, unknown> | undefined)?.['flatchat_item'];
-  // Blender writes a custom property that holds JSON as a string.
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-  return raw;
-}
-
-/** The fit nodes, by body: a skinned mesh whose extras.flatchat_fit names a body. */
+/** The fit nodes, by body: a skinned mesh whose extras.flatchat_fit names a body; in a file with no
+ *  such mark (an FBX, OBJ or DAE keeps no custom properties, S5.08), a skinned mesh whose name
+ *  names one. */
 function fitNodes(doc: Document): { fits: Map<BodyKit, Node>; problems: string[] } {
   const fits = new Map<BodyKit, Node>();
   const problems: string[] = [];
   const bones = new Set(KIT_BONES);
-  for (const node of doc.getRoot().listNodes()) {
-    const body = (node.getExtras() as Record<string, unknown>)['flatchat_fit'];
+  const nodes = doc.getRoot().listNodes();
+  const marked = nodes.some((n) => (n.getExtras() as Record<string, unknown>)['flatchat_fit'] !== undefined);
+  const named = (n: Node): string | undefined => (n.getMesh() && n.getSkin() ? BODY_KITS.find((b) => n.getName().toLowerCase().includes(b)) : undefined);
+  for (const node of nodes) {
+    const body = marked ? (node.getExtras() as Record<string, unknown>)['flatchat_fit'] : named(node);
     if (body === undefined) continue;
     if (typeof body !== 'string' || !(BODY_KITS as readonly string[]).includes(body)) {
       problems.push(`${node.getName() || 'a node'}: flatchat_fit ${JSON.stringify(body)} is not one of ${BODY_KITS.join(', ')}`);
@@ -96,13 +90,17 @@ function countTriangles(node: Node): number {
   return node.getMesh()!.listPrimitives().reduce((n, p) => n + (p.getIndices()?.getCount() ?? p.getAttribute('POSITION')!.getCount()) / 3, 0);
 }
 
-export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promise<ItemResult> {
+export async function convertItem(upload: Uint8Array, o: ItemOptions = {}): Promise<ItemResult> {
   const ktx2 = o.ktx2 ?? true;
   const warnings: string[] = [];
   const warn = (w: string): void => {
     if (!warnings.includes(w)) warnings.push(w);
   };
-  if (bytes.length > ITEM_SOURCE_LIMIT) throw new ItemError([`the file is over ${ITEM_SOURCE_LIMIT / 1048576} MB`]);
+  if (upload.length > ITEM_SOURCE_LIMIT) throw new ItemError([`the file is over ${ITEM_SOURCE_LIMIT / 1048576} MB`]);
+  // A DAE becomes a GLB here; an FBX, OBJ or .blend arrives as the GLB the core's Blender made (S5.08).
+  const { glb: bytes, source } = await uploadGlb(upload, o.source).catch((err: unknown) => {
+    throw new ItemError([err instanceof UploadError ? err.message : String(err)]);
+  });
   let json: Record<string, unknown>;
   try {
     json = readGltf(bytes, 'item.glb').json as unknown as Record<string, unknown>;
@@ -114,16 +112,24 @@ export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promi
   const list = (k: string): Array<Record<string, unknown>> => (Array.isArray(json[k]) ? (json[k] as Array<Record<string, unknown>>) : []);
   if ([...list('buffers'), ...list('images')].some((x) => x['uri'] !== undefined)) throw new ItemError(['the file points at outside data: export a .glb with everything inside']);
 
+  const own = fileDeclaration(json);
+  if (own === undefined && o.declaration === undefined) {
+    throw new ItemError([
+      source.from && source.from !== 'blend'
+        ? `the ${MODEL_FORMAT_NAMES[source.from]} file keeps no declaration: give the item's name, its slot and the regions it hides (or the point it is worn at) when uploading it`
+        : 'the file declares nothing: give its scene the custom property flatchat_item (docs/items.md), or give a declaration when uploading it',
+    ]);
+  }
   let declared: ItemDeclaration;
   try {
-    declared = readItemDeclaration(declaration(json));
+    declared = readItemDeclaration(own ?? o.declaration);
   } catch (err) {
     throw new ItemError(err instanceof ItemFormatError ? err.problems : [String(err)]);
   }
   const cap = SLOTS[declared.slot];
 
   const io = avatarIO();
-  if (declared.slot === 'attachment') return convertProp(bytes, declared, warnings, warn, ktx2);
+  if (declared.slot === 'attachment') return convertProp(bytes, declared, warnings, warn, ktx2, source);
   const { fits, problems } = fitNodes(await io.readBinary(bytes));
   for (const [body, node] of fits) {
     const triangles = countTriangles(node);
@@ -186,7 +192,7 @@ export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promi
     format: ITEM_FORMAT,
     kind: 'item',
     converter: ITEM_CONVERTER_VERSION,
-    source: { sha256: sha256(bytes), bytes: bytes.length },
+    source,
     name: declared.name,
     authors: declared.authors,
     slot: declared.slot,
@@ -200,7 +206,7 @@ export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promi
 }
 
 /** An attachment (S5.04): its rigid meshes as one prop, its origin the point it is worn at. */
-async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warnings: string[], warn: (w: string) => void, ktx2: boolean): Promise<ItemResult> {
+async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warnings: string[], warn: (w: string) => void, ktx2: boolean, source: ItemManifest['source']): Promise<ItemResult> {
   const cap = SLOTS.attachment;
   const io = avatarIO();
   const doc = await io.readBinary(bytes);
@@ -237,7 +243,7 @@ async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warning
     format: ITEM_FORMAT,
     kind: 'item',
     converter: ITEM_CONVERTER_VERSION,
-    source: { sha256: sha256(bytes), bytes: bytes.length },
+    source,
     name: declared.name,
     authors: declared.authors,
     slot: 'attachment',
