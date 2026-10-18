@@ -47,3 +47,15 @@ export function turnX(a: number): M4 {
   const [c, s] = [Math.cos(a), Math.sin(a)];
   return [1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1];
 }
+
+/** A turn about the Y axis, in radians. */
+export function turnY(a: number): M4 {
+  const [c, s] = [Math.cos(a), Math.sin(a)];
+  return [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1];
+}
+
+/** A turn about the Z axis, in radians. */
+export function turnZ(a: number): M4 {
+  const [c, s] = [Math.cos(a), Math.sin(a)];
+  return [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+}

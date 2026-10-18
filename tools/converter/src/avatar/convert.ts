@@ -91,6 +91,11 @@ const require = createRequire(import.meta.url);
 type Validator = { validateBytes(data: Uint8Array, options: Record<string, unknown>): Promise<{ issues: { numErrors: number; messages: Array<{ code: string; message: string; severity: number; pointer?: string }> } }> };
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 
+/** Khronos glTF-Validator (and vrm-validator for a VRM) on a file: its errors, and the repairable ones. */
+export async function validateGltf(bytes: Uint8Array, vrm: boolean): Promise<{ problems: string[]; repaired: string[] }> {
+  return validate(bytes, vrm);
+}
+
 async function validate(bytes: Uint8Array, vrm: boolean): Promise<{ problems: string[]; repaired: string[] }> {
   const validators: Validator[] = [require('gltf-validator') as Validator, ...(vrm ? [require('vrm-validator') as Validator] : [])];
   const problems = new Set<string>();

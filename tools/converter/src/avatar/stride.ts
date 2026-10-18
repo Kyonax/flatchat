@@ -6,7 +6,7 @@
 // exactly that, and some real avatars' impostors walked with a sheet between their legs or a
 // sliver from their feet. `stretchedTriangles` counts that defect.
 import type { Document, Node } from '@gltf-transform/core';
-import { apply, invert, type M4, mul, rotationOf, transposed, turnX } from './matrix.ts';
+import { apply, invert, type M4, mul, rotationOf, transposed, turnX, turnY, turnZ } from './matrix.ts';
 
 /** The two strides: turns about the side (X) axis in radians, at the hips and the knees. VRM 1.0
  *  faces +Z, so a negative turn swings a leg forward and a positive one bends a knee back. */
@@ -15,34 +15,43 @@ export const STRIDES: ReadonlyArray<Readonly<Record<string, number>>> = [
   { leftUpperLeg: 0.6, rightUpperLeg: -0.6, leftLowerLeg: 0.9, rightLowerLeg: 0.5 },
 ];
 
-/** For each stride, each of `bones`' skinning matrices: its posed world matrix × its rest world
- *  matrix⁻¹. `humanoid` names the humanoid's nodes (the turns are on the legs). */
-export function strideMatrices(bones: readonly Node[], humanoid: ReadonlyMap<string, Node>): M4[][] {
+/** A turn of a humanoid bone about a world axis at its joint, in radians (VRM 1.0 faces +Z, its
+ *  left hand at +X). */
+export type Turn = readonly [bone: string, axis: 'x' | 'y' | 'z', angle: number];
+
+/** Each of `bones`' skinning matrices in a pose (its posed world matrix × its rest world
+ *  matrix⁻¹), the turns applied down the hierarchy. `humanoid` names the humanoid's nodes. */
+export function poseMatrices(bones: readonly Node[], humanoid: ReadonlyMap<string, Node>, turns: readonly Turn[]): M4[] {
   const rest = (n: Node): M4 => n.getWorldMatrix() as unknown as M4;
-  return STRIDES.map((turns) => {
-    const turnOf = new Map<Node, number>();
-    for (const [name, a] of Object.entries(turns)) {
-      const n = humanoid.get(name);
-      if (n) turnOf.set(n, a);
+  const turnOf = new Map<Node, M4>();
+  for (const [name, axis, angle] of turns) {
+    const n = humanoid.get(name);
+    if (!n) continue;
+    const t = axis === 'x' ? turnX(angle) : axis === 'y' ? turnY(angle) : turnZ(angle);
+    turnOf.set(n, turnOf.has(n) ? mul(t, turnOf.get(n)!) : t);
+  }
+  const posed = new Map<Node, M4>();
+  const worldOf = (n: Node): M4 => {
+    const known = posed.get(n);
+    if (known) return known;
+    const parent = n.getParentNode();
+    const local = n.getMatrix() as unknown as M4;
+    let w = parent ? mul(worldOf(parent), local) : local;
+    const t = turnOf.get(n);
+    if (t) {
+      // The turn about a world axis at this joint, written in the joint's own frame.
+      const r = rotationOf(rest(n));
+      w = mul(w, mul(transposed(r), mul(t, r)));
     }
-    const posed = new Map<Node, M4>();
-    const worldOf = (n: Node): M4 => {
-      const known = posed.get(n);
-      if (known) return known;
-      const parent = n.getParentNode();
-      const local = n.getMatrix() as unknown as M4;
-      let w = parent ? mul(worldOf(parent), local) : local;
-      const a = turnOf.get(n);
-      if (a !== undefined) {
-        // The turn about the world's X axis at this joint, written in the joint's own frame.
-        const r = rotationOf(rest(n));
-        w = mul(w, mul(transposed(r), mul(turnX(a), r)));
-      }
-      posed.set(n, w);
-      return w;
-    };
-    return bones.map((b) => mul(worldOf(b), invert(rest(b))));
-  });
+    posed.set(n, w);
+    return w;
+  };
+  return bones.map((b) => mul(worldOf(b), invert(rest(b))));
+}
+
+/** For each stride, each of `bones`' skinning matrices. */
+export function strideMatrices(bones: readonly Node[], humanoid: ReadonlyMap<string, Node>): M4[][] {
+  return STRIDES.map((turns) => poseMatrices(bones, humanoid, Object.entries(turns).map(([bone, a]) => [bone, 'x', a] as const)));
 }
 
 /** Rest positions (world space) skinned by four joints and weights a vertex, with `matrices`. */
