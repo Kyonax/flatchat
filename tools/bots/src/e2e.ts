@@ -107,11 +107,11 @@ try {
   const plaza = await register('E2E Plaza');
   const garden = await register('E2E Garden');
   // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
-  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect', '--overlay', '--look']);
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect', '--overlay', '--look', '--acoustics']);
   // The garden's host does not play fair (S6.01): six broken effects beside its tornado, put into
   // the built world past the converter, with made-up numbers. The client must refuse every one.
   await run([process.execPath, HOSTILE, join(dir, 'travel', 'b.built')]);
-  const gardenExtraBytes = (JSON.parse(readFileSync(join(dir, 'travel', 'b.built', 'world.json'), 'utf8')) as { files: Array<{ size: number; kind: string }> }).files.filter((f) => f.kind === 'effect' || f.kind === 'overlay').reduce((n, f) => n + f.size, 0);
+  const gardenExtraBytes = (JSON.parse(readFileSync(join(dir, 'travel', 'b.built', 'world.json'), 'utf8')) as { files: Array<{ size: number; kind: string }> }).files.filter((f) => f.kind === 'effect' || f.kind === 'overlay' || f.kind === 'audio').reduce((n, f) => n + f.size, 0);
   const host = async (w: { id: string; key: string }, built: string): Promise<Awaited<ReturnType<typeof start>>> => {
     const [icePort, signalPort] = [await freePort(), await freePort()];
     const s = await start(
@@ -447,6 +447,17 @@ try {
       .waitFor({ state: 'attached', timeout: 20_000 })
       .then(() => true)
       .catch(async () => `bloom ${await page.locator('[data-test=look]').getAttribute('data-bloom').catch(() => '?')}, filters ${await page.locator('[data-test=look]').getAttribute('data-filters').catch(() => '?')}`);
+    // The garden's test room for 3D audio (S6.06): a hall around the arrivals, a sound behind a wall
+    // (muffled) and one in the open (not).
+    steps['worldAudio'] = await page
+      .locator('[data-test=audio][data-room="hall"][data-audible="2"][data-occluded="1"]')
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(async () => {
+        const a = page.locator('[data-test=audio]');
+        return `room ${await a.getAttribute('data-room').catch(() => '?')}, audible ${await a.getAttribute('data-audible').catch(() => '?')}, occluded ${await a.getAttribute('data-occluded').catch(() => '?')}`;
+      });
+    steps['worldAudioRays'] = await page.locator('[data-test=audio]').getAttribute('data-ray-ms').catch(() => null);
     // The garden's own screen overlay (S6.02): on for every visitor.
     steps['worldOverlay'] = await page
       .locator('[data-test=overlays][data-world="1"]')
@@ -551,11 +562,12 @@ try {
     steps['overlayOff'] === true &&
     steps['worldOverlay'] === true &&
     steps['worldLook'] === true &&
+    steps['worldAudio'] === true &&
     typeof steps['gpuReset'] === 'object' &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).recoveredMs < 15_000 &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).resets === 1 &&
     (steps['pageErrors'] as string[]).length === 0 &&
-    // The park sends its plan, its effects and its overlay, never geometry.
+    // The park sends its plan, its effects, its overlay and its sounds, never geometry.
     (gardenSent['chunk']?.bytes ?? Infinity) - gardenExtraBytes < 64 * 1024;
   await stop(core.proc);
 } catch (err) {
