@@ -6,6 +6,7 @@
 // and the client, so all three agree on what an item is and what it may weigh.
 import { ATTACH_POINTS, type AttachPoint } from './attach.ts';
 import type { ModelFrom } from './avatar.ts';
+import { checkEffectFit, EFFECT_LIMITS, type EffectFit } from './effect.ts';
 
 /** The manifest's format: the converter's output for this version of the platform. */
 export const ITEM_FORMAT = 1;
@@ -71,27 +72,52 @@ export const SLOTS = {
   shoes: { triangles: 4_000, materials: 1, textureSide: 1024 },
   /** A prop at an attachment point (S5.04): one rigid mesh, worn on any avatar, free shapes too. */
   attachment: { triangles: 3_000, materials: 1, textureSide: 512 },
+  /** An effect at an attachment point (S6.01): an Effekseer effect, measured by the dry run and
+   *  held to an avatar's effect budget (EFFECT_LIMITS.avatar), its models' triangles here. */
+  effect: { triangles: EFFECT_LIMITS.avatar.triangles, materials: 0, textureSide: EFFECT_LIMITS.textureSide },
 } as const satisfies Record<string, { triangles: number; materials: number; textureSide: number }>;
 export type Slot = keyof typeof SLOTS;
+/** The slots worn at a point rather than on the body: a prop, an effect. */
+export const POINT_SLOTS: readonly Slot[] = ['attachment', 'effect'];
+/** The slots a model upload fills: every one but the effect's. */
+export const MODEL_SLOTS = (Object.keys(SLOTS) as Slot[]).filter((s) => s !== 'effect');
+
+/** The key one item takes in an outfit: its slot, or for a prop or an effect its point. */
+function wornKey(w: { slot: Slot; attach?: AttachPoint | undefined }): string {
+  return POINT_SLOTS.includes(w.slot) ? `${w.slot} at ${w.attach ?? '?'}` : w.slot;
+}
 /** Slots worn instead of others: a full outfit (a dress, a jumpsuit) takes the top and the bottom. */
 export const SLOT_REPLACES: Partial<Record<Slot, readonly Slot[]>> = { full: ['top', 'bottom'] };
 
-/** What stops a set of items being worn together (S5.05): one item to a slot, one prop to an
- *  attachment point, and a full outfit with no top or bottom beside it (SLOT_REPLACES). The client
- *  keeps an outfit within these when a toggle puts an item on (it takes the place of the one it
- *  conflicts with); the core refuses a saved outfit that breaks them. Empty when they can be worn. */
-export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: AttachPoint | undefined }>): string[] {
+/** What stops a set of items being worn together (S5.05, S6.01): one item to a slot, one prop and
+ *  one effect to an attachment point, a full outfit with no top or bottom beside it
+ *  (SLOT_REPLACES), and effects that fit an avatar's budget together (their dry runs' peaks, when
+ *  given). The client keeps an outfit within these when a toggle puts an item on (it takes the
+ *  place of the one it conflicts with); the core refuses a saved outfit that breaks them. Empty
+ *  when they can be worn. */
+export function outfitProblems(worn: ReadonlyArray<{ slot: Slot; attach?: AttachPoint | undefined; effect?: Pick<EffectFit, 'peak'> | undefined }>): string[] {
   const problems: string[] = [];
   const taken = new Map<string, number>();
   for (const w of worn) {
-    const key = w.slot === 'attachment' ? `attachment at ${w.attach ?? '?'}` : w.slot;
+    const key = wornKey(w);
     taken.set(key, (taken.get(key) ?? 0) + 1);
   }
-  for (const [key, n] of taken) if (n > 1) problems.push(`${n} items in one ${key.startsWith('attachment') ? key : `${key} slot`}`);
+  for (const [key, n] of taken) if (n > 1) problems.push(`${n} items in one ${key.includes(' at ') ? key : `${key} slot`}`);
   for (const [slot, replaced] of Object.entries(SLOT_REPLACES)) {
     if (!taken.has(slot)) continue;
     for (const r of replaced) if (taken.has(r)) problems.push(`a ${slot} item takes the ${r} slot too`);
   }
+  const sum = { instances: 0, quads: 0, triangles: 0 };
+  for (const w of worn) {
+    if (w.slot !== 'effect' || !w.effect) continue;
+    sum.instances += w.effect.peak.instances;
+    sum.quads += w.effect.peak.quads;
+    sum.triangles += w.effect.peak.triangles;
+  }
+  const cap = EFFECT_LIMITS.avatar;
+  if (sum.instances > cap.instances) problems.push(`the outfit's effects have up to ${sum.instances} particles together; an avatar's may have ${cap.instances}`);
+  if (sum.quads > cap.quads) problems.push(`the outfit's effects draw up to ${sum.quads} quads together; an avatar's may draw ${cap.quads}`);
+  if (sum.triangles > cap.triangles) problems.push(`the outfit's effects' models draw up to ${sum.triangles} triangles together; an avatar's may draw ${cap.triangles}`);
   return problems;
 }
 
@@ -103,7 +129,7 @@ export function resolveOutfit<T extends { slot: Slot; attach?: AttachPoint | und
   const replacedBy = (slot: Slot): Slot[] => Object.entries(SLOT_REPLACES).flatMap(([s, rs]) => ((rs as readonly Slot[]).includes(slot) ? [s as Slot] : []));
   for (let i = worn.length - 1; i >= 0; i--) {
     const w = worn[i]!;
-    const key = w.slot === 'attachment' ? `attachment at ${w.attach ?? '?'}` : w.slot;
+    const key = wornKey(w);
     if (taken.has(key)) continue;
     // A later top or bottom displaces an earlier full item; a later full item, an earlier top or bottom.
     if ((SLOT_REPLACES[w.slot] ?? []).some((r) => taken.has(r)) || replacedBy(w.slot).some((s) => taken.has(s))) continue;
@@ -120,8 +146,10 @@ export interface ItemDeclaration {
   slot: Slot;
   hides: Region[];
   authors: string[];
-  /** For the attachment slot: the point it is worn at. */
+  /** For the attachment and effect slots: the point it is worn at. */
   attach?: AttachPoint;
+  /** For the effect slot: the scale it plays at (0.01 to 100; 1 when not given). */
+  scale?: number;
 }
 
 /** A file's own declaration (its glTF JSON's): extras.flatchat_item on its scene or on the file;
@@ -158,12 +186,24 @@ export function readItemDeclaration(value: unknown): ItemDeclaration {
   for (const h of hides) if (typeof h !== 'string' || !(h in REGIONS)) problems.push(`"${String(h)}" is not a region an item can hide (${Object.keys(REGIONS).join(', ')})`);
   const authors = Array.isArray(d['authors']) ? d['authors'].filter((a): a is string => typeof a === 'string' && a.trim().length > 0).map((a) => a.trim()) : [];
   const attach = d['attach'];
-  if (slot === 'attachment') {
-    if (typeof attach !== 'string' || !(attach in ATTACH_POINTS)) problems.push(`an attachment names the point it is worn at: one of ${Object.keys(ATTACH_POINTS).join(', ')}`);
-    if (hides.length) problems.push('an attachment hides nothing of the body');
-  } else if (attach !== undefined) problems.push('only the attachment slot is worn at a point');
+  const atPoint = POINT_SLOTS.includes(slot as Slot);
+  if (atPoint) {
+    const what = slot === 'effect' ? 'an effect' : 'an attachment';
+    if (typeof attach !== 'string' || !(attach in ATTACH_POINTS)) problems.push(`${what} names the point it is worn at: one of ${Object.keys(ATTACH_POINTS).join(', ')}`);
+    if (hides.length) problems.push(`${what} hides nothing of the body`);
+  } else if (attach !== undefined) problems.push('only the attachment and effect slots are worn at a point');
+  const scale = d['scale'];
+  if (scale !== undefined && slot !== 'effect') problems.push('only an effect has a scale');
+  else if (scale !== undefined && (typeof scale !== 'number' || !(scale >= 0.01 && scale <= 100))) problems.push("an effect's scale is 0.01 to 100");
   if (problems.length) throw new ItemFormatError(problems);
-  return { name, slot: slot as Slot, hides: [...new Set(hides as Region[])].sort(), authors, ...(slot === 'attachment' ? { attach: attach as AttachPoint } : {}) };
+  return {
+    name,
+    slot: slot as Slot,
+    hides: [...new Set(hides as Region[])].sort(),
+    authors,
+    ...(atPoint ? { attach: attach as AttachPoint } : {}),
+    ...(slot === 'effect' ? { scale: typeof scale === 'number' ? scale : 1 } : {}),
+  };
 }
 
 /** One body's fit as the platform keeps it. */
@@ -203,6 +243,8 @@ export interface ItemManifest {
   /** For the attachment slot: its point, and its one rigid mesh (worn on any avatar). */
   attach?: AttachPoint;
   prop?: ItemFit;
+  /** For the effect slot (S6.01): its bundle and what the dry run measured. */
+  effect?: EffectFit;
   warnings: string[];
 }
 
@@ -210,7 +252,11 @@ export interface ItemManifest {
 export function checkItemManifest(value: unknown): ItemManifest {
   const m = value as ItemManifest;
   if (typeof m !== 'object' || m === null || m.format !== ITEM_FORMAT || m.kind !== 'item') throw new Error('not an item manifest of this format');
-  readItemDeclaration({ name: m.name, slot: m.slot, hides: m.hides, authors: m.authors, ...(m.attach ? { attach: m.attach } : {}) });
+  readItemDeclaration({ name: m.name, slot: m.slot, hides: m.hides, authors: m.authors, ...(m.attach ? { attach: m.attach } : {}), ...(m.slot === 'effect' && m.effect ? { scale: m.effect.scale } : {}) });
+  if (m.slot === 'effect') {
+    checkEffectFit(m.effect);
+    return m;
+  }
   if (m.slot === 'attachment') {
     if (typeof m.prop?.file !== 'string' || !/^[0-9a-f]{64}$/.test(m.prop.file)) throw new Error('an attachment has its prop');
     return m;

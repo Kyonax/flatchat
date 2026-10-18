@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // The item rules every program shares (S5.02): the kits' 53 bones and the regions they fill, the
 // slots and their caps, a creator's declaration read or refused with every reason at once, and a
-// fit's JSON checked before three.js sees it; and which items can be worn together (S5.05).
+// fit's JSON checked before three.js sees it; and which items can be worn together (S5.05), effects
+// at their points among them (S6.01).
 import { describe, expect, it } from 'vitest';
-import { type AttachPoint, checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, outfitProblems, readItemDeclaration, REGIONS, regionOfBone, resolveOutfit, type Slot, SLOT_REPLACES, SLOTS } from '../src/index.ts';
+import { type AttachPoint, checkItemFit, checkItemManifest, ITEM_FORMAT, ItemFormatError, KIT_BONES, MODEL_SLOTS, outfitProblems, readItemDeclaration, REGIONS, regionOfBone, resolveOutfit, type Slot, SLOT_REPLACES, SLOTS } from '../src/index.ts';
 
 describe('items', () => {
   it('name the kits\' 53 bones and give every bone but the root one region', () => {
@@ -70,5 +71,33 @@ describe('outfits (S5.05)', () => {
     expect(ids(resolveOutfit([capL, { ...capL, id: 'capL2' }]))).toEqual(['capL2']);
     const sets: Array<Array<{ id: string; slot: Slot; attach?: AttachPoint }>> = [[tee, shirt, dress, jeans], [dress, tee, capL, capL]];
     for (const set of sets) expect(outfitProblems(resolveOutfit(set))).toEqual([]);
+  });
+});
+
+describe('effects as items (S6.01)', () => {
+  it('are worn at a point with a scale, hide nothing, and keep the declaration’s rules', () => {
+    expect(readItemDeclaration({ name: 'Aura', slot: 'effect', attach: 'hips' })).toMatchObject({ slot: 'effect', attach: 'hips', scale: 1, hides: [] });
+    expect(readItemDeclaration({ name: 'Glow', slot: 'effect', attach: 'hand_r', scale: 0.25 }).scale).toBe(0.25);
+    const why = (d: unknown): string[] => {
+      try {
+        readItemDeclaration(d);
+      } catch (err) {
+        return (err as ItemFormatError).problems;
+      }
+      return [];
+    };
+    expect(why({ name: 'Aura', slot: 'effect' })).toEqual([expect.stringMatching(/^an effect names the point it is worn at/)]);
+    expect(why({ name: 'Aura', slot: 'effect', attach: 'hips', hides: ['chest'], scale: 500 })).toEqual(['an effect hides nothing of the body', "an effect's scale is 0.01 to 100"]);
+    expect(why({ name: 'Hat', slot: 'hat', scale: 2 })).toEqual(['only an effect has a scale']);
+    expect(MODEL_SLOTS).not.toContain('effect');
+  });
+
+  it('take one effect to a point, and fit an avatar’s budget together', () => {
+    const aura = { slot: 'effect' as const, attach: 'hips' as const, effect: { peak: { instances: 118, quads: 101, triangles: 16_940 } } };
+    const prop = { slot: 'attachment' as const, attach: 'hips' as const };
+    // A prop and an effect share a point; two effects do not.
+    expect(outfitProblems([aura, prop])).toEqual([]);
+    expect(outfitProblems([aura, { ...aura }])).toContain('2 items in one effect at hips');
+    expect(outfitProblems([aura, { ...aura, attach: 'chest' as const }])).toEqual([expect.stringMatching(/33880 triangles together; an avatar's may draw 20000/)]);
   });
 });

@@ -206,8 +206,11 @@ export function effectFiles(f: EffectFile): Array<{ path: string; kind: keyof Ef
 // ---------------------------------------------------------------- the bundle (FCFX)
 
 /** How the platform keeps an effect: "FCFX", the format (1), the index's length, the index (JSON:
- *  the effect's own path and every file's path and size, in order), then the files' bytes in that
- *  order, the effect first. One file per effect, named by its SHA-256 like every converted file. */
+ *  the effect's own path and every file's path and size, in order, and the item's declaration when
+ *  it carries one), then the files' bytes in that order, the effect first. One file per effect,
+ *  named by its SHA-256 like every converted file. An upload may be a bundle too: one that carries
+ *  its declaration is an effect that declares itself, as a GLB does with its extras (the starter
+ *  effects are made so). */
 export const BUNDLE_FORMAT = 1;
 const BUNDLE_INDEX_MAX = 64 * 1024;
 
@@ -215,12 +218,14 @@ export interface EffectBundle {
   /** The effect's own path, first among the files. */
   main: string;
   files: Map<string, Uint8Array>;
+  /** An item declaration (packages/content's readItemDeclaration reads it), when it has one. */
+  declaration?: unknown;
 }
 
 export function writeBundle(b: EffectBundle): Uint8Array {
   const order = [b.main, ...[...b.files.keys()].filter((p) => p !== b.main).sort()];
   if (!b.files.has(b.main)) throw new Error('the bundle has no effect');
-  const index = new TextEncoder().encode(JSON.stringify({ main: b.main, files: order.map((path) => ({ path, bytes: b.files.get(path)!.length })) }));
+  const index = new TextEncoder().encode(JSON.stringify({ main: b.main, files: order.map((path) => ({ path, bytes: b.files.get(path)!.length })), ...(b.declaration !== undefined ? { declaration: b.declaration } : {}) }));
   const total = 12 + index.length + order.reduce((n, p) => n + b.files.get(p)!.length, 0);
   const out = new Uint8Array(total);
   out.set([0x46, 0x43, 0x46, 0x58]);
@@ -245,7 +250,7 @@ export function readBundle(bytes: Uint8Array): EffectBundle {
   if (view.getUint32(4, true) !== BUNDLE_FORMAT) bad(`format ${view.getUint32(4, true)}`);
   const n = view.getUint32(8, true);
   if (n > BUNDLE_INDEX_MAX || 12 + n > bytes.length) bad('its index does not fit');
-  let index: { main?: unknown; files?: unknown };
+  let index: { main?: unknown; files?: unknown; declaration?: unknown };
   try {
     index = JSON.parse(new TextDecoder().decode(bytes.subarray(12, 12 + n))) as typeof index;
   } catch {
@@ -261,7 +266,7 @@ export function readBundle(bytes: Uint8Array): EffectBundle {
     at += f.bytes as number;
   }
   if (at !== bytes.length || !files.has(index.main as string)) bad('its files do not add up');
-  return { main: index.main as string, files };
+  return { main: index.main as string, files, ...(index.declaration !== undefined ? { declaration: index.declaration } : {}) };
 }
 
 /** The bundle's path for a path the runtime asks for: the same path, else the same path ignoring

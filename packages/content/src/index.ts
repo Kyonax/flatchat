@@ -67,7 +67,7 @@ export {
   rankOf,
 } from './avatar.ts';
 export { MODEL_FROM, type ModelFrom } from './avatar.ts';
-export { BLENDER_FORMATS, MODEL_EXTENSIONS, MODEL_FORMAT_NAMES, type UploadFormat, uploadFormat } from './formats.ts';
+export { BLENDER_FORMATS, EFFECT_EXTENSIONS, MODEL_EXTENSIONS, MODEL_FORMAT_NAMES, type UploadFormat, uploadFormat, zipNames } from './formats.ts';
 export { checkFingerprint, type Fingerprint, FingerprintError, matchOf, SHAPE_MATCH, SHAPE_MIN_TOKENS, SHAPE_SLOTS, shapeSimilarity, TEXTURE_MATCH_BITS, TEXTURE_MAX, textureDistance } from './fingerprint.ts';
 export {
   BODY_KITS,
@@ -85,7 +85,9 @@ export {
   ItemFormatError,
   type ItemManifest,
   KIT_BONES,
+  MODEL_SLOTS,
   outfitProblems,
+  POINT_SLOTS,
   readItemDeclaration,
   type Region,
   REGIONS,
