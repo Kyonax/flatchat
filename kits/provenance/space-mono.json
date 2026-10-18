@@ -1,0 +1,10 @@
+{
+  "files": ["apps/client/src/renderer/src/assets/fonts/SpaceMono-*.woff2"],
+  "title": "Space Mono, Regular and Bold (web fonts)",
+  "creator": "Colophon Foundry (for Google Design), as The Space Mono Project Authors",
+  "licence": "OFL-1.1",
+  "source": "https://github.com/googlefonts/spacemono/tree/329858c2c4dbd3476f972a4ae00624b018cf4b81/fonts/webfonts",
+  "retrieved": "2026-10-18",
+  "licencePage": { "url": "https://github.com/googlefonts/spacemono/blob/329858c2c4dbd3476f972a4ae00624b018cf4b81/OFL.txt", "archived": "kits/provenance/archive/space-mono-ofl.txt" },
+  "changes": "none: the two weights the interface uses, as the project ships them"
+}
