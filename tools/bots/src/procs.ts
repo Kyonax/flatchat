@@ -88,14 +88,20 @@ export async function waitFor<T>(what: string, ms: number, probe: () => Promise<
  *  sign-in page's form, the code exchange), playing the browser over HTTP. Returns the access token;
  *  never print it. `extra` goes with every request (a forwarded address, for a core behind a tunnel). */
 export async function signUpAndIn(coreUrl: string, invitation: string, email: string, password: string, displayName: string, extra: Record<string, string> = {}): Promise<string> {
-  const form = { 'content-type': 'application/x-www-form-urlencoded', ...extra };
-  const json = { 'content-type': 'application/json', ...extra };
   const signup = await fetch(`${coreUrl}/signup?lang=en`, {
     method: 'POST',
-    headers: form,
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...extra },
     body: new URLSearchParams({ invitation, email, password, displayName, birthMonth: '4', birthYear: '1994', country: 'CO', consent: 'yes' }),
   });
   if (signup.status !== 201) throw new Error(`sign-up answered ${signup.status}`);
+  return signIn(coreUrl, email, password, extra);
+}
+
+/** Signs an existing account in through the browser flow's requests, as the client does; answers
+ *  its access token. */
+export async function signIn(coreUrl: string, email: string, password: string, extra: Record<string, string> = {}): Promise<string> {
+  const form = { 'content-type': 'application/x-www-form-urlencoded', ...extra };
+  const json = { 'content-type': 'application/json', ...extra };
   const verifier = randomBytes(48).toString('base64url');
   const lr = (await (await fetch(`${coreUrl}/api/v1/login-requests`, { method: 'POST', headers: json, body: JSON.stringify({ challenge: createHash('sha256').update(verifier).digest('base64url'), port: 50_000 }) })).json()) as { request: string };
   const posted = await fetch(`${coreUrl}/signin?lang=en`, { method: 'POST', headers: form, body: new URLSearchParams({ request: lr.request, email, password }), redirect: 'manual' });
