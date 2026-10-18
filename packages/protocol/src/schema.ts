@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -81,6 +81,11 @@ const role = oneOf(ROLES);
 export const EXPRESSIONS = ['neutral', 'happy', 'angry', 'sad', 'relaxed', 'surprised'] as const;
 export const HAND_POSES = ['relaxed', 'fist', 'point', 'peace', 'thumbsUp', 'open', 'rock'] as const;
 const face = struct({ expression: oneOf(EXPRESSIONS), left: oneOf(HAND_POSES), right: oneOf(HAND_POSES) });
+/** A player's proportions (version 8, S4.10), each in percent of the avatar as made: the
+ *  shoulders' and hips' width, the arms' and legs' length and the head's size. The world fits each
+ *  into PROPORTIONS; every client moves the avatar's bones by them. */
+export const PROPORTIONS = { min: 80, max: 125 } as const;
+const proportions = struct({ width: u8, arms: u8, legs: u8, head: u8 });
 
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
  *  core's asset store, never from the host; `height` is the world's fitted height. */
@@ -93,6 +98,7 @@ const player = struct({
   height: centimetres,
   role,
   face,
+  proportions,
 });
 
 export const REFUSE_REASONS = [
@@ -140,7 +146,8 @@ export const MESSAGES = {
     channel: 'reliable',
     // `spawn` (version 3): the spawn group a portal named (S2.11), empty for the world's own.
     // `height` (version 4): the player's chosen height, which the world fits into its range.
-    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(4096), spawn: str(32), height: centimetres }),
+    // `proportions` (version 8): the avatar's sliders, fitted by the world too; left out, as made.
+    body: struct({ protocol: u16, fingerprint: u32, build: str(32), token: bytes(4096), spawn: str(32), height: centimetres, proportions: optional(proportions) }),
   },
   welcome: {
     id: 0x02,
@@ -177,7 +184,7 @@ export const MESSAGES = {
     body: struct({ full: bool, players: list(player, 256), left: list(u16, 256) }),
   },
   // The player's look (version 4, S2.07): a new height; the world fits it and sends a roster change.
-  appearance: { id: 0x13, from: 'client', channel: 'reliable', body: struct({ height: centimetres }) },
+  appearance: { id: 0x13, from: 'client', channel: 'reliable', body: struct({ height: centimetres, proportions: optional(proportions) }) },
   // A new avatar during the visit (version 7, S4.05): a fresh connect token for this world, of the
   // same account, whose `avatar` the world takes into the roster; the core vouches for the avatar,
   // so a client cannot wear what it does not own.

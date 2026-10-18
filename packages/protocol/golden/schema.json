@@ -1,6 +1,6 @@
 {
-  "protocol": 7,
-  "fingerprint": "ebe314c3",
+  "protocol": 8,
+  "fingerprint": "f2ea7edf",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -55,6 +55,45 @@
               "type": {
                 "kind": "uint",
                 "bits": 10
+              }
+            },
+            {
+              "name": "proportions",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "width",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "arms",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "legs",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "head",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -566,6 +605,42 @@
                           }
                         ]
                       }
+                    },
+                    {
+                      "name": "proportions",
+                      "type": {
+                        "kind": "struct",
+                        "fields": [
+                          {
+                            "name": "width",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 8
+                            }
+                          },
+                          {
+                            "name": "arms",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 8
+                            }
+                          },
+                          {
+                            "name": "legs",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 8
+                            }
+                          },
+                          {
+                            "name": "head",
+                            "type": {
+                              "kind": "uint",
+                              "bits": 8
+                            }
+                          }
+                        ]
+                      }
                     }
                   ]
                 }
@@ -598,6 +673,45 @@
               "type": {
                 "kind": "uint",
                 "bits": 10
+              }
+            },
+            {
+              "name": "proportions",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "struct",
+                  "fields": [
+                    {
+                      "name": "width",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "arms",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "legs",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    },
+                    {
+                      "name": "head",
+                      "type": {
+                        "kind": "uint",
+                        "bits": 8
+                      }
+                    }
+                  ]
+                }
               }
             }
           ]
