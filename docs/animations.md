@@ -30,7 +30,7 @@ FlatChat converts every animation on its own servers, in a sandbox. FBX needs Bl
 
 ## Playing them
 
-Upload an emote or a dance from the client's home screen (Upload an emote, Upload a dance). In a world, press B for your emotes and dances and pick one: everyone nearby sees it, in step, from the moment it started. A dance repeats until you stop it or walk; an emote plays once. Players far away, drawn as impostors, keep walking instead.
+Upload an emote or a dance from the client's home screen (Upload an emote, Upload a dance). In a world, press B for your emotes and dances and pick one: everyone nearby sees it, in step, from the moment it started. Two gestures are there for everyone without an upload, Wave hello and Dance (the default clips' greeting and dance); every client carries them, so nothing is fetched to play them. A dance repeats until you stop it or walk; an emote plays once. Players far away, drawn as impostors, keep walking instead.
 
 ## Sounds
 
