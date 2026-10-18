@@ -308,6 +308,12 @@ const es: Shape<typeof en> = {
     effectsShow: 'Mostrar efectos (partículas, auras, estelas)',
     effectsStrangers: 'Mostrar también los efectos de desconocidos, no solo los tuyos y los de tus amigos',
     shadersStrangers: 'Mostrar también los shaders de creador de desconocidos, no solo los tuyos y los de tus amigos (nunca en el nivel bajo)',
+    look: {
+      bloom: 'El brillo de los mundos (bloom y neón)',
+      shafts: 'Los rayos de luz de los mundos (necesitan sombras: más pesados)',
+      reflections: 'Los reflejos de los mundos (más pesados)',
+      filters: 'Los filtros de pantalla de los mundos (CRT, grano de película, color)',
+    },
     overlaysMine: 'Mostrar mis superposiciones de pantalla',
     overlaysWorld: 'Mostrar las superposiciones de pantalla de los mundos',
     safeModeHint: 'Mayús+Esc es la tecla del modo seguro: en un mundo muestra a todos sin adornos y quita de una vez todas las superposiciones y los efectos de los demás; púlsala otra vez para que vuelvan.',

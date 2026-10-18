@@ -10,7 +10,7 @@
 // world checks it and answers `placed`). Heights (S2.07): the player's chosen height goes in the
 // hello and in `appearance`; everyone is drawn, and the camera placed, at the height the world
 // fitted (the roster's).
-import { type Collider, decodeColliders } from '@flatchat/content';
+import { type Collider, decodeColliders, DEFAULT_LOOK, type WorldLook } from '@flatchat/content';
 import { decodeCellBlock, fromHex, type Message, type MessageOf, toHex } from '@flatchat/protocol';
 import { BODY, type MoveInput, type WorldMap } from '@flatchat/sim';
 import * as THREE from 'three/webgpu';
@@ -36,6 +36,7 @@ import { loadScene } from './scene-loader';
 import { builtInEmote } from './clips';
 import { EffectsLayer, type EffectStats } from './effects';
 import { gpuResets, loseGpu, watchGpu } from './gpu-reset';
+import { applyLook, LookPipeline, lookEffects } from './look';
 import { OverlayLayer, type ShownOverlay } from './overlays';
 import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
@@ -137,6 +138,8 @@ export interface WorldState {
   gpuReset: boolean;
   /** GPU resets in this run of the client (creator shaders stay off after one). */
   gpuResets: number;
+  /** The world's screen effects drawn now (S6.05): what it asks for and the viewer allows. */
+  look: { bloom: boolean; shafts: boolean; reflections: boolean; filters: boolean };
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -189,6 +192,11 @@ export class WorldSession {
   private effects: EffectsLayer | undefined;
   /** Screen overlays (S6.02): worn ones and the world's, by the viewer's consent. */
   private overlays: OverlayLayer | undefined;
+  /** The world's look (S6.05), its sun, and its screen effects' pipeline with what it was built for. */
+  private look: WorldLook = DEFAULT_LOOK;
+  private sun: THREE.DirectionalLight | undefined;
+  private lookPipeline: LookPipeline | undefined;
+  private lookKey = '';
   /** Each player's worn avatar (its manifest's hash) and face (S4.07), from the roster. */
   private readonly worn = new Map<number, string>();
   private readonly faces = new Map<number, { expression: Expression; left: HandPose; right: HandPose }>();
@@ -310,6 +318,7 @@ export class WorldSession {
       shaders: 0,
       gpuReset: false,
       gpuResets: gpuResets.count,
+      look: { bloom: false, shafts: false, reflections: false, filters: false },
     });
   }
 
@@ -663,8 +672,10 @@ export class WorldSession {
     const drawn = this.avatarLayer?.update(this.avatarStates(poses), camera, dt, now);
     if (drawn) for (const p of poses) if (drawn.has(p.entity)) p.avatarDrawn = true;
     this.crowd?.update(poses, camera.position);
-    this.renderer?.render(scene, camera);
-    this.effects?.frame(camera, dt);
+    this.updateLook(scene, camera as THREE.PerspectiveCamera);
+    if (this.lookPipeline) this.lookPipeline.render();
+    else this.renderer?.render(scene, camera);
+    this.effects?.frame(camera, dt, this.lookPipeline?.depth());
     this.frames += 1;
     if (now - this.fpsAt >= 500) {
       this.state.fps = Math.round((this.frames * 1000) / (now - this.fpsAt));
@@ -1135,6 +1146,26 @@ export class WorldSession {
     return buildReport(draft, evidence, this.recorder, now, wall, (entity) => this.everyone.get(entity));
   }
 
+  /** The world's screen effects as the viewer allows them now (S6.05): the pipeline is made again
+   *  only when that changes (a setting, safe mode, a new world). */
+  private updateLook(scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    if (!this.renderer) return;
+    const on = lookEffects(this.look, this.settings.look, this.state.safeMode);
+    const key = `${JSON.stringify(on)}|${JSON.stringify(this.look)}`;
+    if (key === this.lookKey) return;
+    this.lookKey = key;
+    this.lookPipeline?.dispose();
+    this.lookPipeline = undefined;
+    this.state.look = on;
+    if (!on.bloom && !on.shafts && !on.reflections && !on.filters) return;
+    try {
+      this.lookPipeline = new LookPipeline(this.renderer, scene, camera, this.look, on, this.sun);
+    } catch {
+      // A screen effect this GPU cannot make: the plain picture.
+      this.state.look = { bloom: false, shafts: false, reflections: false, filters: false };
+    }
+  }
+
   /** The safe-mode key (S6.02, T-14): every other avatar to its fallback, every overlay and
    *  everyone else's effects off, at once; pressed again, everything back as the viewer had it. */
   toggleSafeMode(): void {
@@ -1191,6 +1222,11 @@ export class WorldSession {
       marker.updateMatrixWorld(true);
       void this.effects.wearWorld(e, marker, bytes);
     }
+    // The world's look (S6.05): its sky, fog and light now; its screen effects from the next frame.
+    this.look = world.manifest.look ?? DEFAULT_LOOK;
+    const extent = Math.max(world.bounds.max[0] - world.bounds.min[0], world.bounds.max[2] - world.bounds.min[2]);
+    if (this.scene) this.sun = applyLook(this.scene, this.look, extent).sun;
+    this.lookKey = '';
     // The world's screen overlays (S6.02): on for everyone until a viewer switches them off.
     this.overlays?.setWorld(world.overlays ?? [], files);
     // The base library's parts, drawn from the client's own definitions (S2.05).
@@ -1322,6 +1358,7 @@ export class WorldSession {
     this.emoteSounds?.close();
     this.sounds?.close();
     this.overlays?.dispose();
+    this.lookPipeline?.dispose();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     if (this.outfitTimer) clearTimeout(this.outfitTimer);
     if (this.emoteTimer) clearTimeout(this.emoteTimer);

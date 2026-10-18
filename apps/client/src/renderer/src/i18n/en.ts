@@ -304,6 +304,12 @@ export default {
     effectsShow: 'Show effects (particles, auras, trails)',
     effectsStrangers: "Show strangers' effects too, not only yours and your friends'",
     shadersStrangers: "Show strangers' creator shaders too, not only yours and your friends' (never on the low tier)",
+    look: {
+      bloom: "Worlds' glow (bloom and neon)",
+      shafts: "Worlds' light shafts (they need shadows: heavier)",
+      reflections: "Worlds' reflections (heavier)",
+      filters: "Worlds' screen filters (CRT, film grain, colour grading)",
+    },
     overlaysMine: 'Show my screen overlays',
     overlaysWorld: "Show worlds' screen overlays",
     safeModeHint: 'Shift+Esc is the safe-mode key: in a world it shows everyone plainly and clears every overlay and everyone else’s effects at once; press it again to bring them back.',

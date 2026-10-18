@@ -25,7 +25,9 @@
 //                                                    others on a world server on this machine or the LAN
 //   --census [--census-out=FILE]                     spike S0.10: what this network allows (NAT,
 //                                                    port mapping, IPv6) and the GPU, then quit
-//   --bench=SECONDS [--bench-out=FILE] [--bench-size=WxH]
+//   --bench=SECONDS [--bench-out=FILE] [--bench-size=WxH] [--bench-look=1]
+//                                                    with --bench-look=1, S6.05's look bench: each world screen
+//                                                    effect's frame-time cost (crowd/look-bench.ts), SECONDS each
 //                                                    draw a fixed-size frame with no frame-rate cap
 //                                                    and log every frame time (default 1280x720)
 //   --crowd=SECONDS --avatars=DIR [--crowd-full=12] [--crowd-lod=20] [--crowd-present=55]
@@ -75,6 +77,8 @@ export interface ClientFlags {
   censusOut?: string;
   /** Seconds to measure, after the warm-up. */
   bench?: number;
+  /** S6.05's look bench in place of the greybox bench (crowd/look-bench.ts). */
+  benchLook?: boolean;
   benchOut?: string;
   benchSize: Size;
   crowd?: CrowdFlags;
@@ -156,6 +160,7 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
       flags.bench = seconds;
     }
   }
+  if (value(argv, 'bench-look') === '1') flags.benchLook = true;
   const benchOut = value(argv, 'bench-out');
   if (benchOut) flags.benchOut = benchOut;
   const size = value(argv, 'bench-size');
@@ -282,7 +287,7 @@ export function rendererQuery(flags: ClientFlags): Record<string, string> {
     };
   }
   if (flags.bench !== undefined) {
-    return { bench: String(flags.bench), size: `${flags.benchSize.width}x${flags.benchSize.height}` };
+    return { bench: String(flags.bench), size: `${flags.benchSize.width}x${flags.benchSize.height}`, ...(flags.benchLook ? { look: '1' } : {}) };
   }
   if (flags.voiceLoad !== undefined) return { voiceload: String(flags.voiceLoad) };
   if (flags.lounge !== undefined && flags.join) {
@@ -314,7 +319,7 @@ export function exitCodeFor(report: { backend?: unknown; protocol?: unknown; net
   // A crowd run that drew and finished exits 0; its pass lines are in the report.
   if (mode === 'crowd') return (report.backend === 'WebGPU' || report.backend === 'WebGL2') && report.error === undefined ? 0 : 1;
   if (report.backend !== 'WebGPU' && report.backend !== 'WebGL2') return 1;
-  if (mode === 'bench') return 0;
+  if (mode === 'bench') return report.error === undefined ? 0 : 1;
   if (options.join && (report.net as { ok?: unknown } | undefined)?.ok !== true) return 1;
   const p = report.protocol as ProtocolReport | undefined;
   const passed =

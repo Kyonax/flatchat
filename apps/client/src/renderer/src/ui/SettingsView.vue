@@ -65,6 +65,7 @@ const avatar = (patch: Partial<Settings['avatar']>): void => emit('change', { av
 const sound = (patch: Partial<Settings['sound']>): void => emit('change', { sound: { ...props.settings.sound, ...patch } });
 const effects = (patch: Partial<Settings['effects']>): void => emit('change', { effects: { ...props.settings.effects, ...patch } });
 const overlays = (patch: Partial<Settings['overlays']>): void => emit('change', { overlays: { ...props.settings.overlays, ...patch } });
+const look = (patch: Partial<Settings['look']>): void => emit('change', { look: { ...props.settings.look, ...patch } });
 const serverDraft = ref(props.settings.core);
 const serverBad = ref(false);
 function saveServer(): void {
@@ -329,6 +330,19 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           @change="overlays({ world: ($event.target as HTMLInputElement).checked })"
         >
         <span>{{ t('settings.overlaysWorld') }}</span>
+      </label>
+      <label
+        v-for="k in (['bloom', 'shafts', 'reflections', 'filters'] as const)"
+        :key="k"
+        class="row"
+      >
+        <input
+          type="checkbox"
+          :checked="settings.look[k]"
+          :data-test="`look-${k}`"
+          @change="look({ [k]: ($event.target as HTMLInputElement).checked })"
+        >
+        <span>{{ t(`settings.look.${k}`) }}</span>
       </label>
       <p class="muted small">
         {{ t('settings.safeModeHint') }}

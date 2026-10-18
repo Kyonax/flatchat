@@ -282,8 +282,9 @@ export class EffectsLayer implements EffectSink {
     for (const w of again) this.consider(w);
   }
 
-  /** After three's frame: places, steps, guards and draws the effects. */
-  frame(camera: THREE.Camera, dt: number): void {
+  /** After three's frame: places, steps, guards and draws the effects; `depth` is the scene's when a
+   *  world's look pipeline drew it (look.ts), else three's own is used. */
+  frame(camera: THREE.Camera, dt: number, depth?: THREE.Texture): void {
     const runtime = this.runtime;
     if (!runtime || runtime.isSpent) {
       if (runtime?.isSpent) this.respawn();
@@ -346,7 +347,7 @@ export class EffectsLayer implements EffectSink {
       if (!this.drawer || shown.length === 0) return;
       camera.updateMatrixWorld();
       runtime.setCamera(camera.projectionMatrix.elements, camera.matrixWorldInverse.elements);
-      const drawn: DrawResult = this.drawer instanceof WebGpuEffectsDraw ? this.drawer.draw(runtime, shown, this.probeOver) : this.drawer.draw(runtime, shown);
+      const drawn: DrawResult = this.drawer instanceof WebGpuEffectsDraw ? this.drawer.draw(runtime, shown, this.probeOver, depth) : this.drawer.draw(runtime, shown, depth);
       this.stats.depth = drawn.depth;
       if (drawn.gpuMs) {
         const whole = drawn.gpuMs.get(-1);

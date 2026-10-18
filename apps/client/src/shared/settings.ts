@@ -164,6 +164,14 @@ export interface ScreenOverlaySettings {
   allowed: string[];
 }
 
+/** A world's screen effects (S6.05, T-14): each on until the viewer switches it off. */
+export interface LookSettings {
+  bloom: boolean;
+  shafts: boolean;
+  reflections: boolean;
+  filters: boolean;
+}
+
 export interface Settings {
   version: 1;
   language: 'system' | 'en' | 'es';
@@ -176,6 +184,7 @@ export interface Settings {
   sound: SoundSettings;
   effects: EffectSettings;
   overlays: ScreenOverlaySettings;
+  look: LookSettings;
 }
 
 export function defaultSettings(): Settings {
@@ -190,6 +199,7 @@ export function defaultSettings(): Settings {
     sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
     effects: { show: true, strangers: false },
     overlays: { mine: true, world: true, allowed: [] },
+    look: { bloom: true, shafts: true, reflections: true, filters: true },
   };
 }
 
@@ -234,6 +244,7 @@ export function cleanSettings(raw: unknown): Settings {
   const sound = obj(r['sound']);
   const effects = obj(r['effects']);
   const overlays = obj(r['overlays']);
+  const look = obj(r['look']);
   const core = typeof r['core'] === 'string' && r['core'].length <= 200 ? r['core'] : '';
   return {
     version: 1,
@@ -282,6 +293,7 @@ export function cleanSettings(raw: unknown): Settings {
       world: bool(overlays['world'], d.overlays.world),
       allowed: Array.isArray(overlays['allowed']) ? [...new Set(overlays['allowed'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
     },
+    look: { bloom: bool(look['bloom'], d.look.bloom), shafts: bool(look['shafts'], d.look.shafts), reflections: bool(look['reflections'], d.look.reflections), filters: bool(look['filters'], d.look.filters) },
   };
 }
 
@@ -297,6 +309,7 @@ export function mergeSettings(current: Settings, patch: unknown): Settings {
     sound: { ...current.sound, ...obj(p['sound']) },
     effects: { ...current.effects, ...obj(p['effects']) },
     overlays: { ...current.overlays, ...obj(p['overlays']) },
+    look: { ...current.look, ...obj(p['look']) },
     keys: p['keys'] === undefined ? current.keys : p['keys'],
   });
 }

@@ -113,7 +113,7 @@ export class WebGpuEffectsDraw {
   }
 
   /** Draws every shown effect; `handles` are the ones playing, for a probe frame. */
-  draw(runtime: EffectsRuntime, handles: readonly number[], probeOver: boolean): DrawResult {
+  draw(runtime: EffectsRuntime, handles: readonly number[], probeOver: boolean, given?: THREE.Texture): DrawResult {
     const target = this.context.getCurrentTexture();
     const width = target.width;
     const height = target.height;
@@ -121,7 +121,8 @@ export class WebGpuEffectsDraw {
     const depth = this.ownDepth(width, height);
     // The scene's depth, copied single-sampled.
     let hasDepth = false;
-    const scene = sceneDepth(this.renderer);
+    // The depth given (a world's look pipeline's scene pass), else what three left.
+    const scene = given ?? sceneDepth(this.renderer);
     const gpu = scene ? (this.renderer as unknown as Internals).backend.get(scene)?.texture : undefined;
     if (gpu && gpu.width === width && gpu.height === height && (gpu.usage & GPUTextureUsage.TEXTURE_BINDING) !== 0) {
       const pipeline = this.resolvePipeline(gpu.sampleCount);
@@ -295,9 +296,10 @@ export class WebGlEffectsDraw {
     return true;
   }
 
-  draw(runtime: EffectsRuntime, handles: readonly number[]): DrawResult {
+  draw(runtime: EffectsRuntime, handles: readonly number[], given?: THREE.Texture): DrawResult {
     const gl = this.gl;
-    const scene = sceneDepth(this.renderer);
+    // The depth given (a world's look pipeline's scene pass), else what three left.
+    const scene = given ?? sceneDepth(this.renderer);
     const tex = scene ? (this.renderer as unknown as Internals).backend.get(scene)?.textureGPU : undefined;
     let hasDepth = false;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

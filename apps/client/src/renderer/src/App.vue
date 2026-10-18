@@ -6,6 +6,7 @@ import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
 import { runConvertedCrowd } from './crowd/converted';
 import { runLookCheck } from './crowd/look';
+import { runLookBench } from './crowd/look-bench';
 import { runCrowd } from './crowd/crowd';
 import LoungeView from './lounge/LoungeView.vue';
 import ClientApp from './ui/ClientApp.vue';
@@ -74,6 +75,20 @@ const appMode = !smoke && !(benchSeconds > 0) && !(crowdSeconds > 0) && !loungeU
 onMounted(async () => {
   if (loungeUrl || appMode) return;
   if (!canvas.value) return;
+  // The look bench (S6.05): each screen effect's frame-time cost, in place of the greybox bench.
+  if (benchSeconds > 0 && params.get('look') === '1') {
+    const report = await runLookBench(canvas.value, {
+      seconds: benchSeconds,
+      width: benchWidth,
+      height: benchHeight,
+      onProgress: (line) => {
+        benchLine.value = line;
+      },
+    });
+    benchLine.value = report['error'] ? `Look bench failed: ${String(report['error'])}` : 'Look bench done';
+    await window.flatchat?.benchReport(report);
+    return;
+  }
   // The look check (S6.03, S6.04): the default materials against a VRM viewer's, creator shaders drawn.
   if (crowdSeconds > 0 && params.get('look') === '1') {
     const report = await runLookCheck(canvas.value, (line) => {

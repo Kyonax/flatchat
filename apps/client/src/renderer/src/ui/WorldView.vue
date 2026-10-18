@@ -438,6 +438,15 @@ onBeforeUnmount(() => {
     <span
       v-if="state?.status === 'joined'"
       hidden
+      data-test="look"
+      :data-bloom="state.look.bloom ? 1 : 0"
+      :data-shafts="state.look.shafts ? 1 : 0"
+      :data-reflections="state.look.reflections ? 1 : 0"
+      :data-filters="state.look.filters ? 1 : 0"
+    />
+    <span
+      v-if="state?.status === 'joined'"
+      hidden
       data-test="emote"
       :data-anim="state.emote"
       :data-playing="state.emoting ? 1 : 0"
