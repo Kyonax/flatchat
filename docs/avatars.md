@@ -60,3 +60,21 @@ node --permission --allow-fs-read=. --allow-fs-read=MY.vrm --allow-fs-write=OUT 
 ```
 
 `OUT/result.json` says whether it converted and why not; `OUT/manifest.json` holds the rank and the levels. The core runs exactly this on each upload (S4.01).
+
+## Measuring a crowd of avatars
+
+The avatar bench converts a folder of real avatars once, then has the packaged client draw them with the world's own avatar layer: 200 present, 55 of them in view, the viewer's full quota within 8 m (the worst the policy allows), at 1280×720 with no frame-rate cap.
+
+```sh
+npm run dist:linux -w @flatchat/client
+node tools/bots/src/avatar-bench.ts --from MY_AVATARS --out CONVERTED \
+  --client apps/client/release/linux-unpacked/flatchat --seconds 60 --present 200 --in-view 55
+```
+
+It prints the plan's pass lines: frame time p95 at most 33.3 ms (30 fps), the worst frame after the warm-up at most 100 ms, at least 8 avatars drawn in full, and every FlatChat process together within 2 GB. On the reference laptop's stand-in, add `--headroom 1.5` (OQ-24).
+
+Measured on the development desktop (2026-10-17, WebGPU): 68 real avatars (VRoid Studio and Blender exports: 60 ranked Excellent, 2 Poor, 6 Very Poor) converted with KTX2 (5.5 s each at the median, 118 s the slowest), then 200 present with 12 in full, 20 at LOD1 and 168 as impostors: p95 13.2 ms, worst frame 52 ms, 218 draw calls, 370,201 triangles, 1,164 MB. The reference laptop's numbers are still to come.
+
+## Stage 4's acceptance
+
+`node tools/bots/src/accept-stage4.ts` runs on every push (CI's Harness job). It uses the real core with PostgreSQL, the sandboxed converter with KTX2 on, a world server and bots holding the tokens the core issued. Avatars are written as VRoid Studio 1.x (VRM 1.0), UniVRM and Blender (VRM 0.x) and a Mixamo-named GLB would write them, plus a free shape. Each is uploaded by its own account, converted, ranked and worn. Every player's roster names every worn avatar, and every level reaches another player intact through signed links. The client drawing a worn avatar, its KTX2 textures included, is the end-to-end test in CI's Linux client job.
