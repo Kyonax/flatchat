@@ -11,7 +11,7 @@ FlatChat plays emotes and dances on every avatar, whatever its shape, because ev
 | BVH (`.bvh`) | Motion capture: CMU's library, Rokoko, MotionBuilder, Blender | Read directly |
 | FBX (`.fbx`) | Mixamo, Maya, MotionBuilder, Unreal | FlatChat reads it with headless Blender first, then like a GLB clip. The character's mesh is dropped |
 
-The skeleton needs the bones VRM requires: hips, spine, head, both upper arms, lower arms and hands, and both upper legs, lower legs and feet. Fingers, the chest, the neck, shoulders and toes are used when they are there. One animation per file (the longest one, if there are several), up to two minutes long.
+The skeleton needs the bones VRM requires: hips, spine, head, both upper arms, lower arms and hands, and both upper legs, lower legs and feet. Fingers, the chest, the neck, shoulders and toes are used when they are there. One animation per file (the longest one, if there are several), up to two minutes long. Bones named in Unreal's style (`lowerarm_r`, `ring_01_l`) read as well as Mixamo's and Rigify's.
 
 ## What the converter does
 
@@ -35,6 +35,17 @@ Upload an emote or a dance from the client's home screen (Upload an emote, Uploa
 ## Sounds
 
 An emote or a dance can bring a sound: tick "With a sound" before uploading, then pick a WAV or an Ogg (Vorbis or Opus), up to 8 MB and two minutes. Everyone near the dancer hears it, from the dancer's place, in step with the motion. A dance's sound repeats with it; an emote's plays once. FlatChat bakes a mouth track from the sound with Rhubarb Lip Sync, so the avatar's mouth moves with the singing. Each player sets the volume of emote and dance sounds in Settings, Sound, and 0 turns them off. Only use sounds you have the right to share.
+
+## The default clips
+
+Every avatar also moves with the platform's own clips (Track P's P.05, in [kits/animations/](../kits/animations/)): idle, walk, jog and sprint; a jump's start, its air and the landing, and a fall; sitting down, sitting and getting up; a greeting and a dance. They come from two CC0 libraries, retargeted by the same converter: Mesh2Motion's human clips (by Scott Petrovic and the Mesh2Motion contributors) and Quaternius's Universal Animation Library. Each one passes four checks on all three standard bodies:
+
+- it moves only by turning bones, plus the hips' travel: no scale tracks;
+- a loop's last pose meets its first within 1°;
+- idle keeps both hands out of the torso;
+- on walk and jog, a planted foot slides at most 2 cm a step at both ends of the legs slider.
+
+A foot counts as planted while it bears weight the way its gait does: flat on the ground in a walk, on the ball of the foot in a run. The ball rolling onto the toe tips at the end of a walk's step is not counted as sliding, since no bone marks the toe tips. Mesh2Motion's jog and sprint slid more than that (up to 2.7 cm and 6 cm a step), so those two come from Quaternius. Neither library has an in-place turn, so a body turning on the spot doesn't step.
 
 ## Making a good one
 
