@@ -38,6 +38,18 @@ They come from two CC0 libraries, Mesh2Motion's human clips (Scott Petrovic and 
 node tools/converter/scripts/default-animations.ts
 ```
 
+## The worlds
+
+[worlds/](worlds/) holds the worlds every client carries for offline play, and the host tool's examples:
+
+- the plaza (Stage 1, written from packages/sim);
+- the park (S2.05, nothing but the base library's parts);
+- the docking bay (Track P's P.01). The docking bay is built from its own plan, [worlds/docking-bay/plan.svg](worlds/docking-bay/plan.svg), a semantic SVG ([docs/svg-plans.md](../docs/svg-plans.md)). To build it again:
+
+```sh
+node tools/converter/scripts/build-plan.ts kits/worlds/docking-bay/plan.svg
+```
+
 ## The starter wardrobe
 
 [items/](items/) holds eight items fitted on the three bodies: five full outfits (white tee and jeans, striped shirt and jeans, jacket and jeans, dark suit, overalls), brown shoes, black boots and a grey fedora. They are MakeHuman's CC0 garments (the MakeHuman team), fitted by MPFB in Blender, then made into items by the converter: the skin's weights, a small push where skin came through, one texture each, and MakeHuman's logo painted out of the white tee. On each body no skin comes through any of them in the seven reference poses, as made and at both ends of the proportion sliders. [items/wardrobe.json](items/wardrobe.json) lists each one, what it hides and what it measured, and the garments left out and why. [items/fingerprints.json](items/fingerprints.json) holds their fingerprints, so a starter item is never taken for a copy. To make them again:

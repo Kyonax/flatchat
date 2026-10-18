@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Built from plan.svg by tools/converter/scripts/build-plan.ts (Track P's P.01, docs/svg-plans.md).
+format = 1
+name = "The Docking Bay"
+description = "A hangar on a station's rim: a landing pad, a window onto the stars, a mezzanine with a control room."
+
+[capacity]
+recommended = 40
+maximum = 60
+
+[persistence]
+mode = "reset"
+
+[movement]
+flying = false
+
+[voice]
+range = 25
+
+[[scenes]]
+id = "docking-bay"
+file = "scenes/docking-bay.glb"

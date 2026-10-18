@@ -1,0 +1,10 @@
+{
+  "files": [
+    "kits/worlds/docking-bay/plan.svg",
+    "kits/worlds/docking-bay/scenes/docking-bay.glb"
+  ],
+  "title": "The docking bay (Track P's P.01): its SVG plan and the scene built from it",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "plan.svg written by the agents in the plan format (docs/svg-plans.md); the scene built from it by node tools/converter/scripts/build-plan.ts, its textures drawn by tools/converter/src/plan/materials.ts from a seeded generator"
+}

@@ -1,0 +1,14 @@
+{
+  "files": [
+    "docs/spikes/s-svg-deck.jpg",
+    "docs/spikes/s-svg-mezzanine.jpg",
+    "docs/spikes/s-svg-cargo.jpg",
+    "docs/spikes/s-svg-stairs.jpg",
+    "docs/spikes/s-svg-preview-anatomy.png",
+    "docs/spikes/s-svg-preview-iso-figures.png"
+  ],
+  "title": "Spike S-SVG's pictures: the docking bay in the client, and its two isometric previews",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "screenshots of the packaged client playing kits/worlds/docking-bay in offline mode (2026-10-18); the previews drawn by tools/converter/scripts/plan-preview.ts with the anatomy skill (MIT, github.com/wheresryan22/anatomy) and the owner's iso-figures skill as tools, and screenshotted in headless Chromium"
+}

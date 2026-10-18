@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+<!-- The docking bay (Track P's P.01): a semantic SVG plan (docs/svg-plans.md), built into a world by
+     tools/converter/scripts/build-plan.ts. One unit of the page is 10 cm; up the page is north, the
+     bay window. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-80 -80 560 460" width="560" height="460"
+     data-flatchat-plan="1" data-scale="0.1"
+     data-name="The Docking Bay"
+     data-description="A hangar on a station's rim: a landing pad, a window onto the stars, a mezzanine with a control room.">
+
+  <!-- The hangar deck: 40 by 30 m, 8 m high. -->
+  <g class="floor" id="deck" data-elevation="0" data-height="8">
+    <rect class="slab" x="0" y="0" width="400" height="300" data-material="deck" fill="#5a5f66"/>
+    <rect class="slab" x="130" y="80" width="140" height="140" data-material="pad" data-top="0.15" data-thickness="0.15" fill="#2a2d33"/>
+
+    <!-- The hull, all round, and the bay window in its north wall: a 1.1 m parapet below it. -->
+    <polygon class="wall" points="0,0 400,0 400,300 0,300" data-material="hull" data-thickness="0.6" fill="none" stroke="#3b4048" stroke-width="6"/>
+    <line class="opening" x1="70" y1="0" x2="330" y2="0" data-sill="1.1" data-head="7" stroke="#8fd3ff" stroke-width="8"/>
+
+    <!-- Columns under the mezzanine's edge. -->
+    <line class="wall" x1="100" y1="227" x2="106" y2="227" data-material="hull" data-thickness="0.6" data-wall-height="3.6" stroke="#3b4048" stroke-width="6"/>
+    <line class="wall" x1="200" y1="227" x2="206" y2="227" data-material="hull" data-thickness="0.6" data-wall-height="3.6" stroke="#3b4048" stroke-width="6"/>
+    <line class="wall" x1="300" y1="227" x2="306" y2="227" data-material="hull" data-thickness="0.6" data-wall-height="3.6" stroke="#3b4048" stroke-width="6"/>
+
+    <!-- Stairs up to the mezzanine, climbing south (down the page). -->
+    <rect class="stairs" x="40" y="120" width="24" height="110" data-up="180" data-rise="3.6" data-steps="18" fill="#6a7079"/>
+
+    <!-- Neon along the hull: cyan low, magenta high; none across the window. -->
+    <polyline class="strip" points="70,4 4,4 4,296 396,296 396,4 330,4" data-y="2.6" data-colour="#2fe0ff" fill="none" stroke="#2fe0ff"/>
+    <polyline class="strip" points="70,4 4,4 4,296 396,296 396,4 330,4" data-y="7.3" data-colour="#ff3cb4" fill="none" stroke="#ff3cb4"/>
+    <rect class="strip" x="128" y="78" width="144" height="144" data-y="0.2" data-size="0.06" data-colour="#ffd23c" fill="none" stroke="#ffd23c"/>
+
+    <!-- Lights under the roof, and the pad's glow. -->
+    <circle class="light" cx="100" cy="80" r="6" data-y="7.4" data-colour="#dfe8ff" data-intensity="1.4" data-range="17"/>
+    <circle class="light" cx="300" cy="80" r="6" data-y="7.4" data-colour="#dfe8ff" data-intensity="1.4" data-range="17"/>
+    <circle class="light" cx="100" cy="190" r="6" data-y="7.4" data-colour="#dfe8ff" data-intensity="1.2" data-range="15"/>
+    <circle class="light" cx="300" cy="190" r="6" data-y="7.4" data-colour="#dfe8ff" data-intensity="1.2" data-range="15"/>
+    <circle class="light" cx="200" cy="150" r="6" data-y="6" data-colour="#ffd23c" data-intensity="0.7" data-range="12"/>
+    <circle class="light" cx="30" cy="40" r="5" data-y="3" data-colour="#2fe0ff" data-intensity="0.8" data-range="9"/>
+    <circle class="light" cx="370" cy="40" r="5" data-y="3" data-colour="#ff3cb4" data-intensity="0.8" data-range="9"/>
+    <circle class="light" cx="160" cy="265" r="5" data-y="3.2" data-colour="#ffb070" data-intensity="0.7" data-range="8"/>
+
+    <!-- Cargo by the walls. -->
+    <circle class="prop" cx="20" cy="70" r="5" data-part="flatchat:crate" data-rotate="8"/>
+    <circle class="prop" cx="31" cy="72" r="5" data-part="flatchat:crate" data-rotate="-4"/>
+    <circle class="prop" cx="25" cy="71" r="5" data-part="flatchat:crate" data-rotate="20" data-y="1"/>
+    <circle class="prop" cx="380" cy="120" r="5" data-part="flatchat:crate" data-rotate="0"/>
+    <circle class="prop" cx="380" cy="132" r="5" data-part="flatchat:crate" data-rotate="12"/>
+    <circle class="prop" cx="370" cy="200" r="5" data-part="flatchat:crate" data-rotate="-15"/>
+    <circle class="prop" cx="120" cy="250" r="5" data-part="flatchat:table" data-rotate="0"/>
+    <circle class="prop" cx="120" cy="268" r="5" data-part="flatchat:bench" data-rotate="180"/>
+
+    <!-- Arrivals by the stairs too, facing the window. -->
+    <circle class="spawn" cx="90" cy="150" r="5" data-facing="20" data-title="The deck" data-group="deck"/>
+  </g>
+
+  <!-- The mezzanine along the south hull, 3.6 m up, and its control room. -->
+  <g class="floor" id="mezzanine" data-elevation="3.6" data-height="3.2">
+    <rect class="slab" x="0" y="230" width="400" height="70" data-material="deck" data-thickness="0.3" fill="#5a5f66"/>
+    <!-- Its railing, open over the stairs' top. -->
+    <polyline class="wall" points="0,231 40,231" data-material="panel" data-thickness="0.08" data-wall-height="1.1" stroke="#9aa3ad" stroke-width="2"/>
+    <polyline class="wall" points="64,231 260,231" data-material="panel" data-thickness="0.08" data-wall-height="1.1" stroke="#9aa3ad" stroke-width="2"/>
+    <!-- The control room: a window onto the deck, a door from the mezzanine. -->
+    <polyline class="wall" points="260,300 260,236 400,236" data-material="panel" data-thickness="0.2" stroke="#9aa3ad" stroke-width="3"/>
+    <line class="opening" x1="280" y1="236" x2="380" y2="236" data-sill="1" data-head="2.6" stroke="#8fd3ff" stroke-width="4"/>
+    <line class="opening" x1="260" y1="255" x2="260" y2="268" data-sill="0" data-head="2.3" stroke="#8fd3ff" stroke-width="4"/>
+    <polyline class="strip" points="262,298 398,298" data-y="0.15" data-colour="#2fe0ff" fill="none" stroke="#2fe0ff"/>
+    <circle class="light" cx="330" cy="268" r="5" data-y="2.8" data-colour="#ffcf9a" data-intensity="0.9" data-range="8"/>
+    <circle class="prop" cx="330" cy="285" r="5" data-part="flatchat:table" data-rotate="0"/>
+    <circle class="prop" cx="330" cy="270" r="5" data-part="flatchat:bench" data-rotate="0"/>
+    <circle class="prop" cx="150" cy="285" r="5" data-part="flatchat:bench" data-rotate="180"/>
+    <!-- Where players arrive: on the mezzanine, over the hangar, facing the window. -->
+    <circle class="spawn" cx="200" cy="262" r="5" data-facing="0" data-title="The mezzanine"/>
+  </g>
+
+  <!-- Space all round the station, 6 m out: what the bay window looks onto (near enough that the
+       client's fog, from 40 m, never greys it). -->
+  <g class="floor" id="space" data-elevation="-12" data-height="34">
+    <polygon class="wall" points="-60,-60 460,-60 460,360 -60,360" data-material="space" fill="none" stroke="#101830" stroke-width="8"/>
+    <rect class="slab" x="-60" y="-60" width="520" height="420" data-material="space" fill="none"/>
+    <rect class="slab" x="-60" y="-60" width="520" height="420" data-material="space" data-top="34" fill="none"/>
+  </g>
+
+  <!-- The roof. -->
+  <g class="floor" id="roof" data-elevation="8" data-height="1">
+    <rect class="slab" x="0" y="0" width="400" height="300" data-material="ceiling" data-thickness="0.3" fill="none"/>
+  </g>
+</svg>
