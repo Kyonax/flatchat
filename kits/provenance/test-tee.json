@@ -1,0 +1,7 @@
+{
+  "files": ["kits/items/test-tee/test-tee.glb"],
+  "title": "The test tee: S5.01's test garment, fitted on all three bodies",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "node tools/converter/scripts/make-test-item.ts, from each kit's own chest, belly and upper arms in kits/bodies/ (themselves recorded in body-kits.json)"
+}

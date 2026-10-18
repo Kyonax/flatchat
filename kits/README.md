@@ -3,7 +3,7 @@
 The three body kits and the sources of the base library: free to use anywhere, with credit.
 
 - Licence: CC BY 4.0 ([LICENSE](LICENSE)); third-party parts keep theirs, listed in [CREDITS.md](../CREDITS.md)
-- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03). The base library's sources come later.
+- Status: the three standard bodies are in [bodies/](bodies/) (Track P's P.03), and the test tee, fitted on all three, in [items/test-tee/](items/test-tee/) (S5.01, S5.02; how items are made: [docs/items.md](../docs/items.md)). The base library's sources come later.
 
 ## The three bodies
 
