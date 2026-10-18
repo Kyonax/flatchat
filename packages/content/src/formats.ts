@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0
+// What an uploaded model is (S5.08, Q-M2, Q-M11), known by its first bytes, never by its name. VRM
+// and GLB the converters read as they are; DAE (Collada) the converter turns into a GLB itself, by
+// assimp in WebAssembly; FBX, OBJ and .blend the core's headless Blender turns into a GLB first
+// (tools/blender/convert/to-glb.py, DR-15), since Blender is what reads them. Shared by the
+// converter, the core and the client, so all three agree on what a file is.
+import type { ModelFrom } from './avatar.ts';
+
+/** The file names a model upload may have, for the upload dialogs. */
+export const MODEL_EXTENSIONS = ['vrm', 'glb', 'fbx', 'obj', 'dae', 'blend'] as const;
+/** The formats only headless Blender reads. */
+export const BLENDER_FORMATS: readonly ModelFrom[] = ['fbx', 'obj', 'blend'];
+/** Each format as a sentence names it ("the FBX file"). */
+export const MODEL_FORMAT_NAMES: Record<ModelFrom, string> = { fbx: 'FBX', obj: 'OBJ', dae: 'DAE', blend: '.blend' };
+
+export type UploadFormat = 'gltf' | ModelFrom | 'unknown';
+
+export function uploadFormat(bytes: Uint8Array): UploadFormat {
+  const head = new TextDecoder('latin1').decode(bytes.subarray(0, 512));
+  if (bytes.length >= 12 && head.startsWith('glTF')) return 'gltf';
+  if (head.startsWith('Kaydara FBX Binary') || /^\s*;\s*FBX/.test(head)) return 'fbx';
+  // .blend: "BLENDER", or compressed (zstd since Blender 3.0, gzip before).
+  if (head.startsWith('BLENDER') || (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) || (bytes[0] === 0x1f && bytes[1] === 0x8b)) return 'blend';
+  if (/^(ï»¿)?\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<COLLADA[\s>]/.test(head)) return 'dae';
+  // OBJ: text whose first statement is one of OBJ's own.
+  const first = head
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l !== '' && !l.startsWith('#'));
+  if (first !== undefined && /^(v|vt|vn|vp|f|o|g|s|mtllib|usemtl|l)\s/.test(first)) return 'obj';
+  return 'unknown';
+}

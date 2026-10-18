@@ -66,12 +66,15 @@ export {
   rankIndex,
   rankOf,
 } from './avatar.ts';
+export { MODEL_FROM, type ModelFrom } from './avatar.ts';
+export { BLENDER_FORMATS, MODEL_EXTENSIONS, MODEL_FORMAT_NAMES, type UploadFormat, uploadFormat } from './formats.ts';
 export {
   BODY_KITS,
   type BodyKit,
   checkItemFit,
   checkItemManifest,
   checkItemProp,
+  fileDeclaration,
   ITEM_EXTENSIONS,
   ITEM_FORMAT,
   ITEM_SOURCE_LIMIT,

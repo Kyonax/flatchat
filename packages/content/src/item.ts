@@ -5,6 +5,7 @@
 // fills one fixed slot, and names the body's regions it hides. Shared by the converter, the core
 // and the client, so all three agree on what an item is and what it may weigh.
 import { ATTACH_POINTS, type AttachPoint } from './attach.ts';
+import type { ModelFrom } from './avatar.ts';
 
 /** The manifest's format: the converter's output for this version of the platform. */
 export const ITEM_FORMAT = 1;
@@ -123,6 +124,20 @@ export interface ItemDeclaration {
   attach?: AttachPoint;
 }
 
+/** A file's own declaration (its glTF JSON's): extras.flatchat_item on its scene or on the file;
+ *  Blender writes a custom property that holds JSON as a string. Undefined when it has none. */
+export function fileDeclaration(json: Record<string, unknown>): unknown {
+  const scenes = Array.isArray(json['scenes']) ? (json['scenes'] as Array<Record<string, unknown>>) : [];
+  const scene = scenes[typeof json['scene'] === 'number' ? json['scene'] : 0];
+  const raw = ((scene?.['extras'] as Record<string, unknown> | undefined)?.['flatchat_item']) ?? (json['extras'] as Record<string, unknown> | undefined)?.['flatchat_item'];
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 export class ItemFormatError extends Error {
   readonly problems: string[];
   constructor(problems: string[]) {
@@ -177,7 +192,8 @@ export interface ItemManifest {
   format: typeof ITEM_FORMAT;
   kind: 'item';
   converter: string;
-  source: { sha256: string; bytes: number };
+  /** The upload's SHA-256 and size, and what it was before GLB (S5.08). */
+  source: { sha256: string; bytes: number; from?: ModelFrom };
   name: string;
   authors: string[];
   slot: Slot;

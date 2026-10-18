@@ -79,6 +79,10 @@ export function rankIndex(rank: Rank): number {
 }
 
 export type AvatarSourceKind = 'vrm0' | 'vrm1' | 'glb';
+/** Formats a model is read from on the way to GLB (S5.08, Q-M2, Q-M11): FBX, OBJ and .blend by
+ *  headless Blender, DAE by assimp. */
+export const MODEL_FROM = ['fbx', 'obj', 'dae', 'blend'] as const;
+export type ModelFrom = (typeof MODEL_FROM)[number];
 export const LEVELS = ['lod0', 'lod1', 'lod2', 'impostor'] as const;
 export type Level = (typeof LEVELS)[number];
 
@@ -97,7 +101,8 @@ export interface AvatarManifest {
   format: typeof AVATAR_FORMAT;
   /** The converter's version: a new one may convert the same source differently. */
   converter: string;
-  source: { sha256: string; bytes: number; kind: AvatarSourceKind; generator: string };
+  /** The upload: its SHA-256 and size, how its GLB reads (`kind`), and what it was before that (`from`). */
+  source: { sha256: string; bytes: number; kind: AvatarSourceKind; generator: string; from?: ModelFrom };
   name: string;
   /** The licence terms as the file stated them (VRM meta), unchanged; the gallery shows them. */
   licence: Record<string, string | number | boolean | string[]>;
