@@ -27,6 +27,12 @@ FlatChat knows a file by its first bytes, never by its name. VRM and GLB go to t
 
 Every modifier but the armature is applied. Hidden objects and a rig's bone widgets are left out, and so are animations. A DAE is turned into a GLB inside the converter itself, by assimp compiled to WebAssembly (assimpjs): Blender 5 no longer reads Collada. Either way, the manifest names the upload itself (`source.from`, with the upload's SHA-256 and size), and the avatar is converted from there like any GLB. A server without Blender refuses FBX, OBJ and `.blend` with that reason. Run `node apps/core/scripts/tools.ts` to fetch the pinned Blender.
 
+## Copies and takedowns
+
+Every upload is fingerprinted as it arrives (S5.09). The shape is measured by its triangles: each triangle's edges and its distance from the model's centre, against the model's size. A copy written again, in another program, moved, turned, mirrored or scaled, measures the same. Each texture also gets a perceptual hash, which survives a re-encoding or a resize. A copy of an avatar or item taken down from FlatChat is refused, and counts against the account that uploaded it. A copy of someone else's gallery entry is refused unless its licence allows copies. What the standard bodies explain does not count: an avatar made from a kit is no one's copy. A model of a few dozen triangles is too simple to tell from another, so its shape is not compared.
+
+If an avatar or item here copies your work, ask for a takedown at the core's `/takedown` page. You get a reference, and read the decision with it at `/takedown/status`. A takedown removes it everywhere: from the gallery, from every account that took a copy, from outfits and from whoever wears it.
+
 ## What the converter makes
 
 - **The full avatar** (LOD0) in VRM 1.0, facing +Z: a VRM 0.x is migrated by three-vrm's rules and turned round; textures fitted to 2,048 px and 64 MB, encoded to KTX2.

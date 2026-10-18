@@ -87,6 +87,10 @@ To wear clothes, wear a standard body: any account can take one of the three on 
 
 An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop to an attachment point, and a `full` item with no top or bottom beside it. In a world, press O for the outfits menu: your saved outfits, your items to put on and take off (an item you put on takes the place of one it conflicts with), and Save what you wear. When you put an outfit on, everyone in the world sees the change, and the next world you join gets it too. Clothes show on the nearest players, as far as their avatars are drawn in full or lighter (LOD1, LOD2); farther away, as impostors, players show without them. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
 
+## Copies and takedowns
+
+Items are fingerprinted like avatars, one shape for each fit, so a copy of a single fit is caught too ([docs/avatars.md](avatars.md#copies-and-takedowns)). A takedown removes an item everywhere, from every outfit that held it included.
+
 ## The free gallery
 
 Anyone can share an avatar or an item in FlatChat's free gallery, and anyone can take what is there: taking one adds your own copy to your avatars or items, worn and saved in outfits like your own. New players start from the standard bodies and the gallery, so nobody arrives with nothing to wear.
