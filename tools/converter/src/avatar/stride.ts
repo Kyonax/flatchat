@@ -20,8 +20,9 @@ export const STRIDES: ReadonlyArray<Readonly<Record<string, number>>> = [
 export type Turn = readonly [bone: string, axis: 'x' | 'y' | 'z', angle: number];
 
 /** Each of `bones`' skinning matrices in a pose (its posed world matrix × its rest world
- *  matrix⁻¹), the turns applied down the hierarchy. `humanoid` names the humanoid's nodes. */
-export function poseMatrices(bones: readonly Node[], humanoid: ReadonlyMap<string, Node>, turns: readonly Turn[]): M4[] {
+ *  matrix⁻¹), the turns applied down the hierarchy. `humanoid` names the humanoid's nodes;
+ *  `locals` replaces some nodes' local matrices (an avatar's proportions moving its joints). */
+export function poseMatrices(bones: readonly Node[], humanoid: ReadonlyMap<string, Node>, turns: readonly Turn[], locals?: ReadonlyMap<Node, M4>): M4[] {
   const rest = (n: Node): M4 => n.getWorldMatrix() as unknown as M4;
   const turnOf = new Map<Node, M4>();
   for (const [name, axis, angle] of turns) {
@@ -35,7 +36,7 @@ export function poseMatrices(bones: readonly Node[], humanoid: ReadonlyMap<strin
     const known = posed.get(n);
     if (known) return known;
     const parent = n.getParentNode();
-    const local = n.getMatrix() as unknown as M4;
+    const local = locals?.get(n) ?? (n.getMatrix() as unknown as M4);
     let w = parent ? mul(worldOf(parent), local) : local;
     const t = turnOf.get(n);
     if (t) {

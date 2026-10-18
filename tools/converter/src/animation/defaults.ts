@@ -5,6 +5,7 @@
 // (Scott Petrovic and the Mesh2Motion contributors) and Quaternius's Universal Animation Library
 // (the free standard pack) are pinned by their SHA-256; neither has an in-place turn, so the body
 // turns as it did. Each clip must pass P.05's checks on all three standard bodies (checks.ts).
+import { PROPORTION_ENDS } from '@flatchat/content';
 import type { Body, Clip } from './checks.ts';
 import { channelProblems, footSlide, handClearance, loopSeam } from './checks.ts';
 
@@ -62,7 +63,7 @@ export const DEFAULT_CLIPS: readonly DefaultClip[] = [
 export const SLIDE_MAX = 0.02;
 export const SEAM_MAX_DEG = 1;
 /** The legs slider's two ends (the client's proportions, S4.10). */
-export const LEG_EXTREMES = [0.8, 1.25] as const;
+export const LEG_EXTREMES = PROPORTION_ENDS;
 
 /** What a clip measures on the bodies, and what in it breaks P.05's lines. */
 export function clipReport(c: DefaultClip, clip: Clip, bodies: ReadonlyArray<readonly [string, Body]>): { problems: string[]; seam: number; slide?: number; clearance?: number; speedPerLeg?: number } {

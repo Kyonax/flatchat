@@ -2,9 +2,14 @@
 // S5.02's no-clipping check: an item's fit worn on its body in the reference poses. Both are posed
 // with the body's own skeleton (the fit by its joints' names); a body vertex the item does not hide
 // that sits within reach of the garment must stay under it, never out through it. A fit made on
-// another body, or too tight, shows as body vertices out through the garment.
+// another body, or too tight, shows as body vertices out through the garment. Each body point looks
+// along its normal: cloth just outside it covers it, cloth just inside it is skin out through the
+// garment, by that depth. Only cloth facing the way the skin does counts: a fold's inner layer, a
+// collar's band or a jacket's lining faces the body (P.08's MakeHuman clothes have all three), and
+// so does the far side of a limb's sleeve. The body can be checked at other proportions too (P.08:
+// the sliders' ends), posed as the client poses it.
 import type { Document, Node, Primitive } from '@gltf-transform/core';
-import { type BodyKit, type ItemClipping, type Region, regionOfBone } from '@flatchat/content';
+import { type BodyKit, type ItemClipping, PROPORTION_JOINTS, PROPORTION_SEGMENTS, PROPORTIONS_AS_MADE, type ProportionShares, type Region, regionOfBone, stretchAlong, WIDTH_FALLBACK } from '@flatchat/content';
 import { apply, invert, type M4, mul } from '../avatar/matrix.ts';
 import { poseMatrices, type Turn } from '../avatar/stride.ts';
 import type { VRMData } from '../avatar/vrm.ts';
@@ -23,9 +28,15 @@ export const REFERENCE_POSES: ReadonlyArray<{ name: string; turns: readonly Turn
   ];
 })();
 
-/** How far out a body vertex may sit before it shows through, and how far the check looks. */
+/** How far out a body vertex may sit before it shows through; how far out from the skin cloth
+ *  covers it (a loose sleeve, a skirt, a boxy jacket's side); how deep under the skin the check
+ *  looks for cloth it came out through. */
 export const CLIP_TOLERANCE = 0.003;
-export const CLIP_REACH = 0.025;
+export const CLIP_REACH = 0.1;
+export const CLIP_DEPTH = 0.03;
+/** Skin with the body's own surface this close in front of it, in a pose, is inside a fold (the
+ *  crotch in a deep seat, the chest's side under an arm held down): nothing there can show. */
+export const FOLD_REACH = 0.03;
 /** Along the garment's openings (collar, cuffs, hem) the body passing in front is a lap or a bent
  *  arm in front of a hem, not skin through cloth: garment points this near an opening are not
  *  compared. */
@@ -224,67 +235,237 @@ function borderVertices(tri: Uint32Array, p: Float32Array): Set<number> {
   return new Set(ids.flatMap((id, i) => (onBorder.has(id) ? [i] : [])));
 }
 
-/** The check. At rest, every body point the item does not hide that lies within reach of the
- *  garment (away from its openings) must be under it: a garment made inside the body fails here.
- *  Then, in every other reference pose, each such point under the garment at rest must stay under
- *  it: skin it covers without hiding must not come out through it. A point that was never under
- *  the garment (a thigh below a tee's hem) is another part of the body, not clipping. */
-export function clippingOf(kit: KitBody, fitNode: Node, hides: readonly Region[], detail?: (pose: string, region: Region | undefined, outMm: number) => void): ItemClipping {
+/** The local matrices an avatar's proportions give its joints, as the client moves them (S4.10):
+ *  the arms' and legs' lower joints along their bone, the shoulders and hips sideways, the head
+ *  scaled. */
+export function shapedLocals(humanoid: ReadonlyMap<string, Node>, shape: ProportionShares): Map<Node, M4> {
+  const out = new Map<Node, M4>();
+  const move = (bone: string, change: (m: M4) => void): void => {
+    const n = humanoid.get(bone);
+    if (!n) return;
+    const m = [...(out.get(n) ?? (n.getMatrix() as unknown as M4))];
+    change(m);
+    out.set(n, m);
+  };
+  for (const kind of ['arms', 'legs'] as const) {
+    for (const bone of PROPORTION_JOINTS[kind]) {
+      move(bone, (m) => {
+        for (const i of [12, 13, 14]) m[i] = m[i]! * shape[kind];
+      });
+    }
+  }
+  for (const bone of PROPORTION_JOINTS.width) move(humanoid.has(bone) ? bone : (WIDTH_FALLBACK[bone] ?? bone), (m) => (m[12] = m[12]! * shape.width));
+  move('head', (m) => {
+    for (const i of [0, 1, 2, 4, 5, 6, 8, 9, 10]) m[i] = m[i]! * shape.head;
+  });
+  return out;
+}
+
+/** Each limb bone's stretch along itself for a shape (the client's rule), by its index among the
+ *  kit's joints: what its skinning matrix is multiplied by, in its own frame. */
+export function segmentStretch(kit: KitBody, shape: ProportionShares): Map<number, M4> {
+  const out = new Map<number, M4>();
+  for (const kind of ['arms', 'legs'] as const) {
+    if (shape[kind] === 1) continue;
+    for (const [from, to] of PROPORTION_SEGMENTS[kind]) {
+      const bone = kit.humanoid.get(from);
+      const next = kit.humanoid.get(to);
+      const k = bone ? kit.joints.indexOf(bone) : -1;
+      if (!bone || !next || k < 0) continue;
+      // The next joint in the bone's own frame, at rest.
+      const w = next.getWorldMatrix() as unknown as M4;
+      const [x, y, z] = apply(invert(bone.getWorldMatrix() as unknown as M4), w[12]!, w[13]!, w[14]!);
+      const len = Math.hypot(x, y, z);
+      if (len > 1e-6) out.set(k, stretchAlong([x / len, y / len, z / len], shape[kind]));
+    }
+  }
+  return out;
+}
+
+/** A pose's name, with the proportions it was checked at when not as made. */
+function poseName(name: string, shape: ProportionShares): string {
+  const shares = [shape.width, shape.arms, shape.legs, shape.head];
+  if (shares.every((v) => v === 1)) return name;
+  const pc = (v: number): string => `${Math.round(v * 100)} %`;
+  return shares.every((v) => v === shares[0]) ? `${name} at ${pc(shares[0]!)}` : `${name} at width ${pc(shape.width)}, arms ${pc(shape.arms)}, legs ${pc(shape.legs)}, head ${pc(shape.head)}`;
+}
+
+export interface ClippingOptions {
+  /** Each body point found out through the garment: the pose, its region, how far out, and which
+   *  body vertex it is and which of the fit's triangles it came through (fitOnKit's numbering). */
+  detail?: (pose: string, region: Region | undefined, outMm: number, at: { vertex: number; triangle: number }) => void;
+  /** The proportions to check at, each in every reference pose (as made, when left out). The first
+   *  one's T-pose says what the garment covers. */
+  shapes?: readonly ProportionShares[];
+}
+
+/** A grid of triangles, each in every cell its bounds touch, for rays a few centimetres long. */
+export class TriangleGrid {
+  private readonly cells = new Map<number, number[]>();
+  private readonly p: Float32Array;
+  private readonly tri: Uint32Array;
+  private readonly size: number;
+  private readonly seen: Int32Array;
+  private query = 0;
+  /** The triangle the last hit met, and where on it (the weights of its second and third corners). */
+  met = -1;
+  metU = 0;
+  metV = 0;
+  constructor(p: Float32Array, tri: Uint32Array, size: number, skip: (t: number) => boolean) {
+    this.p = p;
+    this.tri = tri;
+    this.size = size;
+    this.seen = new Int32Array(tri.length / 3);
+    for (let t = 0; t < tri.length / 3; t++) {
+      if (skip(t)) continue;
+      const [a, b, c] = [tri[t * 3]! * 3, tri[t * 3 + 1]! * 3, tri[t * 3 + 2]! * 3];
+      const lo = [0, 1, 2].map((i) => this.cell(Math.min(p[a + i]!, p[b + i]!, p[c + i]!)));
+      const hi = [0, 1, 2].map((i) => this.cell(Math.max(p[a + i]!, p[b + i]!, p[c + i]!)));
+      for (let x = lo[0]!; x <= hi[0]!; x++) for (let y = lo[1]!; y <= hi[1]!; y++) for (let z = lo[2]!; z <= hi[2]!; z++) {
+        const key = TriangleGrid.key(x, y, z);
+        let list = this.cells.get(key);
+        if (!list) this.cells.set(key, (list = []));
+        list.push(t);
+      }
+    }
+  }
+  private cell(v: number): number {
+    return Math.floor(v / this.size);
+  }
+  private static key(x: number, y: number, z: number): number {
+    return (x + 512) * 1048576 + (y + 512) * 1024 + (z + 512);
+  }
+  /** The nearest distance along the ray from (ox, oy, oz) in direction d (unit), between `from` and
+   *  `length`, at which it meets a triangle whose front faces the way f does; -1 when it meets none. */
+  hit(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, length: number, fx: number, fy: number, fz: number, from = 0): number {
+    const { p, tri, seen } = this;
+    const q = ++this.query;
+    const [ex, ey, ez] = [ox + dx * length, oy + dy * length, oz + dz * length];
+    let best = -1;
+    for (let x = this.cell(Math.min(ox, ex)); x <= this.cell(Math.max(ox, ex)); x++) {
+      for (let y = this.cell(Math.min(oy, ey)); y <= this.cell(Math.max(oy, ey)); y++) {
+        for (let z = this.cell(Math.min(oz, ez)); z <= this.cell(Math.max(oz, ez)); z++) {
+          for (const t of this.cells.get(TriangleGrid.key(x, y, z)) ?? []) {
+            if (seen[t] === q) continue;
+            seen[t] = q;
+            const [a, b, c] = [tri[t * 3]! * 3, tri[t * 3 + 1]! * 3, tri[t * 3 + 2]! * 3];
+            const [ux, uy, uz] = [p[b]! - p[a]!, p[b + 1]! - p[a + 1]!, p[b + 2]! - p[a + 2]!];
+            const [vx, vy, vz] = [p[c]! - p[a]!, p[c + 1]! - p[a + 1]!, p[c + 2]! - p[a + 2]!];
+            // Its front (by its winding) must face the way the skin does (any way, for (0, 0, 0)).
+            if ((fx !== 0 || fy !== 0 || fz !== 0) && (uy * vz - uz * vy) * fx + (uz * vx - ux * vz) * fy + (ux * vy - uy * vx) * fz <= 0) continue;
+            // Möller–Trumbore.
+            const [hx, hy, hz] = [dy * vz - dz * vy, dz * vx - dx * vz, dx * vy - dy * vx];
+            const det = ux * hx + uy * hy + uz * hz;
+            if (Math.abs(det) < 1e-12) continue;
+            const inv = 1 / det;
+            const [sx, sy, sz] = [ox - p[a]!, oy - p[a + 1]!, oz - p[a + 2]!];
+            const u = (sx * hx + sy * hy + sz * hz) * inv;
+            if (u < 0 || u > 1) continue;
+            const [kx, ky, kz] = [sy * uz - sz * uy, sz * ux - sx * uz, sx * uy - sy * ux];
+            const v = (dx * kx + dy * ky + dz * kz) * inv;
+            if (v < 0 || u + v > 1) continue;
+            const d = (vx * kx + vy * ky + vz * kz) * inv;
+            if (d >= from && d <= length && (best < 0 || d < best)) {
+              best = d;
+              this.met = t;
+              this.metU = u;
+              this.metV = v;
+            }
+          }
+        }
+      }
+    }
+    return best;
+  }
+}
+
+/** The check. At rest, every body point the item does not hide that the garment covers (cloth
+ *  facing its way just outside it, away from the garment's openings) or that came out through it
+ *  (such cloth just under the skin) is a point of the garment's; out through it by more than the
+ *  tolerance, it counts: a garment made inside the body fails here. Then, in every other reference
+ *  pose, each such point must stay under it: skin it covers without hiding must not come out
+ *  through it. A point the garment never covered (a thigh below a tee's hem, a hand past a cuff) is
+ *  another part of the body, not clipping; a point inside a fold of the body is hidden by it, and
+ *  one where the body crosses itself is the body's own overlap. */
+export function clippingOf(kit: KitBody, fitNode: Node, hides: readonly Region[], o: ClippingOptions = {}): ItemClipping {
   const { mesh, inverseBinds } = fitOnKit(kit, fitNode);
   const hidden = new Set(hides);
   const visible = kit.regions.map((r) => r !== undefined && !hidden.has(r));
   // At rest, in world space: the fit's positions are in its bind space, so skin them with no turn.
   const restWorlds = kit.joints.map((j) => j.getWorldMatrix() as unknown as M4);
   const edge = edgeZone(mesh.triangles, pose(mesh, restWorlds, inverseBinds));
+  const nearOpening = (t: number): boolean => edge.has(mesh.triangles[t * 3]!) || edge.has(mesh.triangles[t * 3 + 1]!) || edge.has(mesh.triangles[t * 3 + 2]!);
+  const shapes = o.shapes ?? [PROPORTIONS_AS_MADE];
   let checked = 0;
   let through = 0;
   let worst = 0;
   let covered: Set<number> | undefined;
-  for (const { name, turns } of REFERENCE_POSES) {
-    const posed = poseMatrices(kit.joints, kit.humanoid, turns);
-    // poseMatrices gives posed × rest⁻¹; the skin wants posed world, so put the rest world back.
-    const worlds = posed.map((m, k) => mul(m, kit.joints[k]!.getWorldMatrix() as unknown as M4));
-    const body = pose(kit.body, worlds, kit.inverseBinds);
-    const cloth = pose(mesh, worlds, inverseBinds);
-    const clothNormals = normals(cloth, mesh.triangles);
-    const cell = (x: number): number => Math.floor(x / CLIP_REACH);
-    const grid = new Map<string, number[]>();
-    for (let i = 0; i < cloth.length / 3; i++) {
-      if (edge.has(i)) continue;
-      const key = `${cell(cloth[i * 3]!)},${cell(cloth[i * 3 + 1]!)},${cell(cloth[i * 3 + 2]!)}`;
-      let list = grid.get(key);
-      if (!list) grid.set(key, (list = []));
-      list.push(i);
-    }
-    const atRest = covered === undefined;
-    const under = new Set<number>();
-    for (let v = 0; v < body.length / 3; v++) {
-      if (!visible[v] || (!atRest && !covered!.has(v))) continue;
-      const [x, y, z] = [body[v * 3]!, body[v * 3 + 1]!, body[v * 3 + 2]!];
-      let best = -1;
-      let bestD = CLIP_REACH * CLIP_REACH;
-      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-        for (const i of grid.get(`${cell(x) + dx},${cell(y) + dy},${cell(z) + dz}`) ?? []) {
-          const d = (cloth[i * 3]! - x) ** 2 + (cloth[i * 3 + 1]! - y) ** 2 + (cloth[i * 3 + 2]! - z) ** 2;
-          if (d < bestD) {
-            bestD = d;
-            best = i;
-          }
+  for (const shape of shapes) {
+    const locals = shapedLocals(kit.humanoid, shape);
+    const stretch = segmentStretch(kit, shape);
+    for (const { name, turns } of REFERENCE_POSES) {
+      const posed = poseMatrices(kit.joints, kit.humanoid, turns, locals);
+      // poseMatrices gives posed × rest⁻¹; the skin wants posed world, so put the rest world back,
+      // and a limb's stretch in its own frame.
+      const worlds = posed.map((m, k) => {
+        const w = mul(m, kit.joints[k]!.getWorldMatrix() as unknown as M4);
+        const s = stretch.get(k);
+        return s ? mul(w, s) : w;
+      });
+      const body = pose(kit.body, worlds, kit.inverseBinds);
+      const bodyNormals = normals(body, kit.body.triangles);
+      const grid = new TriangleGrid(pose(mesh, worlds, inverseBinds), mesh.triangles, CLIP_DEPTH, nearOpening);
+      const self = new TriangleGrid(body, kit.body.triangles, FOLD_REACH, () => false);
+      const atRest = covered === undefined;
+      const mine = new Set<number>();
+      for (let v = 0; v < body.length / 3; v++) {
+        if (!visible[v] || (!atRest && !covered!.has(v))) continue;
+        const [x, y, z] = [body[v * 3]!, body[v * 3 + 1]!, body[v * 3 + 2]!];
+        const [nx, ny, nz] = [bodyNormals[v * 3]!, bodyNormals[v * 3 + 1]!, bodyNormals[v * 3 + 2]!];
+        let out = 0;
+        if (grid.hit(x, y, z, nx, ny, nz, CLIP_REACH, nx, ny, nz) < 0) {
+          const depth = grid.hit(x, y, z, -nx, -ny, -nz, CLIP_DEPTH, nx, ny, nz);
+          if (depth < 0) continue;
+          out = depth;
         }
+        checked += 1;
+        if (atRest) mine.add(v);
+        // In a fold the body hides it; where the body crosses itself (another part's skin just under
+        // it, facing out: a limb shortened at the sliders' end telescoped into its neighbour, the
+        // thighs into the belly in a deep seat) the body's own overlap shows, which no garment covers.
+        if (out > CLIP_TOLERANCE && (self.hit(x, y, z, nx, ny, nz, FOLD_REACH, 0, 0, 0, 0.001) >= 0 || self.hit(x, y, z, -nx, -ny, -nz, CLIP_DEPTH, nx, ny, nz, 0.001) >= 0)) continue;
+        if (out > CLIP_TOLERANCE) {
+          through += 1;
+          o.detail?.(poseName(name, shape), kit.regions[v], Math.round(out * 10000) / 10, { vertex: v, triangle: grid.met });
+        }
+        worst = Math.max(worst, out);
       }
-      if (best < 0) continue;
-      checked += 1;
-      const out = (x - cloth[best * 3]!) * clothNormals[best * 3]! + (y - cloth[best * 3 + 1]!) * clothNormals[best * 3 + 1]! + (z - cloth[best * 3 + 2]!) * clothNormals[best * 3 + 2]!;
-      if (atRest && out <= 0) under.add(v);
-      if (out > CLIP_TOLERANCE) {
-        through += 1;
-        detail?.(name, kit.regions[v], Math.round(out * 10000) / 10);
-      }
-      worst = Math.max(worst, out);
+      if (atRest) covered = mine;
     }
-    if (atRest) covered = under;
   }
-  return { poses: REFERENCE_POSES.length, checked, through, worstMm: Math.round(worst * 10000) / 10 };
+  return { poses: shapes.length * REFERENCE_POSES.length, checked, through, worstMm: Math.round(worst * 10000) / 10 };
+}
+
+/** What share of each region's vertices a fit covers at rest (cloth facing the way the skin does
+ *  within reach outside it, or just under it where the cloth dips into the skin): a region it covers
+ *  wholly may be hidden under it without a hole. */
+export function coverageOf(kit: KitBody, fitNode: Node): Partial<Record<Region, number>> {
+  const { mesh, inverseBinds } = fitOnKit(kit, fitNode);
+  const restWorlds = kit.joints.map((j) => j.getWorldMatrix() as unknown as M4);
+  const body = pose(kit.body, restWorlds, kit.inverseBinds);
+  const bodyNormals = normals(body, kit.body.triangles);
+  const grid = new TriangleGrid(pose(mesh, restWorlds, inverseBinds), mesh.triangles, CLIP_DEPTH, () => false);
+  const total = new Map<Region, number>();
+  const under = new Map<Region, number>();
+  for (let v = 0; v < body.length / 3; v++) {
+    const r = kit.regions[v];
+    if (!r) continue;
+    total.set(r, (total.get(r) ?? 0) + 1);
+    const [nx, ny, nz] = [bodyNormals[v * 3]!, bodyNormals[v * 3 + 1]!, bodyNormals[v * 3 + 2]!];
+    const [x, y, z] = [body[v * 3]!, body[v * 3 + 1]!, body[v * 3 + 2]!];
+    if (grid.hit(x, y, z, nx, ny, nz, CLIP_REACH, nx, ny, nz) >= 0 || grid.hit(x, y, z, -nx, -ny, -nz, CLIP_DEPTH, nx, ny, nz) >= 0) under.set(r, (under.get(r) ?? 0) + 1);
+  }
+  return Object.fromEntries([...total].map(([r, n]) => [r, (under.get(r) ?? 0) / n]));
 }
 
 /** The trunk and leg joints: where a body's proportions show, and which A-pose and T-pose share. */

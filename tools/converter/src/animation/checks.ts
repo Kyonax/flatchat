@@ -5,6 +5,7 @@
 // step on walk and jog, at both ends of the legs slider). A clip is posed on a body the way
 // three-vrm plays VRMA: each bone's normalized rotation along the body's own humanoid chain, the
 // hips' place scaled by the body's hips height over the clip's.
+import { PROPORTION_JOINTS } from '@flatchat/content';
 import type { Document, Node } from '@gltf-transform/core';
 import { avatarIO } from '../avatar/convert.ts';
 import type { VRMData } from '../avatar/vrm.ts';
@@ -96,7 +97,7 @@ export function bodyOf(doc: Document, data: VRMData): Body {
 
 /** The joints the legs slider moves out, as the client's avatar layer does (S4.10): the knees and
  *  the ankles, so the thighs and shins grow and the feet keep their size. */
-const LENGTHENED = new Set(['leftLowerLeg', 'leftFoot', 'rightLowerLeg', 'rightFoot']);
+const LENGTHENED: ReadonlySet<string> = new Set(PROPORTION_JOINTS.legs);
 
 /** Every bone's place at a frame, the legs' lengths scaled by `legs` (the slider's share) and the
  *  body lifted by what they grew, as the client does. */
