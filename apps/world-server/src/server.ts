@@ -1142,7 +1142,7 @@ export class WorldServer implements PluginWorld {
       if (!z) continue;
       if (z.kind === 'quiet') quiet = true;
       else if (z.kind === 'private') privateZone = privateZone === -1 ? i : privateZone;
-      else {
+      else if (z.kind === 'voice') {
         if (z.range !== undefined) range = z.range;
         if (z.gain !== undefined) gain = z.gain;
       }

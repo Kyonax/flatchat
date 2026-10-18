@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // The world's voice rules (S3.08): a stage zone carries a voice farther and louder, and its frames
 // say so; a quiet zone silences voice both ways; a private zone keeps voice among those inside;
-// plugins set a player's range and gain; a minor's voice never carries past the world's defaults.
+// plugins set a player's range and gain; a minor's voice never carries past the world's defaults; a
+// reverb zone (S6.06) is the client's room and changes nothing here.
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,9 +21,10 @@ const ZONES: BuiltZone[] = [
   { kind: 'voice', range: 60, gain: 2, ...box(10, 10) },
   { kind: 'quiet', ...box(30, 10) },
   { kind: 'private', ...box(50, 10) },
+  { kind: 'reverb', room: 'hall', mix: 0.5, ...box(80, 40) },
 ];
 const at = (group: string, x: number, z: number) => ({ x, y: 0, z, yaw: 0, group });
-const SPAWNS = [at('stage', 10, 10), at('floor', 10, 40), at('quiet', 30, 10), at('near-quiet', 30, 18), at('room', 50, 10), at('door', 50, 16), { ...at('', 70, 70), main: true }];
+const SPAWNS = [at('stage', 10, 10), at('floor', 10, 40), at('quiet', 30, 10), at('near-quiet', 30, 18), at('room', 50, 10), at('door', 50, 16), at('hall', 80, 40), at('near-hall', 80, 50), { ...at('', 70, 70), main: true }];
 
 let running: Array<{ server: WorldServer; plugins?: Plugins }> = [];
 afterEach(async () => {
@@ -106,6 +108,16 @@ describe('the world’s voice rules', () => {
     // From the floor, 30 m out, an ordinary voice does not carry to the stage.
     await talk(far);
     expect(singer.heard(far.entity)).toEqual([]);
+  });
+
+  it('leave a voice in a reverb zone as it is anywhere: the room is the client’s', async () => {
+    const udp = await start();
+    const inside = await enter(udp, 'hall');
+    const near = await enter(udp, 'near-hall');
+    await talk(inside, near);
+    // The world's own gain (64 is 1) and range (0: the default) in every frame.
+    expect(near.heard(inside.entity)[0]).toMatchObject({ gain: 64, range: 0 });
+    expect(inside.heard(near.entity).length).toBeGreaterThan(0);
   });
 
   it('silence a quiet zone both ways, and keep a private zone’s voice inside it', async () => {
