@@ -268,7 +268,9 @@ MARKERS = [
 # Hide-mask regions: the body's faces an item may hide, named by the bones that move them.
 REGIONS = {
     "head": ["head", "neck_01"],
-    "torso": ["pelvis", "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r"],
+    "chest": ["spine_02", "spine_03", "clavicle_l", "clavicle_r"],
+    "belly": ["spine_01"],
+    "hips": ["pelvis"],
     "upper_arm_l": ["upperarm_l"], "upper_arm_r": ["upperarm_r"],
     "lower_arm_l": ["lowerarm_l"], "lower_arm_r": ["lowerarm_r"],
     "hand_l": ["hand_l"], "hand_r": ["hand_r"],
