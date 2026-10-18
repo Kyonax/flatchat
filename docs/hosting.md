@@ -152,3 +152,10 @@ node --env-file=$HOME/.config/flatchat/core.env apps/core/src/admin.ts invite --
 ```
 
 Send them the link it prints. They install the client (the latest CI run's `client-linux` or `client-windows`), and it signs in at the core's address (`--core=https://core.example.org`, or its built-in address once that is the real one).
+
+## 7. How many players: the load test (S7.04)
+
+The capacity advisor (`host advise`, `tools/host-tool/src/advisor.ts`) says how many players a home connection can host from its measured upload. Before a big evening, the world server itself is tried with bots:
+
+- **On a GitHub runner, on demand:** the repository's *Load test* workflow (Actions, Load test, Run workflow: 200 bots, 30 minutes, UDP by default) runs `node tools/bots/src/run.ts run --transport udp --bots 200 --minutes 30`, which fails when any bot is lost, the server's tick p99 passes 15 ms, or a client's download passes its limit; the measurements (`report.md`, `report.json`, the server's and bots' records) are kept as the run's `load-test` artifact for 90 days.
+- **On the host's own PC:** the same command, or bots joining a world already running (`node tools/bots/src/run.ts visit --signal URL --world-id UUID --bots 150 --minutes 30`, with the world's key in `FLATCHAT_WORLD_KEY`), while real players walk and talk in it. That run, with the owner's community on his connection, is the plan's S7.04.
