@@ -121,8 +121,8 @@ export class Bot {
   heldMute: string | undefined;
   /** How the world removed the bot, when it did (kicked, banned, closing). */
   removed: { reason: string; detail: string } | undefined;
-  /** Who is in the world, by account: their entities and roles (the roster). */
-  readonly people = new Map<string, { entity: number; role: string }>();
+  /** Who is in the world, by account: their entities, roles and worn avatars (the roster). */
+  readonly people = new Map<string, { entity: number; role: string; avatar: string | undefined }>();
   /** Where the server placed the bot at its join. */
   spawnAt: { x: number; z: number } | undefined;
   private joinedAt = 0;
@@ -355,7 +355,7 @@ export class Bot {
         break;
       case 'roster':
         if (m.full) this.people.clear();
-        for (const p of m.players) this.people.set(p.account, { entity: p.entity, role: p.role });
+        for (const p of m.players) this.people.set(p.account, { entity: p.entity, role: p.role, avatar: p.avatar ? Buffer.from(p.avatar).toString('hex') : undefined });
         for (const gone of m.left) for (const [account, p] of this.people) if (p.entity === gone) this.people.delete(account);
         break;
       case 'hidden':

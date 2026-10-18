@@ -62,9 +62,10 @@ try {
     FLATCHAT_CORE_SECRET: randomBytes(32).toString('hex'),
     FLATCHAT_CORE_URL: coreUrl,
     FLATCHAT_CORE_STUN: 'none',
-    // Avatars (S4.05): the store in the test's folder, textures left as PNG (seconds, not minutes).
+    // Avatars (S4.05): the store in the test's folder. Textures in KTX2, as every real upload
+    // (S4.12): the client then decodes them in its Basis worker under the page's policy, which
+    // hung every textured level until the transcoder's embind helpers stopped building code from text.
     FLATCHAT_CORE_STORE: join(dir, 'store'),
-    FLATCHAT_CORE_KTX2: 'off',
     ...(values.relay ? { FLATCHAT_CORE_TURN_URLS: `turn:127.0.0.1:${turnPort}?transport=udp`, FLATCHAT_CORE_TURN_SECRET: turnSecret } : {}),
   };
   const core = await start([process.execPath, join(CORE, 'src', 'main.ts'), '--port', String(corePort), '--stop-on-stdin'], coreEnv, 'ready');
@@ -167,7 +168,12 @@ try {
       steps['relay'] = 'coturn running';
     }
     await joinPlaza.click({ timeout: 20_000 });
-    steps['joined'] = await page.locator('[data-test=mic-choose]').isVisible({ timeout: 20_000 }).catch(() => false);
+    // isVisible() answers at once (Playwright ignores its timeout): wait for the chooser instead.
+    steps['joined'] = await page
+      .locator('[data-test=mic-choose]')
+      .waitFor({ timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
     await page.locator('[data-test=mic-choose]').click({ timeout: 20_000 });
     await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 20_000 });
     // The worn avatar drawn in the world (S4.05): this player's own, in full (the view starts in
