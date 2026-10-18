@@ -144,6 +144,20 @@ describe('avatars, faces and proportions in the roster', () => {
     await until('the outfit off', () => b.player(a.entity)!.outfit.length === 0);
   });
 
+  it('takes off what the platform took down, avatar and items, and tells everyone (S5.09)', async () => {
+    const udp = await start();
+    const server = running.at(-1)!;
+    const a = await enter(udp, randomUUID(), AVATAR_A);
+    const b = await enter(udp, randomUUID());
+    await until('b sees a', () => b.player(a.entity) !== undefined);
+    const kept = new Uint8Array(32).fill(0xcc);
+    a.send({ type: 'outfit', items: [{ item: AVATAR_B }, { item: kept }] });
+    await until('the outfit', () => b.player(a.entity)!.outfit.length === 2);
+    server.takeDown(['aa'.repeat(32), 'bb'.repeat(32), 'not a manifest']);
+    await until('taken down', () => b.player(a.entity)!.avatar === undefined && b.player(a.entity)!.outfit.length === 1);
+    expect([...b.player(a.entity)!.outfit[0]!.item]).toEqual([...kept]);
+  });
+
   it('plays an emote for everyone with the tick it started at, and stops it (S5.07)', async () => {
     const udp = await start();
     const a = await enter(udp, randomUUID());

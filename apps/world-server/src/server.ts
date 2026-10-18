@@ -895,6 +895,22 @@ export class WorldServer implements PluginWorld {
   }
 
   /** Lifts a ban the world's owner reversed on appeal, through the core (S3.07). */
+  /** What the platform took down (S5.09), by its manifests' SHA-256: an avatar or an item. Whoever
+   *  wears one here wears it no longer, and everyone is told as for any change. */
+  takeDown(manifests: readonly string[]): void {
+    const gone = new Set(manifests.filter((m) => /^[0-9a-f]{64}$/.test(m)));
+    if (gone.size === 0) return;
+    for (const player of this.roster.values()) {
+      const avatar = player.avatar !== undefined && gone.has(toHex(player.avatar));
+      const outfit = player.outfit.filter((w) => !gone.has(toHex(w.item)));
+      if (!avatar && outfit.length === player.outfit.length) continue;
+      if (avatar) delete player.avatar;
+      player.outfit = outfit;
+      this.joinedThisTick.push(player);
+      this.events.add('takedown', 0);
+    }
+  }
+
   liftBanOnAppeal(account: string): void {
     this.unban(account);
     this.options.store?.logModeration({ actor: 'appeal', target: account, action: 'unban', minutes: 0, reason: 'reversed on appeal' });

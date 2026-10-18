@@ -138,11 +138,13 @@ describe('ICE servers and the host channel', () => {
       },
     } as unknown as WebSocket;
     let ice: unknown;
+    const removed: string[][] = [];
     const relay = new CoreRelay({
       core: 'http://127.0.0.1:1',
       worldId: 'w',
       worldKey: new Uint8Array(32),
       rtc: { answer: async (sdp) => ({ type: 'answer', sdp: `answer to ${sdp}` }), setIceServers: (s) => (ice = s) },
+      onRemoved: (m) => removed.push(m),
       log: () => undefined,
       socketFactory: () => socket,
     });
@@ -151,9 +153,11 @@ describe('ICE servers and the host channel', () => {
     listeners['message']!({ data: JSON.stringify({ type: 'welcome' }) });
     listeners['message']!({ data: JSON.stringify({ type: 'ice', iceServers: [{ urls: 'stun:x:1' }, 'junk'] }) });
     listeners['message']!({ data: JSON.stringify({ type: 'offer', id: 'o1', sdp: 'v=0' }) });
+    listeners['message']!({ data: JSON.stringify({ type: 'removed', manifests: ['ab'.repeat(32), 'junk', 7] }) });
     await new Promise((r) => setTimeout(r, 10));
     expect(relay.online).toBe(true);
     expect(ice).toEqual([{ urls: 'stun:x:1' }]);
+    expect(removed).toEqual([['ab'.repeat(32)]]);
     expect(sent.map((s) => JSON.parse(s))).toEqual([
       { type: 'auth', proof: hostProof(new Uint8Array(32), 'abc') },
       { type: 'answer', id: 'o1', sdp: 'answer to v=0' },

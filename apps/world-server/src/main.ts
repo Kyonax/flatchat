@@ -260,6 +260,7 @@ const relay =
         onLimits: (maximum) => server.setApprovedCapacity(maximum),
         onUnban: (account) => server.liftBanOnAppeal(account),
         onRevoked: () => void shutdown('revoked'),
+        onRemoved: (manifests) => server.takeDown(manifests),
         log,
       })
     : undefined;

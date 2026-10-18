@@ -9,11 +9,13 @@
 //
 //   core → world   { type: 'challenge', nonce }   { type: 'offer', id, sdp }   { type: 'ice', iceServers }
 //                  { type: 'limits', maximum }    { type: 'unban', appeal, account }
+//                  { type: 'removed', manifests }
 //   world → core   { type: 'auth', proof }        { type: 'answer', id, sdp }  { type: 'error', id, error }
 //                  { type: 'status', players, recommended, maximum }          { type: 'unbanned', appeal }
 //
 // `unban` (S3.07): the world's owner reversed a ban on appeal; the core repeats it on every
-// connection until the world answers `unbanned`.
+// connection until the world answers `unbanned`. `removed` (S5.09): avatars and items the platform
+// took down, by their manifests' SHA-256, which no one here may wear any longer.
 import { createHmac } from 'node:crypto';
 import type { IceServerSpec } from './rtc.ts';
 
@@ -54,6 +56,8 @@ export interface RelayOptions {
   onUnban?: (account: string) => void;
   /** The platform revoked the world's approval (S3.12): it ends every session and stops. */
   onRevoked?: () => void;
+  /** Avatars and items the platform took down (S5.09), by their manifests. */
+  onRemoved?: (manifests: string[]) => void;
   log: (event: string, fields?: Record<string, unknown>) => void;
   /** For tests; the global WebSocket (Node.js 24 has one) otherwise. */
   socketFactory?: (url: string) => WebSocket;
@@ -142,7 +146,7 @@ export class CoreRelay {
 
   private async message(ws: WebSocket, data: unknown): Promise<void> {
     if (typeof data !== 'string' || data.length > MAX_MESSAGE) return;
-    let m: { type?: unknown; nonce?: unknown; id?: unknown; sdp?: unknown; iceServers?: unknown; maximum?: unknown; appeal?: unknown; account?: unknown };
+    let m: { type?: unknown; nonce?: unknown; id?: unknown; sdp?: unknown; iceServers?: unknown; maximum?: unknown; appeal?: unknown; account?: unknown; manifests?: unknown };
     try {
       m = JSON.parse(data) as typeof m;
     } catch {
@@ -160,6 +164,8 @@ export class CoreRelay {
     } else if (m.type === 'unban' && typeof m.appeal === 'string' && typeof m.account === 'string' && /^[0-9a-f-]{36}$/.test(m.account)) {
       this.o.onUnban?.(m.account);
       this.send(ws, { type: 'unbanned', appeal: m.appeal.slice(0, 64) });
+    } else if (m.type === 'removed' && Array.isArray(m.manifests)) {
+      this.o.onRemoved?.(m.manifests.filter((x): x is string => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x)).slice(0, 64));
     } else if (m.type === 'revoked') {
       this.o.log('world-revoked', {});
       this.o.onRevoked?.();
