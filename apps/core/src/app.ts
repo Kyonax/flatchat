@@ -6,10 +6,11 @@ import { timingSafeEqual } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import websocket from '@fastify/websocket';
-import { AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
+import { ANIMATION_SOURCE_LIMIT, AVATAR_SOURCE_LIMIT, ITEM_SOURCE_LIMIT } from '@flatchat/content';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type SignUpProblem, signUp } from './accounts.ts';
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
+import { Animations } from './animations.ts';
 import { Avatars } from './avatars.ts';
 import { Items } from './items.ts';
 import { browse as browseGallery, copyRefused, entry as galleryEntry, publish, take, withdraw } from './gallery.ts';
@@ -122,6 +123,8 @@ export interface CoreOptions {
   store?: FileStore;
   /** Avatar and item conversion (S4.01, S5.05): KTX2 textures on (the default) or off (tests). */
   avatars?: { ktx2?: boolean };
+  /** Animation conversion (S5.07): headless Blender's executable, for FBX; without it FBX is refused. */
+  animations?: { blender?: string };
 }
 
 type Problem = { status: number; error: string; message: string };
@@ -171,6 +174,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   const store = o.store ?? localStore(join(tmpdir(), `flatchat-core-store-${process.pid}`), o.secret, publicUrl);
   const avatars = new Avatars({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
   const items = new Items({ db: o.db, store, secret: o.secret, publicUrl, ...(o.avatars?.ktx2 === false ? { ktx2: false } : {}), ...(o.log ? { log: o.log } : {}) });
+  const animations = new Animations({ db: o.db, store, secret: o.secret, publicUrl, ...(o.animations?.blender ? { blender: o.animations.blender } : {}), ...(o.log ? { log: o.log } : {}) });
   const ice = new IceServers(o.ice ?? { stun: DEFAULT_STUN, turnUrls: [] });
 
   /** A world as the world browser shows it (S2.09): online while its host channel is open, with the
@@ -194,6 +198,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   // A conversion under way finishes before the database closes.
   app.addHook('onClose', async () => avatars.idle());
   app.addHook('onClose', async () => items.idle());
+  app.addHook('onClose', async () => animations.idle());
   // Reports' evidence is kept for its time, then purged (S3.02), and so are the abuse path's sealed
   // packages after their year (S3.12): at start and every six hours.
   const purge = (): void => {
@@ -902,6 +907,57 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!who) return reply;
     const d = await items.delivery(o.db, (req.params as { manifest: string }).manifest, now());
     if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such item'));
+    return reply.header('cache-control', 'private, max-age=600').send(d);
+  });
+
+  // ---------------------------------------------------------------- emotes and dances (S5.07)
+  app.post('/api/v1/animations', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (limited(limits.uploadByAccount, a.id, reply)) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const slot = await animations.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64), use: b['use'] }, now());
+      return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  app.put('/api/v1/animations/:id/source', { bodyLimit: ANIMATION_SOURCE_LIMIT + 1024 }, async (req, reply) => {
+    if (limited(limits.apiByAddress, req.ip, reply)) return reply;
+    const q = req.query as Record<string, unknown>;
+    if (!Buffer.isBuffer(req.body)) return sendProblem(reply, problem(415, 'bad-request', 'send the file as application/octet-stream'));
+    try {
+      await animations.receive((req.params as { id: string }).id, { e: str(q['e'], 16), s: str(q['s'], 64) }, new Uint8Array(req.body), now());
+      return reply.code(202).send({ status: 'converting' });
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  app.get('/api/v1/animations', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const list = await animations.list(o.db, who.accountId);
+    return { animations: list.map((v) => ({ ...v, createdAt: v.createdAt.toISOString() })) };
+  });
+
+  app.delete('/api/v1/animations/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await animations.remove(o.db, who.accountId, (req.params as { id: string }).id, now()))) return sendProblem(reply, problem(404, 'not-found', 'no such animation'));
+    return reply.code(204).send();
+  });
+
+  // A ready animation's manifest and a signed link to its VRMA, for anyone signed in.
+  app.get('/api/v1/animation-files/:manifest', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const d = await animations.delivery(o.db, (req.params as { manifest: string }).manifest, now());
+    if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such animation'));
     return reply.header('cache-control', 'private, max-age=600').send(d);
   });
 

@@ -15,6 +15,7 @@
 //   FLATCHAT_CORE_TRUST     trust levels 1-3 as days:active,days:active,days:active (default 3:1,14:5,60:20)
 //   FLATCHAT_CORE_STORE     the file store's folder (S4.04; default ~/.local/share/flatchat/core-store)
 //   FLATCHAT_CORE_KTX2      off to keep avatars' textures as PNG (quicker conversions; default on)
+//   FLATCHAT_CORE_BLENDER   headless Blender's executable (5.2 LTS), for FBX emotes and dances (S5.07; unset: FBX refused)
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +41,8 @@ export interface CoreEnv {
   store: string;
   /** Avatars' textures as KTX2 (S4.03); off keeps PNG. */
   ktx2: boolean;
+  /** Headless Blender for FBX animations (S5.07), when set. */
+  blender: string | undefined;
 }
 
 const list = (v: string | undefined): string[] => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -80,6 +83,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env, needSecret = true)
     minors: env['FLATCHAT_CORE_MINORS'] === 'on',
     store: env['FLATCHAT_CORE_STORE'] || join(env['XDG_DATA_HOME'] || join(homedir(), '.local', 'share'), 'flatchat', 'core-store'),
     ktx2: env['FLATCHAT_CORE_KTX2'] !== 'off',
+    blender: env['FLATCHAT_CORE_BLENDER'] || undefined,
   };
 }
 

@@ -55,6 +55,7 @@ const app = await buildCore({
   policy: { minors: env.minors },
   store: localStore(env.store, env.secret, env.publicUrl),
   avatars: { ktx2: env.ktx2 },
+  ...(env.blender ? { animations: { blender: env.blender } } : {}),
   log,
 });
 const address = await app.listen({ port, host: values.bind });

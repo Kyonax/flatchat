@@ -31,6 +31,7 @@ Put both lines in a file outside the repository, for example `~/.config/flatchat
 | `FLATCHAT_CORE_TRUST` | The trust levels' thresholds: three `days:active` pairs for levels 1, 2 and 3, each asking at least as much as the one before (default `3:1,14:5,60:20`) |
 | `FLATCHAT_CORE_STORE` | The file store's folder (S4.04): avatars' levels, items' fits and props (S5.05), manifests, thumbnails and the uploads they came from, each named by its SHA-256 (default `~/.local/share/flatchat/core-store`) |
 | `FLATCHAT_CORE_KTX2` | `off` keeps avatars' and items' textures as PNG: conversions take seconds instead of minutes (default on) |
+| `FLATCHAT_CORE_BLENDER` | Headless Blender's executable (5.2 LTS), which reads FBX emotes and dances (S5.07). Unset, FBX uploads are refused with that reason; VRMA, GLB and BVH need no Blender |
 
 Then:
 
@@ -91,6 +92,10 @@ A player at trust level 1 (or a tester) uploads a VRM or a GLB from the client: 
 
 An item (clothes, hair, a hat, a prop) is uploaded the way an avatar is: a slot first, then the file, then a conversion in the same sandbox by the item converter (`tools/converter/src/item-cli.ts`), which may also read the three standard bodies in `kits/bodies/` (each checked against `kits.json`'s SHA-256) for its skeleton and clipping checks. A ready item names its slot and the bodies it fits; its fits (one per body) or its prop go to the store under their SHA-256. Anyone signed in fetches a ready item's files through signed links. Any account, a new one included, takes one of the three standard bodies with no upload and no trust level: the core converts the kit once per start and reuses that conversion for everyone after. An avatar whose source is a kit's exact bytes is that body, and its delivery says `kit`, so the client knows the items made for it fit. An outfit is a saved set of the account's own ready items (16 at most), wearable together (one item to a slot, one prop to a point, a full outfit alone), each prop's adjustment within 10 cm, 45 degrees and 80 to 125 percent; deleting an item takes it out of the outfits that held it.
 
+## Emotes and Dances (S5.07)
+
+An animation (a VRMA, a GLB clip, a BVH or an FBX, up to 64 MB) is uploaded the way an avatar is, with its use: an emote, played once, or a dance, played on a loop. The animation converter (`tools/converter/src/animation-cli.ts`) runs in the same sandbox and writes one VRMA. An FBX is read first by headless Blender (`tools/blender/animation/fbx2glb.py`), in a process of its own: an empty network namespace, a 6 GB address-space cap, a clean environment whose home is the job's folder, factory settings, scripts in files never run (`-Y`) and offline mode, with two minutes to finish. Anyone signed in fetches a ready animation's VRMA through a signed link. The client plays it on any avatar.
+
 ## The Free Gallery (S5.06)
 
 Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packages/content's `licence.ts`): an account at trust level 2 (or a tester) publishes one of its own ready ones, with its word that it may share it and that it keeps to the content rules; every field is required, the gallery takes only what everyone may wear, and an avatar's licence may be stricter than its file's own terms, never looser. Anyone signed in browses it (by kind, slot, body, words; newest first, 40 to a page) and takes an entry: the account's own ready copy, an `avatars` or `items` row naming the entry, worn, saved in outfits and delivered like its own. The publisher withdraws an entry, and deleting its original does too; copies taken stay. An upload slot for an exact copy (the same SHA-256) of someone else's live entry is refused (`licence`) unless the entry's licence allows copies.
@@ -129,6 +134,10 @@ Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packag
 | `GET /api/v1/item-files/:manifest` | Bearer | A ready item's manifest and signed links to it and to each fit by body (`feminine`, `masculine`, `neutral`) or its `prop`; never its source |
 | `GET /api/v1/outfits` | Bearer | The account's outfits: `{ id, name, items: [{ item, adjust? }], updatedAt }`, 30 at most |
 | `POST /api/v1/outfits`, `PUT /api/v1/outfits/:id`, `DELETE /api/v1/outfits/:id` | Bearer | Save an outfit, new or in place (`{ name, items }`: the account's ready items as manifest SHA-256s, a prop's `adjust` in centimetres, degrees and percent), or delete one |
+| `POST /api/v1/animations` | Bearer | An animation upload slot (S5.07): `{ name, bytes, sha256, use: emote \| dance }` → `{ id, upload }`; trust level 1 or a tester, 100 animations, 64 MB, the same ten uploads a day |
+| `PUT /api/v1/animations/:id/source?e=…&s=…` | The slot's signature | The file itself; then it converts (an FBX through Blender first) |
+| `GET /api/v1/animations`, `DELETE /api/v1/animations/:id` | Bearer | The account's animations (status, use, the source's format, duration, whether it loops, reasons, warnings, manifest), and deleting one |
+| `GET /api/v1/animation-files/:manifest` | Bearer | A ready animation's manifest and signed links to it and to its VRMA (`vrma`); never its source |
 | `GET /api/v1/gallery?kind=&slot=&body=&q=&before=` | Bearer | The free gallery (S5.06): `{ entries: [{ id, kind, name, authors, licence, slot, fits, rank, takes, publishedAt, publisher, manifest, mine, taken }], next }`; `next` goes back as `before` |
 | `GET /api/v1/gallery/:id` | Bearer | One live entry |
 | `POST /api/v1/gallery` | Bearer | Publish: `{ kind: avatar \| item, id, name?, licence, affirm: true }` → the entry; trust level 2 or a tester (`publish-trust`), the licence complete (`bad-request`) and fit for the gallery and the file (`licence`) |

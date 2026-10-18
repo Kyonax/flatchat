@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The converters' sandbox (S4.02, S5.05): every upload, an avatar or an item, is converted by its
-// own program (tools/converter/src/avatar-cli.ts, item-cli.ts) in a separate process under Node.js's
+// The converters' sandbox (S4.02, S5.05, S5.07): every upload, an avatar, an item or an animation, is
+// converted by its own program (tools/converter/src/avatar-cli.ts, item-cli.ts, animation-cli.ts) in a
+// separate process under Node.js's
 // permission model. It reads only the converter's code, the upload and what the conversion needs
 // (the standard bodies, for an item), writes only its own folder, loads no native addon and starts
 // no worker or child process, runs in an empty network namespace where the system allows one, and
-// has a time and a memory limit; a crash or a hostile file costs that process alone.
+// has a time and a memory limit; a crash or a hostile file costs that process alone. Headless
+// Blender, which reads FBX (S5.07), cannot run under that model: runBlender is its own sandbox.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -99,4 +101,27 @@ export function cleanName(name: unknown, max = 64): string {
     .replace(/\p{Cc}/gu, '')
     .trim()
     .slice(0, max);
+}
+
+/** Runs a Blender script headless on one upload (S5.07, DR-15): factory settings, no audio,
+ *  scripts inside files never run (-Y), offline, a clean environment whose home is the job's
+ *  folder, a 6 GB address-space cap (prlimit), the empty network namespace when `isolated`, and a
+ *  time limit. Blender cannot run under Node.js's permission model; this is its sandbox. */
+export async function runBlender(blender: string, script: string, args: string[], o: { isolated: boolean; timeoutMs: number; home: string }): Promise<{ code: number | null; stderr: string }> {
+  const capped = ['--as=6442450944', '--', blender, '-b', '--factory-startup', '-noaudio', '-Y', '--offline-mode', '--python', script, '--', ...args];
+  const [cmd, argv] = o.isolated ? ['unshare', ['-rn', '--', 'prlimit', ...capped]] : ['prlimit', capped];
+  return new Promise((resolve) => {
+    const child = spawn(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: '/usr/bin:/bin', HOME: o.home }, cwd: o.home });
+    let err = '';
+    child.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-4000)));
+    const timer = setTimeout(() => child.kill('SIGKILL'), o.timeoutMs);
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      resolve({ code: -1, stderr: `fbx2glb: Blender could not start (${e.message.slice(0, 120)})` });
+    });
+    child.on('close', (c) => {
+      clearTimeout(timer);
+      resolve({ code: c, stderr: err });
+    });
+  });
 }
