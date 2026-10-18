@@ -16,6 +16,7 @@ The world format (version 1, `docs/world-format.md`) is how worlds are made: Fla
 | Transforms | Markers sit at their node's world transform (`localMatrix` from `matrix` or TRS, multiplied down from the scene's roots; a node with two parents is refused) |
 | Paths | Buffers and images are inside the GLB or relative paths inside the folder: `safePath` refuses absolute paths, `..`, backslashes and any scheme (`http:`, `file:`); `data:` URIs over 1 MB are refused |
 | Extensions | An unknown extension in `extensionsRequired` refuses the world; in `extensionsUsed` it is a warning (ignored) |
+| Overlays | `[[overlays]]` in world.toml (S6.02): at most four, `image` a PNG in the folder (1024 px a side), `hud`, `size` up to 1 (the whole screen), `opacity` up to 0.8, `motion`; the validator's `overlay-image`; the converter writes each image again as a file of kind `overlay` into `BuiltWorld.overlays` (only when there are some) and leaves the paths out of `world.json`'s manifest (rule `overlays`) |
 | Limits | 512 MB a folder, 256 MB a file, 2 million triangles (a warning above 1 million), textures at most 4096 px a side (a warning above 2048; sizes read from PNG, JPEG and WebP headers, nothing decoded), 65,536 nodes, 1,000 spawn points and seats, 256 portals, zones and emitters, 64 effects (each per scene) |
 
 ## Using It

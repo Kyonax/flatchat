@@ -27,6 +27,7 @@ With no mode flag the client is the app (S1.04, S1.09–S1.11): it signs in thro
 | Rule | Why |
 |---|---|
 | Effects (S6.01): the world view's `EffectsLayer` plays worn effects at markers the avatar layer places (`AvatarLayer.effects`), draws after `renderer.render` (`effects-draw.ts`), and follows `settings.effects` (show; strangers off by default, Q-M10); `[data-test=effects]` carries its stats | Rule `effects` |
+| Overlays and safe mode (S6.02): `OverlayLayer` (`world/overlays.ts`) follows outfits from the roster and the world's `overlays`, `ScreenOverlays.vue` draws them over the canvas (`[data-test=overlays]` with `data-mine`, `data-others`, `data-world`, `data-safe`); Shift+Esc toggles `session.toggleSafeMode()` before any other key; `settings.overlays` (mine, world, allowed accounts) | Rule `overlays` |
 | Only the main process talks to the core. The page sees `{ status, account, remembered }` and gets connect tokens, never an access or refresh token | The page renders other people's content |
 | `shell.openExternal` only ever gets the core's own `/signin` page: `CoreApi.loginRequest` checks the origin (the trap linter's T16 is allowed on that one line, with the reason) | A compromised answer cannot send the browser elsewhere |
 | The refresh token is encrypted with `safeStorage`; on Linux with the `basic_text` backend (no secret service) it is kept in memory only, and the home screen says the player will sign in again | `basic_text` is a fixed key: not protection |
