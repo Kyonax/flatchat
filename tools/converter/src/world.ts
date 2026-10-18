@@ -442,7 +442,7 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
           return { id: p.id, position: d.position, rotation: d.rotation, scale: d.scale };
         }),
         portals: info.portals.map((p) => ({ ...boxOf(p.matrix, p.size), world: p.world, spawn: p.spawn })),
-        zones: info.zones.map((z) => ({ ...boxOf(z.matrix, z.size), kind: z.kind, ...(z.range !== undefined ? { range: z.range } : {}), ...(z.gain !== undefined ? { gain: z.gain } : {}) })),
+        zones: info.zones.map((z) => ({ ...boxOf(z.matrix, z.size), kind: z.kind, ...(z.range !== undefined ? { range: z.range } : {}), ...(z.gain !== undefined ? { gain: z.gain } : {}), ...(z.room !== undefined ? { room: z.room, mix: z.mix } : {}) })),
         emitters,
         effects,
         triangles: info.triangles,

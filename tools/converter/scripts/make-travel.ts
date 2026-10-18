@@ -17,6 +17,10 @@
 //        [--effect]                   (S6.01: the second world gets an effect, Effekseer's CC0 tornado
 //                                      sample from kits/effects/samples, 6 m in front of its arrivals
 //                                      and 3 m to the right, beside the avatar in the camera's view)
+//        [--acoustics]                (S6.06: the second world gets a test room for 3D audio: a hall
+//                                      reverb zone around its arrivals, a base-library wall 4 m from
+//                                      them with a sound 2 m behind it, and a sound in the open 1.5 m
+//                                      from them; only on the park)
 //
 // Writes OUT/a and OUT/b (world folders) and OUT/a.built and OUT/b.built. One JSON line names each
 // world's portal centre and arrival point, in its metres (and the first world's at the top).
@@ -32,7 +36,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false }, overlay: { type: 'boolean', default: false }, look: { type: 'boolean', default: false } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false }, overlay: { type: 'boolean', default: false }, look: { type: 'boolean', default: false }, acoustics: { type: 'boolean', default: false } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
@@ -105,6 +109,52 @@ function quietMarkers(kit: 'plaza' | 'park'): NodeSpec[] {
   ];
 }
 
+/** Half a second of soft noise for --acoustics' two sounds: small, so the park stays a plan. */
+function hissWav(rate = 11_025): Uint8Array {
+  const n = Math.round(rate / 2);
+  const out = new Uint8Array(44 + n * 2);
+  const v = new DataView(out.buffer);
+  const text = (at: number, s: string): void => [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
+  v.setUint32(4, 36 + n * 2, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  text(36, 'data');
+  v.setUint32(40, n * 2, true);
+  let seed = 20_261_018;
+  for (let i = 0; i < n; i++) {
+    seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0;
+    v.setInt16(44 + i * 2, Math.round(((seed / 0xffffffff) * 2 - 1) * 3000), true);
+  }
+  return out;
+}
+
+/** The test room of --acoustics, on the park: a hall around the arrivals, a wall 4 m south of them
+ *  with a sound 2 m behind it (occluded from the arrivals), and a sound in the open 1.5 m west. */
+function acousticsMarkers(): { nodes: NodeSpec[]; sound: Record<string, unknown> } {
+  const [x, y, z] = LAYOUT.park.arrival;
+  return {
+    nodes: [
+      { name: 'hall', translation: [x, y + 2.5, z], extensions: { FLATCHAT_world: { zone: { kind: 'reverb', size: [10, 5, 10], room: 'hall', mix: 0.4 } } } },
+      { name: 'sound-wall', translation: [x, y, z + 4], extensions: { FLATCHAT_world: { part: { id: 'flatchat:wall-4' } } } },
+      { name: 'behind-wall', translation: [x, y + 1, z + 6], extensions: { KHR_audio_emitter: { emitter: 0 } } },
+      { name: 'in-the-open', translation: [x - 1.5, y + 1.4, z], extensions: { KHR_audio_emitter: { emitter: 1 } } },
+    ],
+    sound: {
+      audio: [{ uri: 'hiss.wav' }],
+      sources: [{ audio: 0, gain: 0.3, loop: true, autoPlay: true }],
+      emitters: [0, 1].map(() => ({ type: 'positional', gain: 1, sources: [0], positional: { refDistance: 1, maxDistance: 25 } })),
+    },
+  };
+}
+
 /** The effect of --effect: the tornado's file and its texture, beside the travel scene. */
 const TORNADO = join(ROOT, 'kits', 'effects', 'samples', '00_Version16');
 function tornadoMarker(kit: 'plaza' | 'park'): NodeSpec {
@@ -112,7 +162,7 @@ function tornadoMarker(kit: 'plaza' | 'park'): NodeSpec {
   return { name: 'tornado', translation: [x + 3, y, z - 6], extensions: { FLATCHAT_world: { effect: { uri: 'effects/ForceFieldTornado.efkefc', scale: 0.25 } } } };
 }
 
-function travelScene(kit: 'plaza' | 'park', to: string, quiet = false, effect = false): Uint8Array {
+function travelScene(kit: 'plaza' | 'park', to: string, quiet = false, effect = false, acoustics = false): Uint8Array {
   const { portal, arrival } = LAYOUT[kit];
   const markers: NodeSpec[] = [
     { name: 'portal', translation: portal, extensions: { FLATCHAT_world: { portal: { world: to, spawn: 'arrival', size: SIZE } } } },
@@ -123,6 +173,10 @@ function travelScene(kit: 'plaza' | 'park', to: string, quiet = false, effect = 
   if (kit === 'park') {
     // The base library's arch around the portal: still no geometry in the park's files.
     markers.push({ name: 'portal-arch', translation: [portal[0], 0, portal[2]], extensions: { FLATCHAT_world: { part: { id: 'flatchat:arch-4' } } } });
+    if (acoustics) {
+      const room = acousticsMarkers();
+      return writeGlb([], [...markers, ...room.nodes], { KHR_audio_emitter: room.sound }, ['FLATCHAT_world', 'OMI_spawn_point', 'KHR_audio_emitter']);
+    }
     return writeGlb([], markers, {}, ['FLATCHAT_world', 'OMI_spawn_point']);
   }
   const arch: MeshSpec = { name: 'portal-arch', positions: [], normals: [], indices: [], colour: [0.95, 0.6, 0.02, 1] };
@@ -151,7 +205,9 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
   mkdirSync(dir, { recursive: true });
   cpSync(join(ROOT, 'kits', 'worlds', kit), dir, { recursive: true });
   const effect = values.effect && label === 'b';
-  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!, values.quiet && label === 'b', effect));
+  const acoustics = values.acoustics && label === 'b' && kit === 'park';
+  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!, values.quiet && label === 'b', effect, acoustics));
+  if (acoustics) writeFileSync(join(dir, 'scenes', 'hiss.wav'), hissWav());
   if (effect) {
     mkdirSync(join(dir, 'scenes', 'effects', 'Textures'), { recursive: true });
     cpSync(join(TORNADO, 'ForceFieldTornado.efkefc'), join(dir, 'scenes', 'effects', 'ForceFieldTornado.efkefc'));
