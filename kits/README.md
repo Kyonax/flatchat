@@ -12,6 +12,7 @@ Three adult bodies, one topology between them, so a garment made on one is refit
 - `<name>.vrm`: the body as a VRM 1.0 avatar, which the platform converts like any upload. It is in T-pose, with the game_engine rig (53 bones: the VRM 1.0 humanoid with fingers), 27,488 triangles, MToon materials, an underwear layer in the skin texture (OQ-11), 36 face shapes and the 18 VRM expressions, plus twelve `attach_*` markers on the bones. Its VRM licence fields say: everyone may use it, commercially too, and modify and redistribute it, with credit (CC BY 4.0 in `otherLicenseUrl`).
 - `<name>.blend`: the same body for creators, its parts apart and its images packed. It rests in MakeHuman's A-pose; the VRM add-on exports the T-pose. Its `mask_*` vertex groups are the hide-mask regions an item names, and the face shapes sit on every part that follows the face.
 - `<name>-thumbnail.png` (the VRM's own picture) and `<name>-emotions.png` (happy, angry, sad, relaxed and surprised on its face).
+- `<name>-skin.png` and `<name>-underwear.png`: the skin's layers apart, in the kits' UV space. A tattoo or makeup is another such layer, and the platform composites them whenever an outfit changes (S5.03). Composited, these two give exactly the texture the VRM carries.
 
 [bodies/kits.json](bodies/kits.json) records each body's parts, measurements, regions, markers and expressions, the converter's verdict on it, and the tools that made it, each pinned by its SHA-256. To make them again:
 
