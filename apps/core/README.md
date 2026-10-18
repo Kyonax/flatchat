@@ -126,7 +126,8 @@ The admin page lists open requests with the entry each names. **Remove it everyw
 - every avatars or items row of it: the original, the copies taken from the gallery and exact re-uploads, each marked `removed` with the reason its owner sees;
 - the avatar from whoever wears it;
 - the item from every outfit;
-- the files: they are no longer delivered.
+- the files: they are no longer delivered;
+- the world copies: every world connected to the core gets a `removed` message on its host channel and takes it off whoever wears it there, telling everyone. A world that is offline then keeps it on players already inside until they rejoin; nothing new can load it.
 
 The standard bodies are never removed. The admin page also removes, with no request, what breaks the content rules: by a gallery entry's ID or a manifest's SHA-256, banning the uploader if asked. It lists the accounts with strikes (a takedown of theirs, a caught re-upload) for a ban.
 

@@ -679,6 +679,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const manifest = str(b['manifest'], 64).trim().toLowerCase();
     const r = await decideTakedown(o.db, (req.params as { id: string }).id, { decision, note: str(b['note'], 1000).trim(), ...(manifest ? { manifest } : {}), ban: b['ban'] === 'yes' }, `admin:${admin.accountId}`, now());
     if (!r.ok && r.why === 'not-found') return reply.code(404).send();
+    // Every connected world takes it off whoever wears it there.
+    if (r.ok && r.removal) hosts.each((_, send) => send({ type: 'removed', manifests: [r.removal!.manifest] }));
     o.log?.('takedown-decided', { decision, ...(r.ok && r.removal ? { avatars: r.removal.avatars, items: r.removal.items } : {}) });
     return reply.code(303).header('location', `/admin?done=${r.ok ? `takedown-${decision === 'remove' ? 'removed' : 'rejected'}` : 'takedown-nothing'}`).send();
   });
@@ -693,6 +695,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (!what || !reason) return reply.code(400).send();
     const removal = await removeContent(o.db, /^[0-9a-f]{64}$/.test(what) ? { manifest: what } : { gallery: what }, reason, now());
     if (!removal) return reply.code(303).header('location', '/admin?done=remove-nothing').send();
+    hosts.each((_, send) => send({ type: 'removed', manifests: [removal.manifest] }));
     if (b['ban'] === 'yes') for (const u of removal.uploaders) await moderateAccount(o.db, u, 'ban', `uploaded what breaks the content rules: ${reason}`, `admin:${admin.accountId}`, now());
     o.log?.('content-removed', { avatars: removal.avatars, items: removal.items });
     return reply.code(303).header('location', '/admin?done=content-removed').send();

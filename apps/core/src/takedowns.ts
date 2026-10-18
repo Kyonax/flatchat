@@ -7,7 +7,8 @@
 // reviews each request; removing takes the avatar or item down everywhere (removeContent): every
 // gallery entry of its manifest, every avatars or items row of it (the original, the copies taken
 // from the gallery, exact re-uploads), the outfits that hold it, and whoever wears it; its files
-// are no longer delivered. The admin page also removes, with no request, what breaks the content
+// are no longer delivered, and every world connected to the core takes it off whoever wears it
+// there (`removed` on the host channel). The admin page also removes, with no request, what breaks the content
 // rule (no sexual content or nudity, OQ-11), and may ban the uploader. A removed row keeps its
 // fingerprint, so a re-exported copy is caught (copies.ts). The standard bodies are never removed.
 import { randomBytes } from 'node:crypto';
@@ -101,6 +102,8 @@ export async function takedownQueue(db: Sql): Promise<AdminTakedown[]> {
 
 /** What a removal took down. */
 export interface Removal {
+  /** Its manifest's SHA-256: the worlds take it off whoever wears it there (app.ts sends it). */
+  manifest: string;
   avatars: number;
   items: number;
   entries: number;
@@ -139,7 +142,7 @@ export async function removeContent(db: Db, target: { gallery?: string; manifest
     );
     const uploaders = [...new Set([...avatars, ...items].filter((r) => r.gallery_id === null).map((r) => r.owner_id))];
     for (const u of uploaders) await strike(t, u, 'removed', `taken down: ${why}`, now);
-    return { avatars: avatars.length, items: items.length, entries: entries.length, uploaders };
+    return { manifest, avatars: avatars.length, items: items.length, entries: entries.length, uploaders };
   });
 }
 

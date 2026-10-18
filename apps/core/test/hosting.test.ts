@@ -117,6 +117,19 @@ describe('a world hosted from home', () => {
     // A second connection replaces the first.
     const again = await world(id, key);
     expect(await w.closed).toBe(4009);
+
+    // What the platform takes down reaches the world, which takes it off whoever wears it (S5.09).
+    const manifest = 'ab'.repeat(32);
+    await db.query("insert into avatars (owner_id, name, status, source_sha256, source_bytes, manifest_sha256, created_at) values ($1, 'Worn', 'ready', $2, 1, $3, now())", [account, 'cd'.repeat(32), manifest]);
+    await db.query('update accounts set admin = true where id = $1', [account]);
+    const signin = await app.inject({ method: 'POST', url: '/admin/signin', headers: { 'content-type': 'application/x-www-form-urlencoded' }, payload: new URLSearchParams({ email: 'host@example.org', password: 'a long enough password' }).toString() });
+    const cookie = String(signin.headers['set-cookie']).split(';')[0]!;
+    const csrf = /name="csrf" value="([^"]+)"/.exec((await app.inject({ method: 'GET', url: '/admin', headers: { cookie } })).body)![1]!;
+    const removed = await app.inject({ method: 'POST', url: '/admin/remove', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie }, payload: new URLSearchParams({ csrf, what: manifest, reason: 'a test' }).toString() });
+    expect(removed.headers.location).toBe('/admin?done=content-removed');
+    const end = Date.now() + 5000;
+    while (!again.got.some((m) => m['type'] === 'removed') && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
+    expect(again.got.filter((m) => m['type'] === 'removed')).toEqual([{ type: 'removed', manifests: [manifest] }]);
     again.ws.close();
   });
 });
