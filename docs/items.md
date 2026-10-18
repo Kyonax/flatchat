@@ -69,3 +69,11 @@ Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV 
   - An item with more than 10 such points out and over 5% of those near it, or any point out by 25 mm, is refused; fewer is a warning in its manifest.
 
 The result is one file per fit and a manifest (`ItemManifest` in `packages/content/src/item.ts`), each named by its SHA-256.
+
+## Uploading and wearing
+
+Upload an item the way you upload an avatar (trust level 1, a few days after signing up with a verified email): the core runs the converter on it with the three standard bodies at hand, and the item is ready, or refused with every reason the converter gave. The core lists your items with the bodies each one fits.
+
+To wear clothes, wear a standard body: any account can take one of the three, with no upload. An avatar uploaded from a kit's own `.vrm` file, unchanged, counts as that body too. An edited copy is a new avatar, and the kit's items don't fit it. Attachments go on any avatar.
+
+An outfit is a set of your items saved under a name, 16 at most: one item to a slot, one prop to an attachment point, and a `full` item with no top or bottom beside it. When you put an outfit on, everyone in the world sees the change. You can wear an outfit on any avatar: its props show on all of them, and its clothes only on the bodies they fit.
