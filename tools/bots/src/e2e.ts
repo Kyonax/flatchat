@@ -10,9 +10,9 @@
 // same join goes through it. --relay needs coturn's turnserver on the PATH. The test plays the system browser over HTTP
 // (it opens the sign-in page the client asked for, posts the form, and follows the redirect to the
 // client's loopback port); everything else is the client's own: an avatar uploaded, a standard body
-// taken and worn, the test tee uploaded (S5.05) and published to the free gallery (S5.06), the world
-// browser, joining, the microphone question, the tee put on from the outfits menu and drawn on the
-// body, an outfit saved, a dance uploaded with its sound and played from the emotes menu, the
+// taken and worn, the test tee uploaded (S5.05) and published to the free gallery (S5.06), the starter
+// aura taken (S6.01), the world browser, joining, the microphone question, the tee put on from the
+// outfits menu and drawn on the body, an outfit saved, the aura put on and played, then off again, a dance uploaded with its sound and played from the emotes menu, the
 // sound with it, until walking ends it (S5.07), walking, chat, and walking through the portal into the second world, the outfit still on. It needs a display (Xvfb in CI) and PostgreSQL's programs.
 //
 //   node tools/bots/src/e2e.ts -- CLIENT [--shot FILE] [--shots DIR] [--relay] [--keep]
@@ -140,6 +140,11 @@ try {
       };
     });
     const page = await app.firstWindow();
+    // The page's own errors, for whoever reads a failed run.
+    const pageErrors: string[] = [];
+    page.on('pageerror', (e) => void (pageErrors.length < 8 && pageErrors.push(e.message.slice(0, 300))));
+    page.on('console', (m) => void (m.type() === 'error' && pageErrors.length < 8 && pageErrors.push(`console: ${m.text().slice(0, 300)}`)));
+    steps['pageErrors'] = pageErrors;
     await page.locator('[data-test=sign-in]').click({ timeout: 30_000 });
     const signinUrl = await waitFor('the sign-in page to open', 10_000, async () => (await app.evaluate(() => (globalThis as { __opened?: string[] }).__opened?.[0])) ?? undefined);
     // The browser: the page, the form, the redirect to the client's loopback port.
@@ -189,6 +194,13 @@ try {
       .waitFor({ timeout: 120_000 })
       .then(async () => ((await page.locator('[data-test=starter][data-id=grey-fedora]').getAttribute('data-taken')) === 'true' ? 'ready' : 'not marked taken'))
       .catch(async () => (await page.locator('[data-test=item]', { hasText: 'Grey fedora' }).first().getAttribute('data-status').catch(() => null)) ?? 'none');
+    // A starter effect (S6.01): the aura taken with no upload, dry-run by the core's converter.
+    await page.locator('[data-test=starter][data-id=aura] [data-test=take-starter]').click({ timeout: 10_000 });
+    steps['starterEffect'] = await page
+      .locator('[data-test=item][data-status=ready]', { hasText: 'Aura' })
+      .waitFor({ timeout: 120_000 })
+      .then(() => 'ready')
+      .catch(async () => (await page.locator('[data-test=item]', { hasText: 'Aura' }).first().getAttribute('data-status').catch(() => null)) ?? 'none');
     // The free gallery (S5.06): the tee published under the strictest licence (the tester may
     // publish), then found among the gallery's items with its makers.
     await page.locator('[data-test=publish-item]').first().click({ timeout: 10_000 });
@@ -239,7 +251,8 @@ try {
     // the client draws the tee's fit on the body it wears. Then the look saved as an outfit.
     await page.keyboard.press('KeyO');
     await page.locator('[data-test=outfit-menu]').waitFor({ timeout: 10_000 });
-    await page.locator('[data-test=outfit-item]').first().click({ timeout: 10_000 });
+    // By name: the list is newest first, and the starters taken at home come after the tee.
+    await page.locator('[data-test=outfit-menu] li', { hasText: 'Tee' }).locator('[data-test=outfit-item]').click({ timeout: 10_000 });
     steps['dressed'] = await page
       .locator('[data-test=outfit][data-items="1"][data-dressed="1"]')
       .waitFor({ state: 'attached', timeout: 45_000 })
@@ -256,6 +269,39 @@ try {
     await page.locator('[data-test=outfit-menu]').waitFor({ state: 'detached', timeout: 10_000 });
     await page.waitForTimeout(500);
     await snap('1-dressed');
+    // The aura put on beside the tee (S6.01): the runtime loads, the effect plays at the hips within
+    // the guard's budget, hidden behind what stands in front of it by the scene's depth. Then off
+    // again, so the next world gets the saved outfit.
+    const fx = page.locator('[data-test=effects]');
+    // The menu's checkbox carries the hook; the item's name is in its row.
+    const aura = page.locator('[data-test=outfit-menu] li', { hasText: 'Aura' }).locator('[data-test=outfit-item]');
+    await page.keyboard.press('KeyO');
+    await aura.click({ timeout: 10_000 });
+    await page.keyboard.press('KeyO');
+    steps['effect'] = await page
+      .locator('[data-test=effects][data-playing="1"]')
+      .waitFor({ state: 'attached', timeout: 45_000 })
+      .then(async () => {
+        await page.waitForTimeout(1500);
+        return {
+          instances: Number(await fx.getAttribute('data-instances')),
+          playing: Number(await fx.getAttribute('data-playing')),
+          stopped: Number(await fx.getAttribute('data-stopped')),
+          refused: Number(await fx.getAttribute('data-refused')),
+          depth: await fx.getAttribute('data-depth'),
+          backend: await fx.getAttribute('data-backend'),
+        };
+      })
+      .catch(async () => `playing ${await fx.getAttribute('data-playing').catch(() => '?')}, refused ${await fx.getAttribute('data-refused').catch(() => '?')}, failed ${await fx.getAttribute('data-failed').catch(() => '?')}`);
+    await snap('1a-effect');
+    await page.keyboard.press('KeyO');
+    await aura.click({ timeout: 10_000 });
+    await page.keyboard.press('KeyO');
+    steps['effectOff'] = await page
+      .locator('[data-test=effects][data-playing="0"]')
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
     // The fountain's sound plays (S2.14): one emitter, from the downloaded world.
     steps['sounds'] = await page.locator('[data-test=sounds]').getAttribute('data-playing', { timeout: 10_000 }).catch(() => null);
     await page.waitForTimeout(500);
@@ -383,6 +429,12 @@ try {
     steps['kit'] === 'worn' &&
     steps['item'] === 'ready' &&
     steps['starter'] === 'ready' &&
+    steps['starterEffect'] === 'ready' &&
+    typeof steps['effect'] === 'object' &&
+    (steps['effect'] as { instances: number; stopped: number; depth: string | null }).instances > 0 &&
+    (steps['effect'] as { instances: number; stopped: number; depth: string | null }).stopped === 0 &&
+    (steps['effect'] as { instances: number; stopped: number; depth: string | null }).depth === 'true' &&
+    steps['effectOff'] === true &&
     steps['published'] === true &&
     steps['dressed'] === true &&
     steps['outfitSaved'] === true &&
