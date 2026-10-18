@@ -125,3 +125,4 @@ export {
   readEffectFile,
   writeBundle,
 } from './effect.ts';
+export { checkEffectBundle, type EffectCheck } from './effect-check.ts';

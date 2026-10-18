@@ -123,3 +123,56 @@ describe('what an effect may weigh', () => {
     expect(effectFitProblems(fit({ instances: 0, quads: a.quads + 1, triangles: a.triangles + 1 }), 'avatar')).toHaveLength(2);
   });
 });
+
+describe('an effect bundle checked before its dry run', () => {
+  /** A PNG's first 24 bytes: the signature and the IHDR chunk's width and height. */
+  const png = (width: number, height: number): Uint8Array => {
+    const b = new Uint8Array(33);
+    b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(b.buffer).setUint32(16, width);
+    new DataView(b.buffer).setUint32(20, height);
+    return b;
+  };
+  const laser = (): Map<string, Uint8Array> =>
+    new Map([
+      ['Laser01.efkefc', read('00_Basic/Laser01.efkefc')],
+      ...effectFiles(readEffectFile(read('00_Basic/Laser01.efkefc'))).map(({ path }) => [path, read(`00_Basic/${path}`)] as [string, Uint8Array]),
+    ]);
+
+  it('passes a sample, keeping exactly the files it names', async () => {
+    const { checkEffectBundle } = await import('../src/effect-check.ts');
+    const files = laser();
+    files.set('notes.txt', new Uint8Array([1, 2, 3]));
+    const c = checkEffectBundle({ main: 'Laser01.efkefc', files }, 'avatar');
+    expect(c.problems).toEqual([]);
+    expect(c.textures).toBeGreaterThan(0);
+    expect(c.bundle.files.has('notes.txt')).toBe(false);
+    expect([...c.bundle.files.keys()][0]).toBe('Laser01.efkefc');
+  });
+
+  it('refuses a newer editor, material files, a missing or non-PNG or oversized texture', async () => {
+    const { checkEffectBundle } = await import('../src/effect-check.ts');
+    const one = (main: Uint8Array, rest: Array<[string, Uint8Array]> = []): string[] => checkEffectBundle({ main: 'fx.efk', files: new Map([['fx.efk', main], ...rest]) }, 'world').problems;
+    expect(one(body(1900, [[], [], [], [], [], [], []]))).toEqual([expect.stringMatching(/newer than the platform's runtime/)]);
+    expect(one(body(1810, [[], [], [], [], [], ['Glow.efkmat'], []]), [['Glow.efkmat', new Uint8Array(8)]])).toEqual([expect.stringMatching(/material files \(Glow\.efkmat\)/)]);
+    expect(one(body(1810, [['Tex/a.png'], [], [], [], [], [], []]))).toEqual([expect.stringMatching(/needs Tex\/a\.png/)]);
+    expect(one(body(1810, [['Tex/a.png'], [], [], [], [], [], []]), [['Tex/a.png', new Uint8Array(40)]])).toEqual([expect.stringMatching(/PNG textures/)]);
+    expect(one(body(1810, [['Tex/a.png'], [], [], [], [], [], []]), [['Tex/a.png', png(4096, 16)]])).toEqual([expect.stringMatching(/4096×16: 1024 px a side at most/)]);
+    expect(one(body(1810, [['Tex/a.png'], [], [], [], [], [], []]), [['Tex/a.png', png(512, 512)]])).toEqual([]);
+  });
+
+  it("keeps a world's sounds and leaves an avatar's out", async () => {
+    const { checkEffectBundle } = await import('../src/effect-check.ts');
+    const main = body(1810, [[], [], [], ['Sound/hum.wav'], [], [], []]);
+    const files = new Map([
+      ['fx.efk', main],
+      ['Sound/hum.wav', new Uint8Array(16)],
+    ]);
+    const world = checkEffectBundle({ main: 'fx.efk', files }, 'world');
+    expect(world.bundle.files.has('Sound/hum.wav')).toBe(true);
+    const avatar = checkEffectBundle({ main: 'fx.efk', files }, 'avatar');
+    expect(avatar.bundle.files.has('Sound/hum.wav')).toBe(false);
+    expect(avatar.warnings).toEqual([expect.stringMatching(/make no sound/)]);
+    expect(checkEffectBundle({ main: 'fx.efk', files: new Map([['fx.efk', main]]) }, 'world').warnings).toEqual([expect.stringMatching(/sound Sound\/hum\.wav is not in the upload/)]);
+  });
+});
