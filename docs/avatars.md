@@ -31,7 +31,7 @@ Every modifier but the armature is applied. Hidden objects and a rig's bone widg
 
 Every upload is fingerprinted as it arrives (S5.09). The shape is measured by its triangles: each triangle's edges and its distance from the model's centre, against the model's size. A copy written again, in another program, moved, turned, mirrored or scaled, measures the same. Each texture also gets a perceptual hash, which survives a re-encoding or a resize. A copy of an avatar or item taken down from FlatChat is refused, and counts against the account that uploaded it. A copy of someone else's gallery entry is refused unless its licence allows copies. What the standard bodies explain does not count: an avatar made from a kit is no one's copy. A model of a few dozen triangles is too simple to tell from another, so its shape is not compared.
 
-If an avatar or item here copies your work, ask for a takedown at the core's `/takedown` page. You get a reference, and read the decision with it at `/takedown/status`. A takedown removes it everywhere: from the gallery, from every account that took a copy, from outfits and from whoever wears it.
+If an avatar or item here copies your work, ask for a takedown at the core's `/takedown` page. You get a reference, and read the decision with it at `/takedown/status`. A takedown removes it everywhere: from the gallery, from every account that took a copy, from outfits, and from whoever wears it, in the worlds they are in right now too.
 
 ## What the converter makes
 
