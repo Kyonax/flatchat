@@ -1,0 +1,7 @@
+{
+  "files": ["tools/converter/test/fixtures/formats/avatar-fbx.glb", "tools/converter/test/fixtures/formats/prop-obj.glb", "tools/converter/test/fixtures/formats/prop-blend.glb"],
+  "title": "The converter's sample humanoid as FBX and its sample cube as OBJ and as .blend, each read back into GLB the way the core reads an upload (S5.08 fixtures)",
+  "creator": "the FlatChat contributors",
+  "licence": "CC0-1.0",
+  "made": "node tools/converter/scripts/make-format-samples.ts: the models made in code (tools/converter/src/avatar/samples.ts, item/samples.ts) written as avatar.fbx, prop.obj and prop.blend by tools/blender/convert/make-samples.py, each read back by tools/blender/convert/to-glb.py, in Blender 5.2.2 LTS (the same bytes each time)"
+}

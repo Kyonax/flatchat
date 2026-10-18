@@ -1,0 +1,7 @@
+{
+  "files": ["tools/converter/test/fixtures/formats/tee-fbx.glb"],
+  "title": "The test tee's feminine fit as FBX, read back into GLB the way the core reads an upload (S5.08 fixture)",
+  "creator": "the FlatChat contributors",
+  "licence": "CC-BY-4.0",
+  "made": "node tools/converter/scripts/make-format-samples.ts: the test tee (kits/items/test-tee/, recorded in test-tee.json) cut to its feminine fit by tools/converter/src/source/samples.ts, written as tee.fbx by tools/blender/convert/make-samples.py and read back by tools/blender/convert/to-glb.py, in Blender 5.2.2 LTS (the same bytes each time)"
+}
