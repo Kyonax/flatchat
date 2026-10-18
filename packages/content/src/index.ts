@@ -93,3 +93,4 @@ export {
 } from './item.ts';
 export { compositeSkin, LAYER_KINDS, LayerError, type LayerKind, type RgbaImage, type SkinComposite, type SkinLayer } from './layers.ts';
 export { ADJUST_LIMITS, type AttachAdjustment, attachBone, attachMatrix, type AttachPoint, ATTACH_POINTS, fitAdjustment, fitWornAdjust, type Matrix4, NO_ADJUSTMENT, type WornAdjust, wornAdjustment, WORN_LIMITS } from './attach.ts';
+export { AVATAR_PERMISSIONS, COMMERCIAL_USAGES, CREDIT_NOTATIONS, galleryProblems, type Licence, LicenceError, licenceOfFile, looserThan, MODIFICATIONS, readLicence, STRICT_LICENCE, USAGE_FLAGS } from './licence.ts';
