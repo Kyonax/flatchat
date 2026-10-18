@@ -329,6 +329,15 @@ export function checkItemFit(json: Record<string, unknown>): void {
   const skins = list('skins');
   if (skins.length !== 1 || list('meshes').length < 1) throw new Error('a fit is one skinned mesh');
   const nodes = list('nodes');
+  // One skeleton: three.js makes a repeated name unique as it loads the file (Hips, Hips_1), and a
+  // fit skinned to a renamed bone finds none on the avatar.
+  const named = new Set<string>();
+  for (const n of nodes) {
+    const name = n['name'];
+    if (typeof name !== 'string' || !name) continue;
+    if (named.has(name)) throw new Error(`a fit holds the bone name ${name} twice`);
+    named.add(name);
+  }
   const bones = new Set(KIT_BONES);
   for (const j of (skins[0]!['joints'] as number[]) ?? []) {
     const name = nodes[j]?.['name'];

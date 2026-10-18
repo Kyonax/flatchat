@@ -45,6 +45,8 @@ describe('items', () => {
     expect(() => checkItemFit(fit('pelvis'))).not.toThrow();
     expect(() => checkItemFit(fit('tail_01'))).toThrow(/a joint the kits do not have/);
     expect(() => checkItemFit({ ...fit('pelvis'), extensionsUsed: ['KHR_materials_clearcoat'] })).toThrow(/an extension the converter does not write/);
+    // A second skeleton left in the file: its bones would load renamed (pelvis_1).
+    expect(() => checkItemFit({ ...fit('pelvis'), nodes: [{ name: 'pelvis' }, { name: 'pelvis' }] })).toThrow(/holds the bone name pelvis twice/);
   });
 });
 
