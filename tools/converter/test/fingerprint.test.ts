@@ -4,7 +4,8 @@
 // scaled) keeps its shape exactly, and another model (a robot, the three standard bodies) shares
 // next to none of it; a texture re-encoded or halved stays within the match's bits and another does
 // not, and a flat one has no hash; an item has a shape per fit, and one fit taken alone matches it;
-// a model of a few triangles says nothing; and the same file gives the same fingerprint.
+// a model of a few triangles says nothing; the same file gives the same fingerprint; and the
+// standard bodies' file (kits/bodies/fingerprints.json, the core's) is what they measure.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,7 @@ import { convertItem } from '../src/item/convert.ts';
 import { sampleProp } from '../src/item/samples.ts';
 import { sampleDae, SAMPLE_PROP_DECLARATION, SAMPLE_TEE_DECLARATION } from '../src/source/samples.ts';
 import { decodeImage, halve } from '../src/textures.ts';
+import { kitFingerprints } from '../scripts/kit-fingerprints.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const file = (...p: string[]): Uint8Array => new Uint8Array(readFileSync(join(ROOT, ...p)));
@@ -100,4 +102,10 @@ describe('a texture', () => {
   it('of one flat colour has none', () => {
     expect(imageHash({ width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).fill(200) })).toBeUndefined();
   });
+});
+
+describe('the standard bodies’ fingerprints', () => {
+  it('are what kits/bodies/fingerprints.json holds (node tools/converter/scripts/kit-fingerprints.ts writes it)', async () => {
+    expect(await kitFingerprints()).toBe(readFileSync(join(ROOT, 'kits', 'bodies', 'fingerprints.json'), 'utf8'));
+  }, 120_000);
 });
