@@ -43,7 +43,7 @@ With no screen effect there is no pipeline and the scene draws as before. The pi
 
 ## Measuring them
 
-`flatchat --bench=SECONDS --bench-look=1 [--bench-size=WxH] [--bench-out=FILE]` draws a scene made for them (a glossy floor, boxes casting shadows, neon bars, fog) with no screen effect, with each alone, then with all of them, frame after frame, each waited for on the GPU, and reports each one's frame times and its cost against none. Run it in a window on a real GPU: the reference laptop's numbers are the ones the plan asks for (S6.05's Verify). CI runs it for a second each on its software renderer, where the times mean nothing, to prove every effect builds and draws.
+`flatchat --bench=SECONDS --bench-look=1 [--bench-size=WxH] [--bench-out=FILE]` draws a scene made for them (a glossy floor, boxes casting shadows, neon bars, fog) with no screen effect, with each alone, then with all of them, frame after frame after a warm-up, each waited for on the GPU (WebGPU's queue; on WebGL2 a fence, since Chromium's `finish()` does not wait), and reports each one's frame times and its cost against none. Run it in a window on a real GPU: the reference laptop's numbers are the ones the plan asks for (S6.05's Verify). CI runs it for a second each on its software renderer, where the times mean nothing, to prove every effect builds and draws.
 
 ## Tests
 

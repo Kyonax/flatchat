@@ -66,7 +66,7 @@ Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV 
 - **The declaration:** a name, a slot and real regions, the file's own or else the one given at upload.
 - **The fits:** each a skinned mesh on the kits' 53 bones, and within its slot's caps.
 - **The body:** each fit made on its kit. Its skeleton must sit within 1 cm of the body's at the trunk and legs, so a fit made on another body is refused.
-- **Each fit alone:** cleaned of everything but itself, with its textures fitted to the slot and encoded to KTX2, then checked with the client's own check.
+- **Each fit alone:** cleaned of everything but itself (its one skinned mesh, its skin, the joints and what holds them: the other fits' skeletons go, or three.js would load their bones renamed and the clothes would find none on the avatar), with its textures fitted to the slot and encoded to KTX2, then checked with the client's own check (which refuses a bone name held twice).
 - **No clipping in seven reference poses** (T-pose, arms down, both strides, sitting, arms up, reaching forward):
   - Each point of the skin the item leaves visible looks along its normal. Cloth within 10 cm outside it covers it (a loose sleeve, a skirt, a boxy jacket's side); cloth within 3 cm under it is skin out through the garment, by that depth. Only cloth facing the way the skin does counts, so a fold's inner layer, a collar's band or a lining, which face the body, never do.
   - At rest, the skin the item covers, or that already comes out through it, is the garment's, away from its openings. In each pose that skin must stay under it, within 3 mm.
