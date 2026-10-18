@@ -29,6 +29,10 @@ import {
   type Level,
   rankOf,
   readGltf,
+  checkShaderGraph,
+  SHADER_EXTENSION,
+  SHADER_LIMITS,
+  ShaderGraphError,
 } from '@flatchat/content';
 import { type Document, GLB_BUFFER, type JSONDocument, Logger, NodeIO, type Texture } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, type EmissiveStrength, KHRLightsPunctual } from '@gltf-transform/extensions';
@@ -41,10 +45,11 @@ import { type UploadSource, UploadError, uploadGlb } from '../source/upload.ts';
 import { decodeImage, fitTextures, halve } from '../textures.ts';
 import { completeFreeShape, facesPlusZ, mapByNames, REQUIRED_BONES, restBox, turnAround, turnVrmAround } from './humanoid.ts';
 import { makeImpostor, makeLod1, makeLod2 } from './lod.ts';
+import { ShaderExtension } from './shader.ts';
 import { type Json, type JsonObject, VRMC_VRM, VRMData, type VRMDocument, VRMExtension } from './vrm.ts';
 import { migrateVrm0, type SourceMeta } from './vrm0.ts';
 
-export const AVATAR_CONVERTER_VERSION = '1.3.0';
+export const AVATAR_CONVERTER_VERSION = '1.4.0';
 
 export class AvatarError extends Error {
   readonly problems: string[];
@@ -234,6 +239,45 @@ export function dropForeignExtensions(doc: Document, warn: (w: string) => void =
   }
 }
 
+/** Creator shaders (S6.03, T-01): each material's graph checked (one that passes compiles in the
+ *  client, by construction) and kept as checked, the textures it reads present, and the material's
+ *  own look there to fall back to (MToon, a base colour or a base colour texture). Their cost ranks
+ *  the avatar; over the avatar's limit, or any graph refused, the avatar is refused. */
+function checkShaders(doc: Document, data: VRMData): { count: number; cost: number } {
+  const problems: string[] = [];
+  let count = 0;
+  let cost = 0;
+  const mtoon = new Set(Object.keys(data.getDocument().materials).map((k) => data.material(Number(k))));
+  for (const material of doc.getRoot().listMaterials()) {
+    const shader = ShaderExtension.of(material);
+    if (!shader) continue;
+    const name = material.getName() || 'a material';
+    let checked;
+    try {
+      checked = checkShaderGraph(shader.getShader());
+    } catch (err) {
+      problems.push(...(err instanceof ShaderGraphError ? err.problems : [String(err)]).map((p) => `${name}'s shader: ${p}`));
+      continue;
+    }
+    const textures = shader.listTextures();
+    for (const k of checked.textures) if (!textures[k]) problems.push(`${name}'s shader reads texture ${k}, which it does not list`);
+    const plain = material.getBaseColorFactor().every((c) => c === 1);
+    if (!mtoon.has(material) && material.getBaseColorTexture() === null && plain) problems.push(`${name} has a creator shader but no look of its own to fall back to: give it a base colour, a base colour texture or MToon`);
+    shader.setShader(checked.graph);
+    count += 1;
+    cost += checked.cost;
+  }
+  if (cost > SHADER_LIMITS.avatarCost) problems.push(`the avatar's shaders cost ${cost} together: ${SHADER_LIMITS.avatarCost} at most`);
+  if (problems.length) throw new AvatarError(problems);
+  return { count, cost };
+}
+
+/** A level without creator shaders: every material's own look, the extension gone. */
+function stripShaders(doc: Document): void {
+  for (const m of doc.getRoot().listMaterials()) m.setExtension(SHADER_EXTENSION, null);
+  for (const e of doc.getRoot().listExtensionsUsed()) if (e.extensionName === SHADER_EXTENSION) e.dispose();
+}
+
 /** glTF Transform's reader and writer with VRM 1.0 and every extension the converter knows. */
 export function avatarIO(): NodeIO {
   return io();
@@ -248,7 +292,7 @@ export async function readAvatarLevel(bytes: Uint8Array): Promise<{ doc: Documen
 function io(): NodeIO {
   return new NodeIO()
     .setLogger(new Logger(Logger.Verbosity.ERROR))
-    .registerExtensions([...ALL_EXTENSIONS, VRMExtension])
+    .registerExtensions([...ALL_EXTENSIONS, VRMExtension, ShaderExtension])
     .registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 }
 
@@ -450,6 +494,7 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
   if (kind === 'vrm1') sourceMeta = { ...((data.getDocument().vrm['meta'] ?? {}) as SourceMeta) };
 
   if (!restBox(doc)) throw new AvatarError(['the model has no mesh to show']);
+  const shaders = checkShaders(doc, data);
   // A body the humanoid does not fit is a free shape (S4.11): its missing bones are made.
   const missing = REQUIRED_BONES.filter((b) => !data.humanBones().has(b));
   const shape: 'humanoid' | 'free' = missing.length > 0 ? 'free' : 'humanoid';
@@ -491,6 +536,8 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
   const build = async (level: Level, shape: (l: { doc: Document; data: VRMData }) => void): Promise<{ doc: Document; data: VRMData; textureBytes: number }> => {
     const l = await read();
     shape(l);
+    // Creator shaders draw on the full avatar only; the lower levels keep the fallback (S6.03).
+    if (level !== 'lod0') stripShaders(l.doc);
     await l.doc.transform(prune({ keepLeaves: true, keepAttributes: true, keepExtras: true }));
     const textureBytes = await fitTextures([l.doc], LEVEL_TEXTURES[level], ktx2, warn);
     const out = await io().writeBinary(l.doc);
@@ -520,7 +567,7 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
     l.data.setDocument({ vrm: { specVersion: '1.0', meta: d.vrm['meta']!, humanoid: { humanBones } }, materials: {}, constraints: {} });
   });
 
-  const stats = statsOf(lod0.doc, lod0.data, lod0.textureBytes);
+  const stats: AvatarStats = { ...statsOf(lod0.doc, lod0.data, lod0.textureBytes), ...(shaders.count ? { shaderCost: shaders.cost } : {}) };
   const { rank, limitedBy } = rankOf(stats);
   const expressions = (() => {
     const e = (lod0.data.getDocument().vrm['expressions'] ?? {}) as Record<string, Record<string, unknown>>;
@@ -544,6 +591,7 @@ export async function convertAvatar(upload: Uint8Array, o: AvatarOptions = {}): 
     expressions,
     height: heightOf(lod0.doc),
     springs: stats.springs,
+    ...(shaders.count ? { shaders: shaders.count } : {}),
     warnings,
   };
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));

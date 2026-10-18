@@ -7,7 +7,7 @@
 // levels of detail have something to take away; the head carries the mouth and blink shapes, a
 // three-bone hair chain swings on spring bones around a head collider, and a 64 px checker is the
 // texture. Nothing here comes from outside the repository.
-import { Document, Format, GLB_BUFFER, type Material, type Mesh, type Node, NodeIO, type Primitive, type Texture } from '@gltf-transform/core';
+import { Document, Format, GLB_BUFFER, Logger, type Material, type Mesh, type Node, NodeIO, type Primitive, type Texture } from '@gltf-transform/core';
 import { PNG } from 'pngjs';
 import { VRMExtension } from './vrm.ts';
 
@@ -365,4 +365,28 @@ export async function sampleAvatar(kind: SampleKind): Promise<Uint8Array> {
     };
     json['extensionsUsed'] = ['VRM'];
   });
+}
+
+/** The VRM 1.0 reference avatar with a creator shader (S6.03) on its first material: a fresnel rim
+ *  that glows cyan and pulses at half a hertz over the material's own colour (its fallback). */
+export async function sampleShaderAvatar(): Promise<Uint8Array> {
+  const { ShaderExtension } = await import('./shader.ts');
+  const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions');
+  const { SHADER_EXTENSION } = await import('@flatchat/content');
+  // MToon is the VRM extension's to read: glTF-Transform's own notice about it is left out.
+  const io = new NodeIO().setLogger(new Logger(Logger.Verbosity.ERROR)).registerExtensions([...ALL_EXTENSIONS, VRMExtension, ShaderExtension]);
+  const doc = await io.readBinary(await sampleAvatar('vrm1'));
+  const material = doc.getRoot().listMaterials()[0]!;
+  const graph = {
+    format: 1,
+    nodes: [
+      { id: 'rim', op: 'fresnel', in: { power: 2.5 } },
+      { id: 'pulse', op: 'oscillate', in: {}, with: { hz: 0.5 } },
+      { id: 'amount', op: 'mul', in: { a: 'rim', b: 'pulse' } },
+      { id: 'glow', op: 'mul', in: { a: [0.1, 0.9, 1], b: 'amount' } },
+    ],
+    out: { emissive: 'glow' },
+  };
+  material.setExtension(SHADER_EXTENSION, doc.createExtension(ShaderExtension).createData().setShader(graph));
+  return io.writeBinary(doc);
 }
