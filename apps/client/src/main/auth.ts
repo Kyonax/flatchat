@@ -229,9 +229,10 @@ export class Auth {
     return this.api.items(await this.access());
   }
 
-  /** Asks for a slot and sends the file there; the core converts it. Returns the item's id. */
-  async uploadItem(name: string, bytes: Uint8Array): Promise<string> {
-    const slot = await this.api.itemSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+  /** Asks for a slot and sends the file there; the core converts it. Returns the item's id. A
+   *  declaration goes with a file that keeps none of its own (S5.08). */
+  async uploadItem(name: string, bytes: Uint8Array, declaration?: unknown): Promise<string> {
+    const slot = await this.api.itemSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), ...(declaration !== undefined ? { declaration } : {}) });
     await this.api.sendUpload(slot.url, bytes);
     return slot.id;
   }

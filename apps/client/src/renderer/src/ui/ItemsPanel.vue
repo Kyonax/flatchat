@@ -2,12 +2,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import DeclareItemForm from './DeclareItemForm.vue';
 import PublishForm from './PublishForm.vue';
 
-// The account's items and outfits (S5.05): upload a GLB made on the body kits (the main process
-// opens the file dialog, reads the file and sends it; the page never holds the file or the token),
-// watch it convert, see the bodies it fits or why it was refused, delete it; and the saved outfits,
-// to delete. Wearing them is the world's quick menu (OutfitMenu.vue).
+// The account's items and outfits (S5.05): upload one made on the body kits, as a GLB, an FBX, an
+// OBJ, a DAE or a .blend (S5.08; the main process opens the file dialog, reads the file and sends
+// it; the page never holds the file or the token), saying what it is when its file cannot
+// (DeclareItemForm.vue); watch it convert, see the bodies it fits or why it was refused, delete it;
+// and the saved outfits, to delete. Wearing them is the world's quick menu (OutfitMenu.vue).
 const { t, te } = useI18n();
 const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
@@ -15,6 +17,8 @@ const uploading = ref(false);
 const error = ref('');
 /** The item being published to the gallery (S5.06). */
 const publishing = ref('');
+/** A file picked that cannot say what it is (S5.08): its declaration is asked for. */
+const declaring = ref<{ token: string; name: string; format: string } | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load(): Promise<void> {
@@ -34,7 +38,8 @@ async function upload(): Promise<void> {
   uploading.value = true;
   try {
     const r = await window.flatchat?.uploadItem();
-    if (r && !r.ok && r.error !== 'cancelled') error.value = failure(r.error);
+    if (r && !r.ok && 'token' in r) declaring.value = { token: r.token, name: r.name, format: r.format };
+    else if (r && !r.ok && r.error !== 'cancelled') error.value = failure(r.error);
   } finally {
     uploading.value = false;
   }
@@ -50,6 +55,11 @@ async function remove(i: FlatchatItem): Promise<void> {
 async function withdraw(i: FlatchatItem): Promise<void> {
   const r = i.published ? await window.flatchat?.withdraw(i.published) : undefined;
   if (r && !r.ok) error.value = failure(r.error);
+  await load();
+}
+
+async function declared(): Promise<void> {
+  declaring.value = null;
   await load();
 }
 
@@ -81,12 +91,20 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
       <button
         type="button"
         data-test="upload-item"
-        :disabled="uploading"
+        :disabled="uploading || declaring !== null"
         @click="upload"
       >
         {{ uploading ? t('items.uploading') : t('items.upload') }}
       </button>
     </div>
+    <DeclareItemForm
+      v-if="declaring"
+      :token="declaring.token"
+      :name="declaring.name"
+      :format="declaring.format"
+      @done="declared"
+      @cancel="declaring = null"
+    />
     <p
       v-if="error"
       class="error"

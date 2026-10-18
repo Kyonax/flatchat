@@ -611,7 +611,7 @@ export class CoreApi {
     return cleanItems((await this.call<{ items?: unknown }>('GET', '/api/v1/items', undefined, access)).items);
   }
 
-  async itemSlot(access: string, file: { name: string; bytes: number; sha256: string }): Promise<{ id: string; url: string }> {
+  async itemSlot(access: string, file: { name: string; bytes: number; sha256: string; declaration?: unknown }): Promise<{ id: string; url: string }> {
     const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown } }>('POST', '/api/v1/items', file, access);
     if (typeof r.id !== 'string' || typeof r.upload?.url !== 'string' || r.upload.method !== 'PUT') throw new CoreError(502, 'bad-answer', 'the core sent no upload slot');
     return { id: r.id, url: this.onCore(r.upload.url) };

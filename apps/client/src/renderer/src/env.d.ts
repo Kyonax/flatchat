@@ -29,6 +29,15 @@ interface FlatchatWorld {
 
 type FlatchatResult<T> = ({ ok: true } & T) | { ok: false; error: string };
 
+/** What an item's file cannot say itself (S5.08): packages/content's ItemDeclaration. */
+interface FlatchatItemDeclaration {
+  name: string;
+  slot: string;
+  hides: string[];
+  authors: string[];
+  attach?: string;
+}
+
 /** One of the account's avatars (S4.01). */
 interface FlatchatAvatar {
   id: string;
@@ -157,7 +166,9 @@ interface FlatchatBridge {
   // Standard bodies, items and outfits (S5.05).
   takeKit(kit: import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ id: string; status: 'ready' | 'converting' }>>;
   items(): Promise<FlatchatResult<{ items: FlatchatItem[] }>>;
-  uploadItem(): Promise<FlatchatResult<{ id: string }>>;
+  /** Opens the dialog and sends the file; a file that cannot say what it is (S5.08) comes back as
+   *  needs-declaration, and goes when its declaration is given with the token. */
+  uploadItem(given?: { token: string; declaration: FlatchatItemDeclaration }): Promise<FlatchatResult<{ id: string }> | { ok: false; error: 'needs-declaration'; token: string; name: string; format: string }>;
   deleteItem(id: string): Promise<FlatchatResult<object>>;
   itemFile(manifest: string, part: 'manifest' | 'prop' | import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ manifest: import('@flatchat/content').ItemManifest; bytes?: ArrayBuffer }>>;
   outfits(): Promise<FlatchatResult<{ outfits: FlatchatOutfit[] }>>;

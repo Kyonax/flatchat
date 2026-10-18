@@ -13,7 +13,7 @@
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, readLicence, uploadFormat } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -23,6 +23,7 @@ import { cleanWorn, CoreApi, coreBase, CoreError } from './core-api';
 import { DEFAULT_CORE } from './core-url';
 import { crowdPass } from './crowd-pass';
 import { exitCodeFor, parseFlags, rendererQuery } from './flags';
+import { declaresItself, modelName, type NeedsDeclaration, PendingItems } from './item-files';
 import { listOffline, OfflineHost } from './offline';
 import { SettingsFile } from './settings-file';
 import { signal } from './signal';
@@ -283,13 +284,13 @@ ipcMain.handle('flatchat:avatars:upload', async (event) => {
   const e2e = process.env['FLATCHAT_E2E_AVATAR'];
   const picked = e2e
     ? { canceled: false, filePaths: [e2e] }
-    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an avatar', filters: [{ name: 'Avatars (VRM, GLB)', extensions: ['vrm', 'glb'] }], properties: ['openFile'] });
+    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an avatar', filters: [{ name: 'Avatars (VRM, GLB, FBX, OBJ, DAE, .blend)', extensions: [...MODEL_EXTENSIONS] }], properties: ['openFile'] });
   const path = picked.canceled ? undefined : picked.filePaths[0];
   if (!path) return { ok: false, error: 'cancelled' };
   try {
     if (statSync(path).size > AVATAR_SOURCE_LIMIT) return { ok: false, error: 'too-large' };
     const bytes = new Uint8Array(readFileSync(path));
-    return { ok: true, id: await auth.uploadAvatar(basename(path).replace(/\.(vrm|glb)$/i, ''), bytes) };
+    return { ok: true, id: await auth.uploadAvatar(modelName(path), bytes) };
   } catch (err) {
     return failure(err);
   }
@@ -374,20 +375,37 @@ ipcMain.handle('flatchat:items', async () => {
     return failure(err);
   }
 });
-ipcMain.handle('flatchat:items:upload', async (event) => {
+// An item's file that cannot say what it is (an FBX, OBJ or DAE, S5.08) waits for the declaration
+// the page asks for, then goes with it.
+const pendingItems = new PendingItems();
+ipcMain.handle('flatchat:items:upload', async (event, given: unknown) => {
   if (!auth) return { ok: false, error: 'signed-out' };
+  if (given !== undefined) {
+    const g = (typeof given === 'object' && given !== null ? given : {}) as { token?: unknown; declaration?: unknown };
+    const path = pendingItems.take(g.token);
+    if (!path) return { ok: false, error: 'expired' };
+    try {
+      return { ok: true, id: await auth.uploadItem(modelName(path), new Uint8Array(readFileSync(path)), g.declaration) };
+    } catch (err) {
+      return failure(err);
+    }
+  }
   const window = BrowserWindow.fromWebContents(event.sender);
   // The end-to-end test's file, in place of a dialog it cannot click.
   const e2e = process.env['FLATCHAT_E2E_ITEM'];
   const picked = e2e
     ? { canceled: false, filePaths: [e2e] }
-    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an item', filters: [{ name: 'Items (GLB)', extensions: ['glb'] }], properties: ['openFile'] });
+    : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an item', filters: [{ name: 'Items (GLB, FBX, OBJ, DAE, .blend)', extensions: MODEL_EXTENSIONS.filter((e) => e !== 'vrm') }], properties: ['openFile'] });
   const path = picked.canceled ? undefined : picked.filePaths[0];
   if (!path) return { ok: false, error: 'cancelled' };
   try {
     if (statSync(path).size > ITEM_SOURCE_LIMIT) return { ok: false, error: 'too-large' };
     const bytes = new Uint8Array(readFileSync(path));
-    return { ok: true, id: await auth.uploadItem(basename(path).replace(/\.glb$/i, ''), bytes) };
+    if (!declaresItself(bytes)) {
+      const waiting = pendingItems.add(path);
+      return { ok: false, error: 'needs-declaration', token: waiting, name: modelName(path), format: uploadFormat(bytes) } satisfies NeedsDeclaration;
+    }
+    return { ok: true, id: await auth.uploadItem(modelName(path), bytes) };
   } catch (err) {
     return failure(err);
   }
