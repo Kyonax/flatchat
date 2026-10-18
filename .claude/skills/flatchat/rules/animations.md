@@ -56,6 +56,7 @@ The core takes uploads since part b (rule `core-service`: `src/animations.ts`, `
 | A planted foot: flat in a walk (ball within 2 cm of its ground, ankle within 3 cm, three frames or more); on the ball in a run; a ground is the tenth-percentile height | A walk's heel-off roll turns about the toe tips (no bone marks them); a run's heel never lands; one frame's dip must not move the ground. Measured with these rules: Mesh2Motion's walk 1.7 cm, Quaternius's jog 1.9 cm and sprint 1.6 cm at worst; Mesh2Motion's jog 2.7 cm and sprint 6 cm (so the runs are Quaternius's) |
 | Pose the legs slider as the client does (thighs and shins only) | Scaling the feet too reports slides no avatar shows |
 | A name's side may be a prefix or a suffix: `humanBoneOf` tries each and keeps the one that names a bone | Unreal's `lowerarm_r` starts with an l, so taking the prefix first read it as a left "owerarmr" and dropped both forearms |
+| The built-in gestures (greeting, dance) are emotes named by their VRMA's SHA-256 (`BUILT_IN_EMOTES`, `builtInEmote` in the client's `world/clips.ts`) | Every client carries the file, so the avatar layer parses it locally instead of asking the core, the emote sounds' fetcher skips it, and the world relays the hash like any emote. The menu tags them `emote-builtin`, so the e2e's first `emote-play` stays the uploaded one |
 
 ## In the Client (Part d)
 
