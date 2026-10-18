@@ -60,9 +60,9 @@ contextBridge.exposeInMainWorld('flatchat', {
   deleteOutfit: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:outfits:delete', id),
   // Emotes and dances (S5.07).
   animations: (): Promise<unknown> => ipcRenderer.invoke('flatchat:animations'),
-  uploadAnimation: (use: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animations:upload', use),
+  uploadAnimation: (use: string, withSound: boolean): Promise<unknown> => ipcRenderer.invoke('flatchat:animations:upload', use, withSound),
   deleteAnimation: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animations:delete', id),
-  animationFile: (manifest: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animation-file', manifest),
+  animationFile: (manifest: string, part: string): Promise<unknown> => ipcRenderer.invoke('flatchat:animation-file', manifest, part),
   // The free gallery (S5.06).
   gallery: (q: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery', q),
   publish: (req: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:gallery:publish', req),

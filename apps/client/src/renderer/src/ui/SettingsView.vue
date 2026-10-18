@@ -351,6 +351,18 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
           @change="sound({ ui: num($event) })"
         >
       </label>
+      <label class="row">
+        <span class="grow">{{ t('settings.emoteVolume') }}</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          :value="settings.sound.emotes"
+          data-test="emote-volume"
+          @change="sound({ emotes: num($event) })"
+        >
+      </label>
       <h2>{{ t('settings.server') }}</h2>
       <div class="row">
         <input

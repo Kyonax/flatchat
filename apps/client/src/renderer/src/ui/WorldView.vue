@@ -378,6 +378,7 @@ onBeforeUnmount(() => {
       data-test="emote"
       :data-anim="state.emote"
       :data-playing="state.emoting ? 1 : 0"
+      :data-sounds="state.emoteSounds"
     />
     <div
       v-if="state?.notice"

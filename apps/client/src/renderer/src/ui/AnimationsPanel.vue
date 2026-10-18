@@ -11,6 +11,8 @@ const { t, te } = useI18n();
 const list = ref<FlatchatAnimation[]>([]);
 const uploading = ref(false);
 const error = ref('');
+/** The next upload brings a sound too: a second file, a WAV or an Ogg. */
+const withSound = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function load(): Promise<void> {
@@ -28,7 +30,7 @@ async function upload(use: 'emote' | 'dance'): Promise<void> {
   error.value = '';
   uploading.value = true;
   try {
-    const r = await window.flatchat?.uploadAnimation(use);
+    const r = await window.flatchat?.uploadAnimation(use, withSound.value);
     if (r && !r.ok && r.error !== 'cancelled') error.value = failure(r.error);
   } finally {
     uploading.value = false;
@@ -69,6 +71,14 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         {{ t('emotes.uploadDance') }}
       </button>
     </div>
+    <label class="row small">
+      <input
+        v-model="withSound"
+        type="checkbox"
+        data-test="upload-with-sound"
+      >
+      {{ t('emotes.withSound') }}
+    </label>
     <p
       v-if="error"
       class="error"
@@ -96,7 +106,7 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         ·
         <template v-if="a.status === 'ready'">
           <span>{{ t(`emotes.use.${a.use}`) }}</span>
-          <span class="muted"> · {{ t('emotes.seconds', { n: (a.duration ?? 0).toFixed(1) }) }}{{ a.loop ? ` · ${t('emotes.loops')}` : '' }}</span>
+          <span class="muted"> · {{ t('emotes.seconds', { n: (a.duration ?? 0).toFixed(1) }) }}{{ a.loop ? ` · ${t('emotes.loops')}` : '' }}{{ a.sound ? ` · ${a.mouth ? t('emotes.singing') : t('emotes.sound')}` : '' }}</span>
         </template>
         <span v-else>{{ t(`avatars.status.${a.status}`) }}</span>
         <button

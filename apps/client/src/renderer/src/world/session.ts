@@ -33,6 +33,7 @@ import { type Body, loadPhysics, Physics } from './physics';
 import { buildWorldScene } from './plaza-scene';
 import { Remotes } from './remotes';
 import { loadScene } from './scene-loader';
+import { EmoteSounds } from './emote-sounds';
 import { setUiVolume, Strides, uiSound, WorldSounds } from './sounds';
 import { PathWalker } from './walker';
 
@@ -117,6 +118,8 @@ export interface WorldState {
    *  avatar shows it in this frame. */
   emote: string;
   emoting: boolean;
+  /** Emote and dance sounds playing near the viewer (S5.07). */
+  emoteSounds: number;
 }
 
 /** A map made in code as colliders (boxes), for the physics. */
@@ -211,6 +214,7 @@ export class WorldSession {
   private serverTick = 0;
   private serverTickAt = 0;
   private emoteSentAt = -Infinity;
+  private emoteSounds: EmoteSounds | undefined;
   private emoteTimer: ReturnType<typeof setTimeout> | undefined;
   private wantEmote: string | undefined | null = null;
   private closed = false;
@@ -278,6 +282,7 @@ export class WorldSession {
       dressed: 0,
       emote: '',
       emoting: false,
+      emoteSounds: 0,
     });
   }
 
@@ -320,7 +325,7 @@ export class WorldSession {
           : undefined,
         bridge.animationFile
           ? async (manifest) => {
-              const r = await bridge.animationFile(manifest);
+              const r = await bridge.animationFile(manifest, 'vrma');
               if (!r.ok) throw new Error(r.error);
               return { manifest: r.manifest, bytes: r.bytes };
             }
@@ -339,6 +344,14 @@ export class WorldSession {
     this.camera = view.camera;
     try {
       this.sounds = new WorldSounds(this.settings.sound.world);
+      // Emotes' and dances' sounds (S5.07), on the world's audio, at the viewer's own volume.
+      const animationFile = bridge?.animationFile;
+      if (animationFile) {
+        this.emoteSounds = new EmoteSounds(this.sounds.ctx, this.settings.sound.emotes, async (anim) => {
+          const r = await animationFile(anim, 'audio');
+          return r.ok ? { bytes: r.bytes, loop: r.manifest.use === 'dance' } : undefined;
+        });
+      }
     } catch {
       // No audio output: a silent world.
     }
@@ -473,6 +486,7 @@ export class WorldSession {
     this.controls.invertY = s.view.invertY;
     this.state.person = s.view.person;
     if (this.volume) this.volume.gain.value = s.voice.volume;
+    if (this.emoteSounds) this.emoteSounds.volume = s.sound.emotes;
     if (this.sounds) this.sounds.volume = s.sound.world;
     setUiVolume(s.sound.ui);
   }
@@ -590,6 +604,7 @@ export class WorldSession {
         this.state.avatars = this.avatarLayer.counts();
         this.state.dressed = this.avatarLayer.dressedItems();
         this.state.emoting = this.avatarLayer.emoting(this.entity);
+        this.state.emoteSounds = this.emoteSounds?.count ?? 0;
       }
       this.frames = 0;
       this.fpsAt = now;
@@ -618,6 +633,17 @@ export class WorldSession {
         ...this.emoteTimeOf(p.entity),
       };
     });
+  }
+
+  /** Who plays an emote with a sound, where, and since when (S5.07). */
+  private emoteSoundList(now: number): Array<{ entity: number; anim: string; start: number; time: number; at: { x: number; y: number; z: number } }> {
+    const out: Array<{ entity: number; anim: string; start: number; time: number; at: { x: number; y: number; z: number } }> = [];
+    for (const [entity, e] of this.emotes) {
+      const at = entity === this.entity ? this.me : this.remotes.at(entity, now);
+      const time = this.emoteTimeOf(entity).emoteTime;
+      if (at && time !== undefined && !this.state.hidden.includes(entity)) out.push({ entity, anim: e.anim, start: e.tick, time, at: { x: at.x, y: at.y, z: at.z } });
+    }
+    return out;
   }
 
   /** Seconds since a player's emote started, by the world's clock (S5.07). */
@@ -1063,6 +1089,7 @@ export class WorldSession {
   private footsteps(now: number, ears: { x: number; y: number; z: number }): void {
     const sounds = this.sounds!;
     sounds.listen(ears, this.controls.yaw, this.controls.pitch);
+    this.emoteSounds?.update(this.emoteSoundList(now), ears);
     const flying = this.physics?.flying ?? false;
     if (this.myStrides.step(this.me.x, this.me.z, this.me.grounded && !flying && !this.sitting, this.controls.held('run'))) sounds.footstep();
     for (const entity of this.remotes.entities()) {
@@ -1156,6 +1183,7 @@ export class WorldSession {
     this.conn?.close(reason === 'travel' ? 'went through a portal' : 'left the world', reason);
     this.physics?.dispose();
     this.navigation?.dispose();
+    this.emoteSounds?.close();
     this.sounds?.close();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     if (this.outfitTimer) clearTimeout(this.outfitTimer);

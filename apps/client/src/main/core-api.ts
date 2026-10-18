@@ -168,6 +168,9 @@ export interface AnimationEntry {
   status: AvatarItem['status'];
   /** What the upload was: vrma, gltf, bvh or fbx, once converted. */
   source: string;
+  /** It has a sound, and the sound moves the mouth. */
+  sound: boolean;
+  mouth: boolean;
   duration: number | null;
   loop: boolean;
   problems: string[];
@@ -189,6 +192,8 @@ export function cleanAnimations(raw: unknown): AnimationEntry[] {
         use: v['use'] as AnimationUse,
         status: v['status'] as AnimationEntry['status'],
         source: typeof v['source'] === 'string' ? v['source'].slice(0, 8) : '',
+        sound: v['sound'] === true,
+        mouth: v['mouth'] === true,
         duration: typeof v['duration'] === 'number' && Number.isFinite(v['duration']) ? v['duration'] : null,
         loop: v['loop'] === true,
         problems: lines(v['problems']),
@@ -648,10 +653,12 @@ export class CoreApi {
     return cleanAnimations((await this.call<{ animations?: unknown }>('GET', '/api/v1/animations', undefined, access)).animations);
   }
 
-  async animationSlot(access: string, file: { name: string; bytes: number; sha256: string; use: AnimationUse }): Promise<{ id: string; url: string }> {
-    const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown } }>('POST', '/api/v1/animations', file, access);
+  /** An upload slot for an animation, and for its sound when it has one (S5.07). */
+  async animationSlot(access: string, file: { name: string; bytes: number; sha256: string; use: AnimationUse; audio?: { bytes: number; sha256: string } }): Promise<{ id: string; url: string; audio?: string }> {
+    const r = await this.call<{ id?: unknown; upload?: { url?: unknown; method?: unknown }; audio?: { url?: unknown } }>('POST', '/api/v1/animations', file, access);
     if (typeof r.id !== 'string' || typeof r.upload?.url !== 'string' || r.upload.method !== 'PUT') throw new CoreError(502, 'bad-answer', 'the core sent no upload slot');
-    return { id: r.id, url: this.onCore(r.upload.url) };
+    if (file.audio && typeof r.audio?.url !== 'string') throw new CoreError(502, 'bad-answer', 'the core sent no slot for the sound');
+    return { id: r.id, url: this.onCore(r.upload.url), ...(file.audio ? { audio: this.onCore(r.audio!.url as string) } : {}) };
   }
 
   async deleteAnimation(access: string, id: string): Promise<void> {

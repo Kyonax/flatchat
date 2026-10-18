@@ -68,6 +68,8 @@ interface FlatchatAnimation {
   use: 'emote' | 'dance';
   status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
   source: string;
+  sound: boolean;
+  mouth: boolean;
   duration: number | null;
   loop: boolean;
   problems: string[];
@@ -163,9 +165,9 @@ interface FlatchatBridge {
   deleteOutfit(id: string): Promise<FlatchatResult<object>>;
   // Emotes and dances (S5.07).
   animations(): Promise<FlatchatResult<{ animations: FlatchatAnimation[] }>>;
-  uploadAnimation(use: 'emote' | 'dance'): Promise<FlatchatResult<{ id: string }>>;
+  uploadAnimation(use: 'emote' | 'dance', withSound: boolean): Promise<FlatchatResult<{ id: string }>>;
   deleteAnimation(id: string): Promise<FlatchatResult<object>>;
-  animationFile(manifest: string): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AnimationManifest; bytes: ArrayBuffer }>>;
+  animationFile(manifest: string, part: 'vrma' | 'audio'): Promise<FlatchatResult<{ manifest: import('@flatchat/content').AnimationManifest; bytes: ArrayBuffer }>>;
   // The free gallery (S5.06).
   gallery(q: { kind?: string; slot?: string; body?: string; q?: string; before?: string }): Promise<FlatchatResult<{ entries: FlatchatGalleryEntry[]; next: string | null }>>;
   publish(req: { kind: 'avatar' | 'item'; id: string; name: string; licence: import('@flatchat/content').Licence; affirm: boolean }): Promise<FlatchatResult<{ entry: FlatchatGalleryEntry }>>;

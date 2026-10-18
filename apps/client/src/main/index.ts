@@ -13,7 +13,7 @@
 // second, and the report judged against the pass lines (crowd-pass.ts).
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
+import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, readLicence } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
 import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
@@ -449,7 +449,7 @@ ipcMain.handle('flatchat:animations', async () => {
     return failure(err);
   }
 });
-ipcMain.handle('flatchat:animations:upload', async (event, use: unknown) => {
+ipcMain.handle('flatchat:animations:upload', async (event, use: unknown, withSound: unknown) => {
   if (!auth || !(ANIMATION_USES as readonly unknown[]).includes(use)) return { ok: false, error: 'bad-request' };
   const window = BrowserWindow.fromWebContents(event.sender);
   // The end-to-end test's file, in place of a dialog it cannot click.
@@ -459,10 +459,21 @@ ipcMain.handle('flatchat:animations:upload', async (event, use: unknown) => {
     : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Upload an emote or a dance', filters: [{ name: 'Animations (VRMA, GLB, BVH, FBX)', extensions: ['vrma', 'glb', 'bvh', 'fbx'] }], properties: ['openFile'] });
   const path = picked.canceled ? undefined : picked.filePaths[0];
   if (!path) return { ok: false, error: 'cancelled' };
+  // Its sound, when asked for (S5.07): a WAV or an Ogg.
+  let soundPath: string | undefined;
+  if (withSound === true) {
+    const e2eSound = process.env['FLATCHAT_E2E_AUDIO'];
+    const s = e2eSound
+      ? { canceled: false, filePaths: [e2eSound] }
+      : await dialog.showOpenDialog(window ?? BrowserWindow.getAllWindows()[0]!, { title: 'Its sound', filters: [{ name: 'Sounds (WAV, Ogg)', extensions: ['wav', 'ogg'] }], properties: ['openFile'] });
+    soundPath = s.canceled ? undefined : s.filePaths[0];
+    if (!soundPath) return { ok: false, error: 'cancelled' };
+  }
   try {
-    if (statSync(path).size > ANIMATION_SOURCE_LIMIT) return { ok: false, error: 'too-large' };
+    if (statSync(path).size > ANIMATION_SOURCE_LIMIT || (soundPath && statSync(soundPath).size > ANIMATION_AUDIO_LIMIT)) return { ok: false, error: 'too-large' };
     const bytes = new Uint8Array(readFileSync(path));
-    return { ok: true, id: await auth.uploadAnimation(basename(path).replace(/\.(vrma|glb|bvh|fbx)$/i, ''), bytes, use as (typeof ANIMATION_USES)[number]) };
+    const sound = soundPath ? new Uint8Array(readFileSync(soundPath)) : undefined;
+    return { ok: true, id: await auth.uploadAnimation(basename(path).replace(/\.(vrma|glb|bvh|fbx)$/i, ''), bytes, use as (typeof ANIMATION_USES)[number], sound) };
   } catch (err) {
     return failure(err);
   }
@@ -477,8 +488,8 @@ ipcMain.handle('flatchat:animations:delete', async (_event, id: unknown) => {
   }
 });
 const animationDeliveries = new Map<string, { at: number; d: Promise<{ manifest: unknown; links: Record<string, string> }> }>();
-ipcMain.handle('flatchat:animation-file', async (_event, manifest: unknown) => {
-  if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || !auth || !cache) return { ok: false, error: 'bad-request' };
+ipcMain.handle('flatchat:animation-file', async (_event, manifest: unknown, part: unknown = 'vrma') => {
+  if (typeof manifest !== 'string' || !/^[0-9a-f]{64}$/.test(manifest) || (part !== 'vrma' && part !== 'audio') || !auth || !cache) return { ok: false, error: 'bad-request' };
   try {
     let entry = animationDeliveries.get(manifest);
     if (!entry || Date.now() - entry.at > 50 * 60_000) {
@@ -488,9 +499,10 @@ ipcMain.handle('flatchat:animation-file', async (_event, manifest: unknown) => {
     }
     const d = await entry.d;
     const m = checkAnimationManifest(d.manifest);
-    const link = d.links['vrma'];
-    if (!link) return { ok: false, error: 'not-found' };
-    const bytes = await cachedFile(m.file, link);
+    const hash = part === 'audio' ? m.audio?.file : m.file;
+    const link = d.links[part];
+    if (!hash || !link) return { ok: false, error: 'not-found' };
+    const bytes = await cachedFile(hash, link);
     return { ok: true, manifest: m, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
   } catch (err) {
     return failure(err);

@@ -144,7 +144,7 @@ interface Entry {
   rest2: Map<string, THREE.Matrix4> | undefined;
   /** The emote or dance it plays (S5.07), and its action on the current level once loaded. */
   emote: string | undefined;
-  playing: { anim: string; vrm: VRM; mixer: THREE.AnimationMixer; action: THREE.AnimationAction; duration: number; loop: boolean } | undefined;
+  playing: { anim: string; vrm: VRM; mixer: THREE.AnimationMixer; action: THREE.AnimationAction; duration: number; loop: boolean; mouth: boolean } | undefined;
   /** The emote last loaded or tried for this level: tried once, not every frame. */
   emoteTried: string | undefined;
 }
@@ -242,7 +242,7 @@ export class AvatarLayer {
         action.setLoop(manifest.use === 'dance' ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
         action.clampWhenFinished = false;
         action.play();
-        e.playing = { anim, vrm, mixer, action, duration: manifest.duration, loop: manifest.use === 'dance' };
+        e.playing = { anim, vrm, mixer, action, duration: manifest.duration, loop: manifest.use === 'dance', mouth: manifest.mouth };
         e.emoteTried = undefined;
       })
       .catch(() => {
@@ -532,7 +532,8 @@ export class AvatarLayer {
       // (a dance round and round, an emote once); otherwise the shared walk and the hands' pose.
       const p = e.playing && e.playing.vrm === vrm && s.emoteTime !== undefined ? e.playing : undefined;
       const t = p ? (p.loop ? s.emoteTime! % Math.max(p.duration, 1 / 30) : s.emoteTime!) : 0;
-      if (p && (p.loop || t <= p.duration)) {
+      const dancing = p !== undefined && (p.loop || t <= p.duration);
+      if (dancing) {
         if (!p.action.isRunning()) p.action.reset().play();
         p.action.time = t;
         p.mixer.update(0);
@@ -543,8 +544,8 @@ export class AvatarLayer {
       }
       const ex = vrm.expressionManager;
       if (ex) {
-        const mouth = mouthShapes(s.mouth);
-        for (const [k, v] of Object.entries(mouth)) ex.setValue(k, v);
+        // A dance's mouth track sings its sound (S5.07); otherwise the voice moves the mouth.
+        if (!(dancing && p?.mouth)) for (const [k, v] of Object.entries(mouthShapes(s.mouth))) ex.setValue(k, v);
         for (const name of ['happy', 'angry', 'sad', 'relaxed', 'surprised'] as const) ex.setValue(name, s.face.expression === name ? 1 : 0);
         // A blink every few seconds, 150 ms long.
         if (now > e.blinkAt + 150) e.blinkAt = now + 2000 + Math.random() * 4000;

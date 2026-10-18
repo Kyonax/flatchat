@@ -261,9 +261,12 @@ export class Auth {
     return this.api.animations(await this.access());
   }
 
-  async uploadAnimation(name: string, bytes: Uint8Array, use: AnimationUse): Promise<string> {
-    const slot = await this.api.animationSlot(await this.access(), { name, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), use });
+  /** An emote or a dance, and its sound when it has one: the slots first, then the files. */
+  async uploadAnimation(name: string, bytes: Uint8Array, use: AnimationUse, sound?: Uint8Array): Promise<string> {
+    const hash = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
+    const slot = await this.api.animationSlot(await this.access(), { name, bytes: bytes.length, sha256: hash(bytes), use, ...(sound ? { audio: { bytes: sound.length, sha256: hash(sound) } } : {}) });
     await this.api.sendUpload(slot.url, bytes);
+    if (sound && slot.audio) await this.api.sendUpload(slot.audio, sound);
     return slot.id;
   }
 

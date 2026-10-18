@@ -138,10 +138,12 @@ export function cleanWornItems(raw: unknown): WornItem[] {
 
 
 
-/** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes. */
+/** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes;
+ *  and other players' emote and dance sounds (S5.07; 0 turns them off). */
 export interface SoundSettings {
   world: number;
   ui: number;
+  emotes: number;
 }
 
 export interface Settings {
@@ -165,7 +167,7 @@ export function defaultSettings(): Settings {
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
     avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 }, worn: {} },
-    sound: { world: 0.8, ui: 0.5 },
+    sound: { world: 0.8, ui: 0.5, emotes: 0.6 },
   };
 }
 
@@ -248,7 +250,7 @@ export function cleanSettings(raw: unknown): Settings {
           .map(([account, items]) => [account, cleanWornItems(items)]),
       ),
     },
-    sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui) },
+    sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui), emotes: num(sound['emotes'], 0, 1, d.sound.emotes) },
   };
 }
 
