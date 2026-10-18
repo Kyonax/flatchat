@@ -19,6 +19,8 @@
 //   credit       for CC BY: the credit line, which CREDITS.md must carry word for word
 //   ai           (optional) { tool, terms, termsDate }: an AI tool used, and its terms then
 //   depicts      (optional) others' works an image shows, with their terms
+//   derivedFrom  (optional) for our own work made from others': each { what, creator, source,
+//                licence, licencePage: { url, archived } }, held to the same licences and pages
 //
 //   node tools/harness/src/asset-check.ts [--root DIR]     exit 0 = every asset covered, 1 = problems
 import { execFileSync } from 'node:child_process';
@@ -133,6 +135,20 @@ export function checkAssets(root: string, files: readonly string[]): string[] {
         if (!str(r['credit'])) problems.push(`${at}: a CC BY asset needs its credit line`);
         else if (!credits.includes(r['credit'])) problems.push(`${at}: its credit line is not in CREDITS.md: "${r['credit']}"`);
       }
+    }
+    if (r['derivedFrom'] !== undefined) {
+      const sources = Array.isArray(r['derivedFrom']) ? (r['derivedFrom'] as Json[]) : [];
+      if (sources.length === 0) problems.push(`${at}: derivedFrom is empty`);
+      sources.forEach((d, i) => {
+        const where = `${at}: derivedFrom[${i}]`;
+        if (!str(d['what']) || !str(d['creator'])) problems.push(`${where}: needs what and creator`);
+        if (!(typeof d['source'] === 'string' && URL_RE.test(d['source']))) problems.push(`${where}: source is not an https URL`);
+        if (!(LICENCES as readonly unknown[]).includes(d['licence'])) problems.push(`${where}: licence ${JSON.stringify(d['licence'])} is not one the project accepts`);
+        const page = (d['licencePage'] ?? {}) as Json;
+        const archived = page['archived'];
+        if (!(typeof page['url'] === 'string' && URL_RE.test(page['url']))) problems.push(`${where}: no licencePage.url`);
+        if (!str(archived) || !existsSync(join(root, archived))) problems.push(`${where}: licencePage.archived is not a file in the repository`);
+      });
     }
     if (r['ai'] !== undefined) {
       const ai = (r['ai'] ?? {}) as Json;

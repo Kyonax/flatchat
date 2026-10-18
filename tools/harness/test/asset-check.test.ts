@@ -85,6 +85,28 @@ describe('the licence gate', () => {
     expect(problems).toContainEqual(expect.stringContaining('ai needs tool, terms'));
   });
 
+  it('holds what our own work was made from to the same licences and saved pages', () => {
+    const { root, list } = repo({
+      'kits/bodies/a/a.vrm': 'x',
+      'kits/provenance/archive/cc0.txt': 'CC0',
+      'kits/provenance/kit.json': record({
+        files: ['kits/bodies/*/*.vrm'],
+        title: 'A body',
+        creator: 'the FlatChat contributors',
+        licence: 'CC-BY-4.0',
+        made: 'tools/make.py',
+        derivedFrom: [
+          { what: 'A base mesh', creator: 'Them', source: 'https://example.org/mesh', licence: 'CC0-1.0', licencePage: { url: 'https://example.org/l', archived: 'kits/provenance/archive/cc0.txt' } },
+          { what: 'A paid model', creator: 'Someone', source: 'https://example.org/paid', licence: 'LicenseRef-Proprietary', licencePage: { url: 'https://example.org/l', archived: 'kits/provenance/archive/gone.txt' } },
+        ],
+      }),
+    });
+    const problems = checkAssets(root, list);
+    expect(problems).toContainEqual(expect.stringContaining('derivedFrom[1]: licence "LicenseRef-Proprietary" is not one the project accepts'));
+    expect(problems).toContainEqual(expect.stringContaining('derivedFrom[1]: licencePage.archived is not a file'));
+    expect(problems.filter((p) => p.includes('derivedFrom[0]'))).toEqual([]);
+  });
+
   it('knows assets by their extension and reads * and ** in patterns', () => {
     expect(['a/b.GLB', 'x.vrma', 'f.woff2', 'b.ts', 'README.md', 'dir.png/file'].map(isAsset)).toEqual([true, true, true, false, false, false]);
     expect(patternToRegExp('kits/**/*.glb').test('kits/a/b/c.glb')).toBe(true);
