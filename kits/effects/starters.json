@@ -6,7 +6,7 @@
       "name": "Aura",
       "effect": "samples/00_Version16/Aura01.efkefc",
       "attach": "hips",
-      "scale": 1,
+      "scale": 0.12,
       "authors": ["the Effekseer project and its contributors"]
     },
     {
@@ -14,7 +14,7 @@
       "name": "Shield",
       "effect": "samples/00_Version16/Barrior03.efkefc",
       "attach": "chest",
-      "scale": 1,
+      "scale": 0.12,
       "authors": ["the Effekseer project and its contributors"]
     }
   ]
