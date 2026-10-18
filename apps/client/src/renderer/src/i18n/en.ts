@@ -225,6 +225,9 @@ export default {
     },
   },
   home: {
+    updateReady: 'FlatChat {version} is ready.',
+    updateManual: 'FlatChat {version} is out: download it from kyonax.com.',
+    updateRestart: 'Restart to update',
     hello: 'Hello, {name}',
     worlds: 'Open worlds',
     noWorlds: 'No worlds are open right now.',
@@ -301,6 +304,7 @@ export default {
     shieldOff: 'Any level',
     shieldLevel: 'Level {n} up',
     autoTune: 'The frame-rate tuner: while frames slow down, draw fewer avatars in full, then at a lower resolution, then without the costliest screen effects',
+    updates: 'Look for updates a while after FlatChat starts',
     graphics: {
       title: 'Graphics',
       preset: 'Quality',

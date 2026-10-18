@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('flatchat', {
     ipcRenderer.on('flatchat:auth', handler);
     return () => ipcRenderer.removeListener('flatchat:auth', handler);
   },
+  // The self-update (S7.01): a checked package waiting, and the restart that installs it.
+  updateState: (): Promise<unknown> => ipcRenderer.invoke('flatchat:update-state'),
+  applyUpdate: (): Promise<boolean> => ipcRenderer.invoke('flatchat:update-apply'),
+  onUpdate: (listener: (update: unknown) => void): (() => void) => {
+    const handler = (_event: unknown, update: unknown): void => listener(update);
+    ipcRenderer.on('flatchat:update', handler);
+    return () => ipcRenderer.removeListener('flatchat:update', handler);
+  },
   worlds: (): Promise<unknown> => ipcRenderer.invoke('flatchat:worlds'),
   world: (worldId: string): Promise<unknown> => ipcRenderer.invoke('flatchat:world', worldId),
   favourites: (): Promise<unknown> => ipcRenderer.invoke('flatchat:favourites'),

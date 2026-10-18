@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AvatarsPanel from './AvatarsPanel.vue';
 import ItemsPanel from './ItemsPanel.vue';
@@ -34,6 +34,12 @@ const unverified = ref(false);
 /** A teen sees its supervision, always (S3.04): pending until its guardian authorizes. */
 const supervision = ref('none');
 const resent = ref('');
+/** A later version downloaded and checked (S7.01), and whether this copy can put it in itself. */
+const update = ref<FlatchatUpdate | undefined>(undefined);
+let offUpdate: (() => void) | undefined;
+function restart(): void {
+  void window.flatchat?.applyUpdate();
+}
 
 async function resend(): Promise<void> {
   const r = await window.flatchat?.resendVerification();
@@ -100,7 +106,14 @@ async function joinById(): Promise<void> {
   emit('join', r.world);
 }
 
-onMounted(load);
+onMounted(async () => {
+  update.value = await window.flatchat?.updateState();
+  offUpdate = window.flatchat?.onUpdate((u) => {
+    update.value = u;
+  });
+  await load();
+});
+onBeforeUnmount(() => offUpdate?.());
 </script>
 
 <template>
@@ -132,6 +145,22 @@ onMounted(load);
       <p class="muted">
         {{ remembered ? t('home.remembered') : t('home.notRemembered') }}
       </p>
+      <div
+        v-if="update"
+        class="row update"
+        data-test="update-ready"
+      >
+        <span class="grow">{{ update.how === 'manual' ? t('home.updateManual', { version: update.version }) : t('home.updateReady', { version: update.version }) }}</span>
+        <button
+          v-if="update.how !== 'manual'"
+          type="button"
+          class="primary"
+          data-test="update-restart"
+          @click="restart"
+        >
+          {{ t('home.updateRestart') }}
+        </button>
+      </div>
 
       <h2>{{ t('home.byId') }}</h2>
       <form
@@ -340,6 +369,12 @@ onMounted(load);
 </template>
 
 <style scoped>
+.update {
+  border: 1px solid var(--accent);
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
 h2 {
   font-size: 1.05rem;
   margin: 16px 0 8px;

@@ -11,7 +11,8 @@
 // protocol check failed, exits 1. --crowd=SECONDS --avatars=DIR is spike S0.09's crowd bench: the
 // folder's VRM avatars served read-only (avatar-files.ts), every process's memory sampled each
 // second, and the report judged against the pass lines (crowd-pass.ts).
-import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { chmodSync, copyFileSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, AVATAR_SOURCE_LIMIT, BODY_KITS, checkAnimationManifest, checkItemManifest, checkManifest, ITEM_SOURCE_LIMIT, LEVELS, LicenceError, MODEL_EXTENSIONS, EFFECT_EXTENSIONS, readLicence, uploadFormat } from '@flatchat/content';
 import { app, BrowserWindow, dialog, ipcMain, Menu, type ProcessMetric, safeStorage, session, shell } from 'electron';
@@ -27,6 +28,8 @@ import { declaresItself, modelName, type NeedsDeclaration, PendingItems } from '
 import { listOffline, OfflineHost } from './offline';
 import type { Settings } from '../shared/settings';
 import { SettingsFile } from './settings-file';
+import { applyPlan, checkForUpdate, writeUpdateReport } from './update';
+import { UPDATE_FEED, UPDATE_PUBLIC_KEY } from './update-key';
 import { signal } from './signal';
 
 const { flags, errors } = parseFlags(process.argv);
@@ -37,7 +40,7 @@ if (errors.length > 0) {
 
 const SMOKE_TIMEOUT_MS = 30_000;
 /** No measuring mode: the app itself. */
-const isApp = !flags.smoke && flags.bench === undefined && !flags.crowd && flags.voiceTest === undefined && flags.voiceLoad === undefined && flags.lounge === undefined && !flags.census;
+const isApp = !flags.smoke && flags.bench === undefined && !flags.crowd && flags.voiceTest === undefined && flags.voiceLoad === undefined && flags.lounge === undefined && !flags.census && !flags.updateCheck;
 const BENCH_SLACK_MS = 60_000;
 
 if (flags.crowd) registerAvatarScheme();
@@ -756,6 +759,10 @@ void app.whenReady().then(() => {
     void census();
     return;
   }
+  if (flags.updateCheck) {
+    void runUpdateCheck();
+    return;
+  }
   // A game window has no File/Edit menu, and the menu's Alt toggle would fight the controls.
   // Development keeps it for reload and DevTools.
   if (!process.env['ELECTRON_RENDERER_URL']) Menu.setApplicationMenu(null);
@@ -773,7 +780,10 @@ void app.whenReady().then(() => {
     // Loading dozens of avatars on a slow machine takes minutes before the measured run starts.
     setTimeout(() => finish('crowd-timeout', { error: 'timed out' }, flags.crowd?.out), flags.crowd.seconds * 1000 + 600_000);
   }
-  if (isApp) startAccount();
+  if (isApp) {
+    startAccount();
+    startUpdates();
+  }
   createWindow();
   if (flags.smoke) setTimeout(() => finish('smoke-timeout', {}, flags.smokeOut), SMOKE_TIMEOUT_MS);
   if (flags.bench !== undefined) {
@@ -789,3 +799,56 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+// ------------------------------------------------------------------ the self-update (S7.01)
+
+/** A later version downloaded and checked, waiting for the player to restart. */
+let pendingUpdate: { version: string; file: string } | undefined;
+
+/** Twenty seconds after a packaged client starts, when the owner's key is built in and the player
+ *  has not switched updates off: one look at the feed (update.ts). */
+function startUpdates(): void {
+  if (!app.isPackaged || !UPDATE_PUBLIC_KEY || settings?.get().updates === false) return;
+  setTimeout(() => {
+    void checkForUpdate({ feed: UPDATE_FEED, publicKey: UPDATE_PUBLIC_KEY, version: app.getVersion(), platform: process.platform, arch: process.arch, dir: join(app.getPath('userData'), 'updates') }).then((r) => {
+      if (r.status !== 'downloaded') return;
+      pendingUpdate = { version: r.version, file: r.file };
+      const update = { version: r.version, how: applyPlan(process.platform, process.env, app.getPath('exe'), r.file).how };
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('flatchat:update', update);
+    });
+  }, 20_000);
+}
+
+/** --update-check: the self-update once, reported, then quit (CI's update test, the release check). */
+async function runUpdateCheck(): Promise<void> {
+  const result = await checkForUpdate({ feed: flags.updateFeed ?? UPDATE_FEED, publicKey: flags.updateKey ?? UPDATE_PUBLIC_KEY, version: app.getVersion(), platform: process.platform, arch: process.arch, dir: join(app.getPath('temp'), 'flatchat-update-check') });
+  const report = { event: 'update-check', ...result, ...(result.status === 'downloaded' ? { how: applyPlan(process.platform, process.env, app.getPath('exe'), result.file).how } : {}) };
+  console.log(JSON.stringify(report));
+  writeUpdateReport(flags.updateOut, report);
+  if (result.status === 'downloaded') rmSync(result.file, { force: true });
+  app.exit(result.status === 'downloaded' || result.status === 'current' ? 0 : 1);
+}
+
+ipcMain.handle('flatchat:update-state', () => (pendingUpdate ? { version: pendingUpdate.version, how: applyPlan(process.platform, process.env, app.getPath('exe'), pendingUpdate.file).how } : undefined));
+ipcMain.handle('flatchat:update-apply', () => {
+  const u = pendingUpdate;
+  if (!u) return false;
+  const plan = applyPlan(process.platform, process.env, app.getPath('exe'), u.file);
+  if (plan.how === 'appimage') {
+    // The new AppImage beside the running one, then over it: a rename is atomic on one disk.
+    const next = `${plan.target}.new`;
+    copyFileSync(u.file, next);
+    chmodSync(next, 0o755);
+    renameSync(next, plan.target);
+    app.relaunch({ execPath: plan.target });
+    app.exit(0);
+    return true;
+  }
+  if (plan.how === 'installer') {
+    // The installer, checked against the signed feed's SHA-256, runs silently and starts FlatChat again.
+    spawn(u.file, ['/S', '--force-run'], { detached: true, stdio: 'ignore' }).unref();
+    app.quit();
+    return true;
+  }
+  return false;
+});

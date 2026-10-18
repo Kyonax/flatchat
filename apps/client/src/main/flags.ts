@@ -11,6 +11,9 @@
 //   --relay-only                                     connect to worlds only through the TURN relays the
 //                                                    core hands out, as a player behind a NAT that lets
 //                                                    nothing else through would (S2.12; tests, support)
+//   --update-check [--update-out=FILE]               the self-update once (S7.01): fetch the feed, check
+//           [--update-feed=URL --update-key=BASE64]   its signature, download the package, report, quit;
+//                                                    a feed and key given only for this machine (tests)
 //   --quality=low|medium|high                        draw at that preset for this run, whatever the
 //                                                    settings say, with the frame-rate tuner off
 //                                                    (S6.08; CI's end-to-end runs, the low one)
@@ -61,6 +64,11 @@ export interface Size {
 export interface ClientFlags {
   /** The core's address, checked: https, or http on this machine. */
   core?: string;
+  /** The self-update checked once and reported (S7.01); a feed on this machine and its key (tests). */
+  updateCheck?: boolean;
+  updateOut?: string;
+  updateFeed?: string;
+  updateKey?: string;
   /** A quality preset for this run only (S6.08), over the settings'. */
   quality?: 'low' | 'medium' | 'high';
   /** Worlds only through a TURN relay (WebRTC's relay-only policy). */
@@ -142,6 +150,16 @@ export function parseSize(text: string): Size | undefined {
   return width >= 64 && height >= 64 && width <= 7680 && height <= 4320 ? { width, height } : undefined;
 }
 
+/** A feed folder on this machine (plain http to the loopback address), the only kind a test key may come with. */
+function onThisMachine(url: string | undefined): boolean {
+  try {
+    const u = new URL(url ?? '');
+    return u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost') && u.pathname.endsWith('/');
+  } catch {
+    return false;
+  }
+}
+
 export function parseFlags(argv: readonly string[]): { flags: ClientFlags; errors: string[] } {
   const errors: string[] = [];
   const flags: ClientFlags = {
@@ -152,6 +170,19 @@ export function parseFlags(argv: readonly string[]): { flags: ClientFlags; error
   };
   const smokeOut = value(argv, 'smoke-out');
   if (smokeOut) flags.smokeOut = smokeOut;
+  if (argv.includes('--update-check')) flags.updateCheck = true;
+  const updateOut = value(argv, 'update-out');
+  if (updateOut) flags.updateOut = updateOut;
+  const updateFeed = value(argv, 'update-feed');
+  const updateKey = value(argv, 'update-key');
+  if (updateFeed !== undefined || updateKey !== undefined) {
+    // Only a feed on this machine may come with its own key: a test's, never a stranger's.
+    if (!onThisMachine(updateFeed) || !updateKey) errors.push('--update-feed and --update-key go together, with a feed on this machine (http://127.0.0.1:PORT/…/)');
+    else {
+      flags.updateFeed = updateFeed;
+      flags.updateKey = updateKey;
+    }
+  }
   const quality = value(argv, 'quality');
   if (quality === 'low' || quality === 'medium' || quality === 'high') flags.quality = quality;
   else if (quality !== undefined) errors.push(`--quality is low, medium or high, got ${quality}`);

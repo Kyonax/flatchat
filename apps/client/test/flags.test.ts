@@ -33,6 +33,12 @@ describe('parseFlags', () => {
     expect(flags.benchOut).toBe('frames.json');
     expect(rendererQuery(flags)).toEqual({ bench: '60', size: '1280x720' });
     expect(rendererQuery(parseFlags(argv('--bench=5', '--bench-audio=1')).flags)).toEqual({ bench: '5', size: '1280x720', audio: '1' });
+    // The self-update once (S7.01): a feed and its own key only together, and only on this machine.
+    const check = parseFlags(argv('--update-check', '--update-feed=http://127.0.0.1:4000/updates/', '--update-key=AAAA', '--update-out=u.json'));
+    expect(check.errors).toEqual([]);
+    expect(check.flags).toMatchObject({ updateCheck: true, updateFeed: 'http://127.0.0.1:4000/updates/', updateKey: 'AAAA', updateOut: 'u.json' });
+    expect(parseFlags(argv('--update-feed=https://evil.example/updates/', '--update-key=AAAA')).errors).toEqual(['--update-feed and --update-key go together, with a feed on this machine (http://127.0.0.1:PORT/…/)']);
+    expect(parseFlags(argv('--update-feed=http://127.0.0.1:4000/updates/')).errors).toHaveLength(1);
     // A quality preset for one run (S6.08).
     expect(parseFlags(argv('--quality=low')).flags.quality).toBe('low');
     expect(parseFlags(argv('--quality=ultra')).errors).toEqual(['--quality is low, medium or high, got ultra']);

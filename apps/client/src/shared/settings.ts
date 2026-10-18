@@ -207,6 +207,8 @@ export interface Settings {
   overlays: ScreenOverlaySettings;
   look: LookSettings;
   graphics: GraphicsSettings;
+  /** The self-update (S7.01): a packaged client looks for a later version a while after it starts. */
+  updates: boolean;
 }
 
 export function defaultSettings(): Settings {
@@ -223,6 +225,7 @@ export function defaultSettings(): Settings {
     overlays: { mine: true, world: true, allowed: [] },
     look: { bloom: true, shafts: true, reflections: true, filters: true },
     graphics: { preset: 'auto', renderScale: 1, pixelRatio: 2, antialias: true, stats: false },
+    updates: true,
   };
 }
 
@@ -325,6 +328,7 @@ export function cleanSettings(raw: unknown): Settings {
       antialias: bool(graphics['antialias'], d.graphics.antialias),
       stats: bool(graphics['stats'], d.graphics.stats),
     },
+    updates: bool(r['updates'], d.updates),
   };
 }
 

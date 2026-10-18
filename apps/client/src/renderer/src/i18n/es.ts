@@ -229,6 +229,9 @@ const es: Shape<typeof en> = {
     },
   },
   home: {
+    updateReady: 'FlatChat {version} está listo.',
+    updateManual: 'Salió FlatChat {version}: descárgalo de kyonax.com.',
+    updateRestart: 'Reiniciar para actualizar',
     hello: 'Hola, {name}',
     worlds: 'Mundos abiertos',
     noWorlds: 'Ahora mismo no hay mundos abiertos.',
@@ -305,6 +308,7 @@ const es: Shape<typeof en> = {
     shieldOff: 'Cualquier nivel',
     shieldLevel: 'Nivel {n} o más',
     autoTune: 'El ajuste de cuadros por segundo: mientras los cuadros se vuelven lentos, dibujar menos avatares completos, luego a menor resolución, luego sin los efectos de pantalla más costosos',
+    updates: 'Buscar actualizaciones un rato después de abrir FlatChat',
     graphics: {
       title: 'Gráficos',
       preset: 'Calidad',

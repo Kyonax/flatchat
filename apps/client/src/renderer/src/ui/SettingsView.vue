@@ -520,6 +520,15 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
         >
         <span>{{ t(`settings.${k}`) }}</span>
       </label>
+      <label class="row">
+        <input
+          type="checkbox"
+          :checked="settings.updates"
+          data-test="updates"
+          @change="emit('change', { updates: checked($event) })"
+        >
+        <span>{{ t('settings.updates') }}</span>
+      </label>
       <h2>{{ t('settings.server') }}</h2>
       <div class="row">
         <input

@@ -132,6 +132,12 @@ interface FlatchatPerson {
   name: string;
 }
 
+/** A later version downloaded and checked (S7.01): `manual` when this copy cannot replace itself. */
+interface FlatchatUpdate {
+  version: string;
+  how: 'appimage' | 'installer' | 'manual';
+}
+
 interface FlatchatBridge {
   versions: { electron: string; chrome: string; node: string };
   /** Running under the end-to-end test (its hooks: a GPU reset it causes). */
@@ -150,6 +156,10 @@ interface FlatchatBridge {
   cancelSignIn(): Promise<void>;
   signOut(): Promise<FlatchatAuthState>;
   onAuth(listener: (state: FlatchatAuthState) => void): () => void;
+  /** The self-update (S7.01): a checked package waiting, how it goes in, and the restart. */
+  updateState(): Promise<FlatchatUpdate | undefined>;
+  applyUpdate(): Promise<boolean>;
+  onUpdate(listener: (update: FlatchatUpdate) => void): () => void;
   worlds(): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;
   world(worldId: string): Promise<FlatchatResult<{ world: FlatchatWorld }>>;
   favourites(): Promise<FlatchatResult<{ worlds: FlatchatWorld[] }>>;

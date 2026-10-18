@@ -29,6 +29,14 @@ linux:
   category: Game
   artifactName: FlatChat-${version}-linux-${arch}.${ext}
 win:
-  target: zip
+  # The portable zip, and the per-user installer (S7.01) the self-update runs silently.
+  target:
+    - zip
+    - nsis
   artifactName: FlatChat-${version}-windows-${arch}.${ext}
   signAndEditExecutable: false
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: FlatChat-${version}-windows-${arch}-setup.${ext}
+  deleteAppDataOnUninstall: false
