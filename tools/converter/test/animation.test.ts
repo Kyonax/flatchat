@@ -131,7 +131,7 @@ describe.runIf(existsSync(BLENDER))('the FBX through headless Blender', () => {
   it('becomes a GLB that converts to the same motion as the fixture', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'fcfbx-'));
     try {
-      execFileSync(BLENDER, ['-b', '--factory-startup', '-noaudio', '-y', '--python', join(HERE, '..', '..', 'blender', 'animation', 'fbx2glb.py'), '--', join(FIXTURES, 'wave.fbx'), join(dir, 'out.glb')], { stdio: 'ignore', timeout: 120_000 });
+      execFileSync(BLENDER, ['-b', '--factory-startup', '-noaudio', '-Y', '--offline-mode', '--python', join(HERE, '..', '..', 'blender', 'animation', 'fbx2glb.py'), '--', join(FIXTURES, 'wave.fbx'), join(dir, 'out.glb')], { stdio: 'ignore', timeout: 120_000 });
       const fresh = await convertAnimation(new Uint8Array(readFileSync(join(dir, 'out.glb'))), { from: 'fbx' });
       const fixture = await convertAnimation(FBX_GLB, { from: 'fbx' });
       const a = fresh.files.get(fresh.manifest.file)!;

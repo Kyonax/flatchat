@@ -13,7 +13,8 @@
     ".": "./src/index.ts",
     "./samples": "./src/avatar/samples.ts",
     "./avatar": "./src/avatar/convert.ts",
-    "./item-samples": "./src/item/samples.ts"
+    "./item-samples": "./src/item/samples.ts",
+    "./animation-samples": "./src/animation/samples.ts"
   },
   "scripts": {
     "convert": "node src/cli.ts",
