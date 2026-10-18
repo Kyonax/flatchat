@@ -74,6 +74,13 @@ const es: Shape<typeof en> = {
     anyAvatar: 'va en cualquier avatar',
     slot: { hair: 'pelo', hat: 'sombrero', glasses: 'gafas', top: 'parte de arriba', outer: 'chaqueta o abrigo', bottom: 'parte de abajo', full: 'conjunto completo', gloves: 'guantes', legwear: 'medias', shoes: 'zapatos', attachment: 'accesorio' },
     delete: 'Borrar',
+    starter: {
+      title: 'Ropa de inicio',
+      hint: 'Ropa gratis hecha para los tres cuerpos base. Toma la que quieras: es tuya para ponértela y guardarla en conjuntos.',
+      take: 'Tomar',
+      taken: 'en tus prendas',
+      names: { 'white-tee-and-jeans': 'Camiseta blanca y jeans', 'striped-shirt-and-jeans': 'Camisa a rayas y jeans', 'jacket-and-jeans': 'Chaqueta y jeans', 'dark-suit': 'Traje oscuro', overalls: 'Overol', 'brown-shoes': 'Zapatos cafés', 'black-boots': 'Botas negras', 'grey-fedora': 'Fedora gris' },
+    },
     errors: {
       'upload-trust': 'Para subir prendas necesitas nivel de confianza 1: una cuenta de unos días, con el correo confirmado.',
       'upload-limit': 'Tienes 200 prendas: borra una primero.',

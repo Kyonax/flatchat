@@ -19,7 +19,7 @@ import { Auth, type TokenStore } from './auth';
 import { registerAvatarScheme, serveAvatars } from './avatar-protocol';
 import { runCensus } from './census/probe';
 import { ContentCache } from './content-cache';
-import { cleanWorn, CoreApi, coreBase, CoreError } from './core-api';
+import { cleanWorn, CoreApi, coreBase, CoreError, STARTER_ID } from './core-api';
 import { DEFAULT_CORE } from './core-url';
 import { crowdPass } from './crowd-pass';
 import { exitCodeFor, parseFlags, rendererQuery } from './flags';
@@ -364,6 +364,15 @@ ipcMain.handle('flatchat:avatars:kit', async (_event, kit: unknown) => {
   if (typeof kit !== 'string' || !(BODY_KITS as readonly string[]).includes(kit) || !auth) return { ok: false, error: 'bad-request' };
   try {
     return { ok: true, ...(await auth.takeKit(kit as (typeof BODY_KITS)[number])) };
+  } catch (err) {
+    return failure(err);
+  }
+});
+// The starter wardrobe (P.08): one of its items taken, with no upload, as a standard body is.
+ipcMain.handle('flatchat:items:starter', async (_event, starter: unknown) => {
+  if (typeof starter !== 'string' || !STARTER_ID.test(starter) || !auth) return { ok: false, error: 'bad-request' };
+  try {
+    return { ok: true, ...(await auth.takeStarter(starter)) };
   } catch (err) {
     return failure(err);
   }

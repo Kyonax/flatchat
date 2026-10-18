@@ -70,6 +70,13 @@ export default {
     anyAvatar: 'goes on any avatar',
     slot: { hair: 'hair', hat: 'hat', glasses: 'glasses', top: 'top', outer: 'jacket or coat', bottom: 'bottom', full: 'full outfit', gloves: 'gloves', legwear: 'legwear', shoes: 'shoes', attachment: 'attachment' },
     delete: 'Delete',
+    starter: {
+      title: 'Starter wardrobe',
+      hint: 'Free clothes made for the three standard bodies. Take any of them; they are yours to wear and put in outfits.',
+      take: 'Take',
+      taken: 'in your items',
+      names: { 'white-tee-and-jeans': 'White tee and jeans', 'striped-shirt-and-jeans': 'Striped shirt and jeans', 'jacket-and-jeans': 'Jacket and jeans', 'dark-suit': 'Dark suit', overalls: 'Overalls', 'brown-shoes': 'Brown shoes', 'black-boots': 'Black boots', 'grey-fedora': 'Grey fedora' },
+    },
     errors: {
       'upload-trust': 'Uploading needs trust level 1: an account a few days old, with a confirmed email.',
       'upload-limit': 'You have 200 items: delete one first.',

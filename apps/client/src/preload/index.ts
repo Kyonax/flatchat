@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('flatchat', {
   // Standard bodies, items and outfits (S5.05).
   takeKit: (kit: string): Promise<unknown> => ipcRenderer.invoke('flatchat:avatars:kit', kit),
   items: (): Promise<unknown> => ipcRenderer.invoke('flatchat:items'),
+  takeStarter: (starter: string): Promise<unknown> => ipcRenderer.invoke('flatchat:items:starter', starter),
   uploadItem: (given?: unknown): Promise<unknown> => ipcRenderer.invoke('flatchat:items:upload', given),
   deleteItem: (id: string): Promise<unknown> => ipcRenderer.invoke('flatchat:items:delete', id),
   itemFile: (manifest: string, part: string): Promise<unknown> => ipcRenderer.invoke('flatchat:item-file', manifest, part),

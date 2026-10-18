@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import wardrobe from '../../../../../../kits/items/wardrobe.json';
 import DeclareItemForm from './DeclareItemForm.vue';
 import PublishForm from './PublishForm.vue';
 
@@ -9,7 +10,9 @@ import PublishForm from './PublishForm.vue';
 // OBJ, a DAE or a .blend (S5.08; the main process opens the file dialog, reads the file and sends
 // it; the page never holds the file or the token), saying what it is when its file cannot
 // (DeclareItemForm.vue); watch it convert, see the bodies it fits or why it was refused, delete it;
-// and the saved outfits, to delete. Wearing them is the world's quick menu (OutfitMenu.vue).
+// and the saved outfits, to delete. Wearing them is the world's quick menu (OutfitMenu.vue). The
+// starter wardrobe (P.08, kits/items/) is any account's for the taking, with no upload: each of its
+// items once, then one of the account's items like any other.
 const { t, te } = useI18n();
 const items = ref<FlatchatItem[]>([]);
 const outfits = ref<FlatchatOutfit[]>([]);
@@ -20,6 +23,22 @@ const publishing = ref('');
 /** A file picked that cannot say what it is (S5.08): its declaration is asked for. */
 const declaring = ref<{ token: string; name: string; format: string } | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
+/** The starter wardrobe, and the one being taken. */
+const starters = wardrobe.items.map((i) => ({ id: i.id, slot: i.slot }));
+const taking = ref('');
+const taken = computed(() => new Set(items.value.filter((i) => i.starter && i.status !== 'refused' && i.status !== 'failed').map((i) => i.starter!)));
+
+async function takeStarter(id: string): Promise<void> {
+  error.value = '';
+  taking.value = id;
+  try {
+    const r = await window.flatchat?.takeStarter(id);
+    if (r && !r.ok) error.value = failure(r.error);
+  } finally {
+    taking.value = '';
+  }
+  await load();
+}
 
 async function load(): Promise<void> {
   const [a, b] = await Promise.all([window.flatchat?.items(), window.flatchat?.outfits()]);
@@ -113,6 +132,38 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
     >
       {{ error }}
     </p>
+    <h3>{{ t('items.starter.title') }}</h3>
+    <p class="muted">
+      {{ t('items.starter.hint') }}
+    </p>
+    <ul
+      class="plain"
+      data-test="starters"
+    >
+      <li
+        v-for="s in starters"
+        :key="s.id"
+        data-test="starter"
+        :data-id="s.id"
+        :data-taken="taken.has(s.id)"
+      >
+        <strong>{{ te(`items.starter.names.${s.id}`) ? t(`items.starter.names.${s.id}`) : s.id }}</strong>
+        <span class="muted"> · {{ te(`items.slot.${s.slot}`) ? t(`items.slot.${s.slot}`) : s.slot }}</span>
+        <span
+          v-if="taken.has(s.id)"
+          class="muted"
+        > · {{ t('items.starter.taken') }}</span>
+        <button
+          v-else
+          type="button"
+          data-test="take-starter"
+          :disabled="taking !== ''"
+          @click="takeStarter(s.id)"
+        >
+          {{ t('items.starter.take') }}
+        </button>
+      </li>
+    </ul>
     <p
       v-if="items.length === 0"
       class="muted"
@@ -140,6 +191,10 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
           v-if="i.fromGallery"
           class="muted small"
         > · {{ t('gallery.fromGallery') }}</span>
+        <span
+          v-else-if="i.starter"
+          class="muted small"
+        > · {{ t('items.starter.title') }}</span>
         <template v-else-if="i.status === 'ready'">
           <template v-if="i.published">
             <span

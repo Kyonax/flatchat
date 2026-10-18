@@ -68,6 +68,8 @@ interface FlatchatItem {
   createdAt: string;
   published: string | null;
   fromGallery: string | null;
+  /** The starter wardrobe's id for it, when it is one (P.08). */
+  starter: string | null;
 }
 
 /** One of the account's emotes and dances (S5.07). */
@@ -166,6 +168,8 @@ interface FlatchatBridge {
   // Standard bodies, items and outfits (S5.05).
   takeKit(kit: import('@flatchat/content').BodyKit): Promise<FlatchatResult<{ id: string; status: 'ready' | 'converting' }>>;
   items(): Promise<FlatchatResult<{ items: FlatchatItem[] }>>;
+  /** Takes one of the starter wardrobe's items (P.08), with no upload. */
+  takeStarter(starter: string): Promise<FlatchatResult<{ id: string; status: 'ready' | 'converting' }>>;
   /** Opens the dialog and sends the file; a file that cannot say what it is (S5.08) comes back as
    *  needs-declaration, and goes when its declaration is given with the token. */
   uploadItem(given?: { token: string; declaration: FlatchatItemDeclaration }): Promise<FlatchatResult<{ id: string }> | { ok: false; error: 'needs-declaration'; token: string; name: string; format: string }>;

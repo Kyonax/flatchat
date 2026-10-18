@@ -258,13 +258,13 @@ describe('avatars on the client side (S4.01, S4.04)', () => {
     const hash = 'b'.repeat(64);
     expect(
       cleanItems([
-        { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'robot', 'neutral'], problems: [], warnings: ['2 points near the hem', 4], manifest: hash, createdAt: 'x', published: id, fromGallery: 'nope' },
-        { id, status: 'ready', slot: 'cape' },
+        { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'robot', 'neutral'], problems: [], warnings: ['2 points near the hem', 4], manifest: hash, createdAt: 'x', published: id, fromGallery: 'nope', starter: 'grey-fedora' },
+        { id, status: 'ready', slot: 'cape', starter: 'Not An Id!' },
         { id: 'nope', status: 'ready' },
       ]),
     ).toEqual([
-      { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'neutral'], problems: [], warnings: ['2 points near the hem'], manifest: hash, createdAt: 'x', published: id, fromGallery: null },
-      { id, name: '', status: 'ready', slot: null, fits: [], problems: [], warnings: [], manifest: null, createdAt: '', published: null, fromGallery: null },
+      { id, name: 'Tee', status: 'ready', slot: 'top', fits: ['feminine', 'neutral'], problems: [], warnings: ['2 points near the hem'], manifest: hash, createdAt: 'x', published: id, fromGallery: null, starter: 'grey-fedora' },
+      { id, name: '', status: 'ready', slot: null, fits: [], problems: [], warnings: [], manifest: null, createdAt: '', published: null, fromGallery: null, starter: null },
     ]);
     expect(cleanWorn([{ item: hash, adjust: { x: 40, y: 0, z: 0, rx: 90, ry: 0, rz: 0, scale: 300 } }, { item: hash }, { item: 'not-a-hash' }, 'junk'])).toEqual([{ item: hash, adjust: { x: 10, y: 0, z: 0, rx: 45, ry: 0, rz: 0, scale: 125 } }]);
     expect(cleanWorn(Array.from({ length: 20 }, (_, i) => ({ item: i.toString(16).padStart(64, '0') })))).toHaveLength(16);

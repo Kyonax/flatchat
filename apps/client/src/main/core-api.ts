@@ -135,6 +135,8 @@ export interface ItemEntry {
   createdAt: string;
   published: string | null;
   fromGallery: string | null;
+  /** The starter wardrobe's id for it, when it is one (P.08). */
+  starter: string | null;
 }
 
 /** Keeps only well-formed items from the core's answer. */
@@ -156,10 +158,14 @@ export function cleanItems(raw: unknown): ItemEntry[] {
         createdAt: typeof v['createdAt'] === 'string' ? v['createdAt'] : '',
         published: uuidOrNull(v['published']),
         fromGallery: uuidOrNull(v['fromGallery']),
+        starter: typeof v['starter'] === 'string' && STARTER_ID.test(v['starter']) ? v['starter'] : null,
       },
     ];
   });
 }
+
+/** A starter item's id (kits/items/wardrobe.json). */
+export const STARTER_ID = /^[a-z0-9-]{1,64}$/;
 
 /** One of the account's emotes and dances (S5.07). */
 export interface AnimationEntry {
@@ -605,6 +611,13 @@ export class CoreApi {
   async takeKit(access: string, kit: BodyKit): Promise<{ id: string; status: 'ready' | 'converting' }> {
     const r = await this.call<{ id?: unknown; status?: unknown }>('POST', '/api/v1/avatars/kit', { kit }, access);
     if (typeof r.id !== 'string' || !/^[0-9a-f-]{36}$/.test(r.id)) throw new CoreError(502, 'bad-answer', 'the core sent no avatar');
+    return { id: r.id, status: r.status === 'ready' ? 'ready' : 'converting' };
+  }
+
+  /** One of the starter wardrobe's items (P.08), with no upload. */
+  async takeStarter(access: string, starter: string): Promise<{ id: string; status: 'ready' | 'converting' }> {
+    const r = await this.call<{ id?: unknown; status?: unknown }>('POST', '/api/v1/items/starter', { starter }, access);
+    if (typeof r.id !== 'string' || !/^[0-9a-f-]{36}$/.test(r.id)) throw new CoreError(502, 'bad-answer', 'the core sent no item');
     return { id: r.id, status: r.status === 'ready' ? 'ready' : 'converting' };
   }
 

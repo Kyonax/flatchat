@@ -225,6 +225,10 @@ export class Auth {
     return this.api.takeKit(await this.access(), kit);
   }
 
+  async takeStarter(starter: string): Promise<{ id: string; status: 'ready' | 'converting' }> {
+    return this.api.takeStarter(await this.access(), starter);
+  }
+
   async items(): Promise<ItemEntry[]> {
     return this.api.items(await this.access());
   }
