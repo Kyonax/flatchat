@@ -85,7 +85,9 @@ async function settled(who: Who, kind: 'items' | 'avatars', id: string): Promise
     const a = list[kind]!.find((v) => v['id'] === id);
     if (a && a['status'] !== 'converting' && a['status'] !== 'uploading') return a;
     if (Date.now() > end) throw new Error(`still converting: ${JSON.stringify(a)}`);
-    await new Promise((r) => setTimeout(r, 100));
+    // Every call counts against the address's API limit (4 a second after a burst of 120): a slow
+    // runner's conversions would drain it at 10 a second.
+    await new Promise((r) => setTimeout(r, 500));
   }
 }
 
