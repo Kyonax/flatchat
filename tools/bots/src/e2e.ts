@@ -107,7 +107,7 @@ try {
   const plaza = await register('E2E Plaza');
   const garden = await register('E2E Garden');
   // The garden is the park, made only of base library parts (S2.05): it sends nothing but its plan.
-  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect', '--overlay']);
+  await run([process.execPath, MAKE_TRAVEL, join(dir, 'travel'), '--worlds', `${plaza.id},${garden.id}`, '--names', 'E2E Plaza,E2E Garden', '--kits', 'plaza,park', '--effect', '--overlay', '--look']);
   // The garden's host does not play fair (S6.01): six broken effects beside its tornado, put into
   // the built world past the converter, with made-up numbers. The client must refuse every one.
   await run([process.execPath, HOSTILE, join(dir, 'travel', 'b.built')]);
@@ -441,6 +441,12 @@ try {
       .waitFor({ state: 'attached', timeout: 60_000 })
       .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
       .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')} (${await page.locator('[data-test=effects]').getAttribute('data-refused-why').catch(() => '?')})`);
+    // The garden's look (S6.05): its dusk sky and fog, and its bloom and screen filters drawn.
+    steps['worldLook'] = await page
+      .locator('[data-test=look][data-bloom="1"][data-filters="1"]')
+      .waitFor({ state: 'attached', timeout: 20_000 })
+      .then(() => true)
+      .catch(async () => `bloom ${await page.locator('[data-test=look]').getAttribute('data-bloom').catch(() => '?')}, filters ${await page.locator('[data-test=look]').getAttribute('data-filters').catch(() => '?')}`);
     // The garden's own screen overlay (S6.02): on for every visitor.
     steps['worldOverlay'] = await page
       .locator('[data-test=overlays][data-world="1"]')
@@ -544,6 +550,7 @@ try {
     steps['safeModeOff'] === true &&
     steps['overlayOff'] === true &&
     steps['worldOverlay'] === true &&
+    steps['worldLook'] === true &&
     typeof steps['gpuReset'] === 'object' &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).recoveredMs < 15_000 &&
     (steps['gpuReset'] as { recoveredMs: number; resets: number }).resets === 1 &&
