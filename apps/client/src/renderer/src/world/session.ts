@@ -304,8 +304,9 @@ export class WorldSession {
 
     try {
       const height = Math.round(this.settings.avatar.height * 100);
+      const proportions = percent(this.settings.avatar.proportions);
       this.conn = ticket.local
-        ? await WorldConnection.joinLocal({ token: ticket.token, height, onMessage: (m) => this.message(m) })
+        ? await WorldConnection.joinLocal({ token: ticket.token, height, proportions, onMessage: (m) => this.message(m) })
         : await WorldConnection.join({
             signalUrl: ticket.address,
             token: ticket.token,
@@ -313,6 +314,7 @@ export class WorldSession {
             ...(ticket.spawn ? { spawn: ticket.spawn } : {}),
             ...(ticket.relayOnly ? { relayOnly: true } : {}),
             height,
+            proportions,
             onMessage: (m) => this.message(m),
           });
     } catch (err) {
@@ -414,8 +416,12 @@ export class WorldSession {
   }
 
   applySettings(s: Settings): void {
-    // A new height goes to the world, which fits it and tells everyone (S2.07).
-    if (s.avatar.height !== this.settings.avatar.height && this.state.status === 'joined') this.conn?.send({ type: 'appearance', height: Math.round(s.avatar.height * 100) });
+    // A new height or new proportions go to the world, which fits them and tells everyone (S2.07, S4.10).
+    const was = this.settings.avatar;
+    const reshaped = JSON.stringify(s.avatar.proportions) !== JSON.stringify(was.proportions);
+    if ((s.avatar.height !== was.height || reshaped) && this.state.status === 'joined') {
+      this.conn?.send({ type: 'appearance', height: Math.round(s.avatar.height * 100), proportions: percent(s.avatar.proportions) });
+    }
     this.settings = s;
     this.controls.keys = s.keys;
     this.controls.sensitivity = s.view.sensitivity;
@@ -727,6 +733,7 @@ export class WorldSession {
       this.avatarLayer?.wear(p.entity, manifest);
       this.faces.set(p.entity, p.face);
       this.trusts.set(p.entity, p.trust);
+      this.avatarLayer?.reshape(p.entity, p.proportions);
       // A change lists a player again (a new height, a role): only a new entity is an arrival.
       const arriving = !this.names.has(p.entity);
       this.names.set(p.entity, p.name);
@@ -1033,3 +1040,10 @@ const HANDS: readonly HandPose[] = ['relaxed', 'point', 'peace', 'thumbsUp', 'fi
 function nextHand(h: HandPose): HandPose {
   return HANDS[(HANDS.indexOf(h) + 1) % HANDS.length]!;
 }
+
+/** Proportions as shares (the settings) into percent (the protocol). */
+function percent(p: { width: number; arms: number; legs: number; head: number }): { width: number; arms: number; legs: number; head: number } {
+  const c = (v: number): number => Math.round(Math.min(125, Math.max(80, v * 100)));
+  return { width: c(p.width), arms: c(p.arms), legs: c(p.legs), head: c(p.head) };
+}
+

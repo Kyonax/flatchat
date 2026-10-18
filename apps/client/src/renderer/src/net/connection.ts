@@ -32,6 +32,8 @@ export interface JoinOptions {
   spawn?: string;
   /** The player's chosen height in centimetres (S2.07); the platform's default when left out. */
   height?: number;
+  /** The avatar's proportions in percent (S4.10); as made when left out. */
+  proportions?: { width: number; arms: number; legs: number; head: number };
   /** Only TURN relay candidates (WebRTC's relay-only policy): a player behind a NAT that lets
    *  nothing else through (S2.12). */
   relayOnly?: boolean;
@@ -194,11 +196,11 @@ export class WorldConnection {
   }
 
   /** hello with the connect token, then welcome or refuse, then the spawn. */
-  private static async handshake(conn: WorldConnection, options: Pick<JoinOptions, 'token' | 'build' | 'spawn' | 'height'>, timeout: number): Promise<void> {
+  private static async handshake(conn: WorldConnection, options: Pick<JoinOptions, 'token' | 'build' | 'spawn' | 'height' | 'proportions'>, timeout: number): Promise<void> {
     const reply = Promise.race([conn.next('welcome', () => true, timeout), conn.next('refuse', () => true, timeout)]);
     const placed = conn.next('snapshot', (s) => s.correction?.seq === 0, timeout);
     placed.catch(() => undefined); // a refused join never gets one
-    conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '', height: Math.max(0, Math.min(1023, Math.round(options.height ?? 0))) });
+    conn.send({ type: 'hello', protocol: PROTOCOL_VERSION, fingerprint: SCHEMA_FINGERPRINT, build: options.build ?? 'flatchat-client 0.0.0', token: options.token, spawn: options.spawn ?? '', height: Math.max(0, Math.min(1023, Math.round(options.height ?? 0))), ...(options.proportions ? { proportions: options.proportions } : {}) });
     const first = await reply;
     if (first.type === 'refuse') throw new JoinRefused(first.reason, first.detail);
     conn.welcome = first;

@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, RANK_CHOICES, type Settings, unbind, validCode } from '../../../shared/settings';
+import { ACTIONS, type Action, bind, DEFAULT_KEYS, FIXED, HEIGHT_RANGE, PROPORTION_RANGE, RANK_CHOICES, type Settings, unbind, validCode } from '../../../shared/settings';
 import { keyLabel, mouseCode } from './keys';
 
 const props = defineProps<{ settings: Settings }>();
@@ -199,6 +199,22 @@ const str = (e: Event): string => (e.target as HTMLSelectElement).value;
       <p class="muted small">
         {{ t('settings.heightHint') }}
       </p>
+      <label
+        v-for="k in (['width', 'arms', 'legs', 'head'] as const)"
+        :key="k"
+        class="row"
+      >
+        <span class="grow">{{ t(`settings.proportions.${k}`, { p: Math.round(settings.avatar.proportions[k] * 100) }) }}</span>
+        <input
+          type="range"
+          :min="PROPORTION_RANGE.min"
+          :max="PROPORTION_RANGE.max"
+          step="0.05"
+          :value="settings.avatar.proportions[k]"
+          :data-test="`proportion-${k}`"
+          @change="avatar({ proportions: { ...settings.avatar.proportions, [k]: num($event) } })"
+        >
+      </label>
 
       <h2>{{ t('settings.avatars') }}</h2>
       <p class="muted small">

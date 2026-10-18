@@ -77,6 +77,9 @@ export interface ViewSettings {
 /** How tall the player is (S2.07, Q-M30): free within this range; each world fits it into its own. */
 export const HEIGHT_RANGE = { min: 0.3, max: 5, default: 1.75 } as const;
 
+/** The proportion sliders' range (S4.10): the protocol's PROPORTIONS, as shares. */
+export const PROPORTION_RANGE = { min: 0.8, max: 1.25 } as const;
+
 /** The ranks a viewer may set as the worst drawn in full (packages/content's RANKS). */
 export const RANK_CHOICES = ['excellent', 'good', 'medium', 'poor', 'veryPoor'] as const;
 /** This computer's hardware tier, measured on the first visit to a world (S4.05). */
@@ -98,7 +101,11 @@ export interface AvatarSettings {
   hidden: string[];
   /** While frames are slow, fewer avatars in full (S4.09). */
   autoTune: boolean;
+  /** The avatar's proportions (S4.10), each a share of the avatar as made, 0.8 to 1.25. */
+  proportions: { width: number; arms: number; legs: number; head: number };
 }
+
+
 
 /** Volumes, 0 to 1 (S2.14): the world's sounds and footsteps, and the interface's clicks and chimes. */
 export interface SoundSettings {
@@ -126,7 +133,7 @@ export function defaultSettings(): Settings {
     keys: Object.fromEntries(ACTIONS.map((a) => [a, [...DEFAULT_KEYS[a]]])) as Bindings,
     voice: { mode: 'open', asked: false, muted: false, inputDevice: '', volume: 1, volumes: {} },
     view: { person: 'third', sensitivity: 12, invertY: false },
-    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true },
+    avatar: { height: HEIGHT_RANGE.default, tier: 'unset', minRank: 'poor', full: 8, shield: 0, hidden: [], autoTune: true, proportions: { width: 1, arms: 1, legs: 1, head: 1 } },
     sound: { world: 0.8, ui: 0.5 },
   };
 }
@@ -198,6 +205,11 @@ export function cleanSettings(raw: unknown): Settings {
       shield: Math.round(num(avatar['shield'], 0, 4, d.avatar.shield)),
       hidden: Array.isArray(avatar['hidden']) ? [...new Set(avatar['hidden'].filter((a): a is string => typeof a === 'string' && ACCOUNT_ID.test(a)))].slice(0, 500) : [],
       autoTune: bool(avatar['autoTune'], d.avatar.autoTune),
+      proportions: (() => {
+        const p = obj(avatar['proportions']);
+        const share = (v: unknown): number => Math.round(num(v, PROPORTION_RANGE.min, PROPORTION_RANGE.max, 1) * 100) / 100;
+        return { width: share(p['width']), arms: share(p['arms']), legs: share(p['legs']), head: share(p['head']) };
+      })(),
     },
     sound: { world: num(sound['world'], 0, 1, d.sound.world), ui: num(sound['ui'], 0, 1, d.sound.ui) },
   };

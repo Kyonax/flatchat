@@ -6,6 +6,10 @@
 // LOD2, everyone else as the impostor. Work is paced: one level fetched and parsed at a time, and a
 // level switches only after the wish to switch has held for a moment.
 //
+// Proportions (S4.10) move joints, not scales: the elbows, wrists, knees and ankles along their
+// bones, the shoulders and hips apart, the head's size; skinning stretches each segment, and an
+// avatar with longer legs is raised so its feet stay on the ground.
+//
 // LOD0 to LOD2 are each player's own three-vrm VRM (its expressions, its spring bones); impostors
 // of one avatar share one parsed template (geometry, material and texture once on the GPU) and are
 // posed straight on their bones with three-vrm's own normalized-to-raw rule, so 200 of them cost
@@ -53,6 +57,20 @@ export interface AvatarPolicy {
 export const DEFAULT_POLICY: AvatarPolicy = { full: 8, lower: 20, springs: 6, minRank: 'poor' };
 
 export type Fetcher = (manifest: string, level: Level) => Promise<{ bytes: ArrayBuffer; manifest: AvatarManifest }>;
+export interface Proportions {
+  width: number;
+  arms: number;
+  legs: number;
+  head: number;
+}
+const AS_MADE: Proportions = { width: 100, arms: 100, legs: 100, head: 100 };
+/** The joints proportions move: along their bone for length, sideways for width. */
+const LENGTH_JOINTS: Record<'arms' | 'legs', string[]> = {
+  arms: ['leftLowerArm', 'leftHand', 'rightLowerArm', 'rightHand'],
+  legs: ['leftLowerLeg', 'leftFoot', 'rightLowerLeg', 'rightFoot'],
+};
+const WIDTH_JOINTS = ['leftShoulder', 'rightShoulder', 'leftUpperLeg', 'rightUpperLeg'];
+const WIDTH_FALLBACK: Record<string, string> = { leftShoulder: 'leftUpperArm', rightShoulder: 'rightUpperArm' };
 
 const FULL_WITHIN = 8;
 const LOWER_WITHIN = 18;
@@ -81,6 +99,11 @@ interface Entry {
   /** The impostor: a clone of the template, its humanoid nodes by bone name. */
   impostor: { root: THREE.Object3D; nodes: Map<string, THREE.Object3D> } | undefined;
   failed: boolean;
+  /** The player's proportions in percent (S4.10), and each moved joint's position at rest. */
+  proportions: Proportions;
+  rest: Map<string, THREE.Vector3>;
+  /** How much the legs grew, in the avatar's metres: the holder rises by it. */
+  lift: number;
   phase: number;
   speed: number;
   last: { x: number; z: number; t: number } | undefined;
@@ -116,11 +139,76 @@ export class AvatarLayer {
     if (!manifest) return;
     const holder = new THREE.Group();
     this.group.add(holder);
-    this.entries.set(entity, { manifest, info: undefined, level: undefined, want: undefined, wantSince: 0, holder, vrm: undefined, hipsHeight: 0.9, impostor: undefined, failed: false, phase: 0, speed: 0, last: undefined, blinkAt: 0 });
+    this.entries.set(entity, {
+      manifest,
+      info: undefined,
+      level: undefined,
+      want: undefined,
+      wantSince: 0,
+      holder,
+      vrm: undefined,
+      hipsHeight: 0.9,
+      impostor: undefined,
+      failed: false,
+      proportions: this.pending.get(entity) ?? AS_MADE,
+      rest: new Map(),
+      lift: 0,
+      phase: 0,
+      speed: 0,
+      last: undefined,
+      blinkAt: 0,
+    });
+  }
+
+  /** Proportions known before the avatar arrives (a roster entry comes first). */
+  private readonly pending = new Map<number, Proportions>();
+
+  /** A player's proportions (S4.10), from the roster. */
+  reshape(entity: number, p: Proportions): void {
+    this.pending.set(entity, p);
+    const e = this.entries.get(entity);
+    if (!e) return;
+    e.proportions = p;
+    this.applyProportions(e);
+  }
+
+  /** Moves the current level's joints by the entry's proportions, from their rest positions. */
+  private applyProportions(e: Entry): void {
+    const node = (bone: string): THREE.Object3D | undefined =>
+      e.vrm ? (e.vrm.humanoid.getRawBoneNode(bone as Parameters<VRM['humanoid']['getRawBoneNode']>[0]) ?? undefined) : e.impostor?.nodes.get(bone);
+    const restOf = (bone: string, n: THREE.Object3D): THREE.Vector3 => {
+      let r = e.rest.get(bone);
+      if (!r) {
+        r = n.position.clone();
+        e.rest.set(bone, r);
+      }
+      return r;
+    };
+    const p = e.proportions;
+    let legLength = 0;
+    for (const kind of ['arms', 'legs'] as const) {
+      for (const bone of LENGTH_JOINTS[kind]) {
+        const n = node(bone);
+        if (!n) continue;
+        const r = restOf(bone, n);
+        n.position.copy(r).multiplyScalar(p[kind] / 100);
+        if (kind === 'legs') legLength += r.length() / 2;
+      }
+    }
+    for (const bone of WIDTH_JOINTS) {
+      const name = node(bone) ? bone : WIDTH_FALLBACK[bone];
+      const n = name ? node(name) : undefined;
+      if (!n || !name) continue;
+      const r = restOf(name, n);
+      n.position.set(r.x * (p.width / 100), r.y, r.z);
+    }
+    node('head')?.scale.setScalar(p.head / 100);
+    e.lift = legLength * (p.legs / 100 - 1);
   }
 
   /** A player left. */
   drop(entity: number): void {
+    this.pending.delete(entity);
     const e = this.entries.get(entity);
     if (!e) return;
     this.clear(e);
@@ -129,6 +217,7 @@ export class AvatarLayer {
   }
 
   private clear(e: Entry): void {
+    e.rest = new Map();
     if (e.vrm) {
       e.holder.remove(e.vrm.scene);
       disposeLevel(e.vrm);
@@ -219,6 +308,7 @@ export class AvatarLayer {
           e.holder.add(parsed.vrm.scene);
         }
         e.level = level;
+        this.applyProportions(e);
         this.loads += 1;
       } catch {
         this.failures += 1;
@@ -268,7 +358,7 @@ export class AvatarLayer {
     const scale = s.height > 0.2 ? s.height / height : 1;
     // A seated avatar's hips come down to the seat.
     const sink = gait === 'sit' ? (e.hipsHeight - 0.1) * scale : 0;
-    e.holder.position.set(s.x, s.y - sink + pose.bob * e.hipsHeight * scale, s.z);
+    e.holder.position.set(s.x, s.y - sink + (pose.bob * e.hipsHeight + e.lift) * scale, s.z);
     // VRM faces +Z; a player's yaw 0 faces -Z (the placeholder's visor).
     e.holder.rotation.set(0, s.yaw + Math.PI, 0);
     e.holder.scale.setScalar(scale);

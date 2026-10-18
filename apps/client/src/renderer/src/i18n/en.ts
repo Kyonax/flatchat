@@ -115,6 +115,7 @@ export default {
     avatar: 'Your avatar',
     height: 'Height: {m} m',
     heightHint: 'Each world fits it into its own range.',
+    proportions: { width: 'Shoulders and hips: {p} %', arms: 'Arms: {p} %', legs: 'Legs: {p} %', head: 'Head: {p} %' },
     avatars: 'Other people’s avatars',
     tierUnset: 'FlatChat measures this computer on your first visit to a world, and sets how many avatars it draws in full.',
     tier: 'This computer measured as {tier}.',

@@ -119,6 +119,7 @@ const es: Shape<typeof en> = {
     avatar: 'Tu avatar',
     height: 'Estatura: {m} m',
     heightHint: 'Cada mundo la ajusta a su rango.',
+    proportions: { width: 'Hombros y caderas: {p} %', arms: 'Brazos: {p} %', legs: 'Piernas: {p} %', head: 'Cabeza: {p} %' },
     avatars: 'Avatares de los demás',
     tierUnset: 'FlatChat mide este computador en tu primera visita a un mundo y decide cuántos avatares dibuja completos.',
     tier: 'Este computador se midió como {tier}.',
