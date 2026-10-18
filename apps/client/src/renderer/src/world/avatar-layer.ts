@@ -310,8 +310,9 @@ export class AvatarLayer {
         e.level = level;
         this.applyProportions(e);
         this.loads += 1;
-      } catch {
+      } catch (err) {
         this.failures += 1;
+        this.lastError = err instanceof Error ? err.message.slice(0, 200) : String(err);
         e.failed = true;
       } finally {
         this.busy = false;
@@ -411,6 +412,14 @@ export class AvatarLayer {
     void this.templates.get(manifest)?.then((t) => this.ready.set(manifest, t));
     return undefined;
   }
+
+  /** The layer's own state, for reports: a load under way, templates, and why loads failed. */
+  status(): { busy: boolean; entries: number; templates: number; failed: number; lastError: string } {
+    let failed = 0;
+    for (const e of this.entries.values()) if (e.failed) failed += 1;
+    return { busy: this.busy, entries: this.entries.size, templates: this.templates.size, failed, lastError: this.lastError };
+  }
+  private lastError = '';
 
   /** How many avatars are drawn at each level now. */
   counts(): Record<Level, number> {

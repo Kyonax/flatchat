@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { checkJoin, type NetCheck } from './net-check';
 import { checkProtocol, type ProtocolCheck } from './protocol-check';
 import { startScene, type BenchOptions, type SceneStats } from './scene';
+import { runConvertedCrowd } from './crowd/converted';
 import { runCrowd } from './crowd/crowd';
 import LoungeView from './lounge/LoungeView.vue';
 import ClientApp from './ui/ClientApp.vue';
@@ -69,6 +70,24 @@ const appMode = !smoke && !(benchSeconds > 0) && !(crowdSeconds > 0) && !loungeU
 onMounted(async () => {
   if (loungeUrl || appMode) return;
   if (!canvas.value) return;
+  if (crowdSeconds > 0 && params.get('converted') === '1') {
+    const report = await runConvertedCrowd(canvas.value, {
+      seconds: crowdSeconds,
+      width: benchWidth,
+      height: benchHeight,
+      present: num('present', 200),
+      inView: num('inview', 55),
+      full: num('full', 12),
+      lower: num('lod', 20),
+      springs: num('springs', 6),
+      onProgress: (line) => {
+        crowdLine.value = line;
+      },
+    });
+    crowdLine.value = report['error'] ? `Crowd failed: ${String(report['error'])}` : 'Converted crowd done';
+    await window.flatchat?.crowdReport(report);
+    return;
+  }
   if (crowdSeconds > 0) {
     const report = await runCrowd(canvas.value, {
       seconds: crowdSeconds,

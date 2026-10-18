@@ -4,7 +4,8 @@
 // buffer and image inside the GLB (no URI of any kind), the limits. Geometry is meshopt-compressed
 // and textures are KTX2 (the converter's output): the decoders come with the bundle, the Basis
 // transcoder handed to KTX2Loader as data URLs because a packaged client's page cannot fetch
-// files (its worker starts from a blob URL: the page's policy allows workers from blob: only).
+// files (its worker starts from a blob URL: the page's policy allows workers from blob: only), and
+// with its text-built embind helpers swapped for closures, since that policy forbids eval.
 // The converter's levels of detail (sibling nodes marked `extras.flatchatLod` 0, 1, 2; three.js
 // puts extras in userData) become THREE.LOD objects that switch by the camera's distance.
 import { inspectScene, readGltf } from '@flatchat/content';
@@ -16,6 +17,7 @@ import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import transcoderJs from 'three/examples/jsm/libs/basis/basis_transcoder.js?raw';
 import transcoderWasm from 'three/examples/jsm/libs/basis/basis_transcoder.wasm?url&inline';
+import { withoutEval } from './basis-transcoder';
 
 export class SceneError extends Error {}
 
@@ -41,7 +43,8 @@ let ktx2: KTX2Loader | undefined;
 export function loader(renderer: THREE.WebGPURenderer): GLTFLoader {
   if (!ktx2) {
     const manager = new THREE.LoadingManager();
-    const js = `data:text/javascript;base64,${btoa(unescape(encodeURIComponent(transcoderJs)))}`;
+    // The transcoder with its two embind helpers rewritten: the worker may not evaluate text (basis-transcoder.ts).
+    const js = `data:text/javascript;base64,${btoa(unescape(encodeURIComponent(withoutEval(transcoderJs))))}`;
     manager.setURLModifier((url) => (url.endsWith('basis_transcoder.js') ? js : url.endsWith('basis_transcoder.wasm') ? transcoderWasm : url));
     ktx2 = new KTX2Loader(manager).setTranscoderPath('basis/');
     ktx2.detectSupport(renderer as never);

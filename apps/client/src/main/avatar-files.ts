@@ -17,14 +17,15 @@ export interface AvatarFile {
   bytes: number;
 }
 
-/** The .vrm files in `dir` and in its subfolders one level down, sorted by name. */
+/** The .vrm files in `dir` and in its subfolders one level down, sorted by name; and a
+ *  subfolder's manifest.json (a converted avatar's, for the converted crowd, S4.12). */
 export function listAvatars(dir: string): AvatarFile[] {
   const out: AvatarFile[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isFile() && /\.vrm$/i.test(entry.name)) out.push({ name: entry.name, bytes: statSync(join(dir, entry.name)).size });
     if (entry.isDirectory()) {
       for (const inner of readdirSync(join(dir, entry.name), { withFileTypes: true })) {
-        if (inner.isFile() && /\.vrm$/i.test(inner.name)) out.push({ name: `${entry.name}/${inner.name}`, bytes: statSync(join(dir, entry.name, inner.name)).size });
+        if (inner.isFile() && (/\.vrm$/i.test(inner.name) || inner.name === 'manifest.json')) out.push({ name: `${entry.name}/${inner.name}`, bytes: statSync(join(dir, entry.name, inner.name)).size });
       }
     }
   }

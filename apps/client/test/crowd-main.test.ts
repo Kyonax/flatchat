@@ -14,8 +14,16 @@ describe('the crowd flags', () => {
   it('reads a crowd run with the plan\'s make-up by default', () => {
     const { flags, errors } = parseFlags(argv('--crowd=300', '--avatars=/tmp/a', '--crowd-out=c.json'));
     expect(errors).toEqual([]);
-    expect(flags.crowd).toEqual({ seconds: 300, avatars: '/tmp/a', full: 12, lod: 20, present: 55, springs: 6, swap: 15, textureMB: 16, lodRatio: 0.3, merge: true, headroom: 1, out: 'c.json' });
+    expect(flags.crowd).toEqual({ seconds: 300, avatars: '/tmp/a', full: 12, lod: 20, present: 55, springs: 6, swap: 15, textureMB: 16, lodRatio: 0.3, merge: true, headroom: 1, converted: false, inView: 55, out: 'c.json' });
     expect(rendererQuery(flags)).toMatchObject({ crowd: '300', size: '1280x720', full: '12', lod: '20', present: '55' });
+    expect(rendererQuery(flags)['converted']).toBeUndefined();
+  });
+
+  it('reads the converted crowd (S4.12): the world\'s avatar layer, 55 in view by default', () => {
+    const { flags, errors } = parseFlags(argv('--crowd=60', '--avatars=/tmp/c', '--crowd-converted=1', '--crowd-present=200'));
+    expect(errors).toEqual([]);
+    expect(flags.crowd).toMatchObject({ converted: true, present: 200, inView: 55 });
+    expect(rendererQuery(flags)).toMatchObject({ converted: '1', inview: '55', present: '200' });
   });
 
   it('refuses a crowd without avatars, a crowd too small for its tiers and mixed modes', () => {
