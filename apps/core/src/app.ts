@@ -12,6 +12,7 @@ import { accountById, checkInvitation, checkSignIn, cleanEmail, makeDecoy, type 
 import { AbuseError, ABUSE_KINDS, type AbuseKind, abuseCases, markRemoved, markSent, openAbuseCase, purgeCases } from './abuse.ts';
 import { Avatars } from './avatars.ts';
 import { Items } from './items.ts';
+import { browse as browseGallery, copyRefused, entry as galleryEntry, publish, take, withdraw } from './gallery.ts';
 import { ContentProblem } from './sandbox.ts';
 import { ADMIN_COOKIE, ADMIN_SESSION_MS, adminFromCookie, adminSigninPage, type AdminWorld, adminWorldsPage, endAdminSession, startAdminSession } from './admin-web.ts';
 import {
@@ -765,7 +766,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
   // ---------------------------------------------------------------- avatars (S4.01, S4.04)
   const contentProblem = (reply: FastifyReply, err: unknown): FastifyReply => {
     if (!(err instanceof ContentProblem)) throw err;
-    const status = { 'upload-trust': 403, 'upload-limit': 409, 'too-large': 413, 'bad-request': 400, 'not-found': 404, 'not-ready': 409, mismatch: 400, 'slot-expired': 410, 'outfit-limit': 409 }[err.code];
+    const status = { 'upload-trust': 403, 'upload-limit': 409, 'too-large': 413, 'bad-request': 400, 'not-found': 404, 'not-ready': 409, mismatch: 400, 'slot-expired': 410, 'outfit-limit': 409, 'publish-trust': 403, licence: 403 }[err.code];
     return sendProblem(reply, problem(status, err.code, err.message));
   };
 
@@ -778,6 +779,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (limited(limits.uploadByAccount, a.id, reply)) return reply;
     const b = (req.body ?? {}) as Record<string, unknown>;
     try {
+      const copy = await copyRefused(o.db, a.id, str(b['sha256'], 64));
+      if (copy) return sendProblem(reply, problem(403, 'licence', copy));
       const slot = await avatars.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
       return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
     } catch (err) {
@@ -858,6 +861,8 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     if (limited(limits.uploadByAccount, a.id, reply)) return reply;
     const b = (req.body ?? {}) as Record<string, unknown>;
     try {
+      const copy = await copyRefused(o.db, a.id, str(b['sha256'], 64));
+      if (copy) return sendProblem(reply, problem(403, 'licence', copy));
       const slot = await items.slot({ id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status }, { name: str(b['name'], 200), bytes: Number(b['bytes']), sha256: str(b['sha256'], 64) }, now());
       return reply.code(201).send({ id: slot.id, upload: { url: slot.url, method: slot.method, expiresAt: slot.expires.toISOString() } });
     } catch (err) {
@@ -898,6 +903,59 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const d = await items.delivery(o.db, (req.params as { manifest: string }).manifest, now());
     if (!d) return sendProblem(reply, problem(404, 'not-found', 'no such item'));
     return reply.header('cache-control', 'private, max-age=600').send(d);
+  });
+
+  // ---------------------------------------------------------------- the free gallery (S5.06)
+  const galleryJson = (e: Awaited<ReturnType<typeof galleryEntry>>): Record<string, unknown> => ({ ...e!, publishedAt: e!.publishedAt.toISOString() });
+  app.get('/api/v1/gallery', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const q = req.query as Record<string, unknown>;
+    const page = await browseGallery(o.db, who.accountId, { kind: q['kind'], slot: q['slot'], body: q['body'], text: str(q['q'], 64), before: str(q['before'], 80) });
+    return { entries: page.entries.map((e) => galleryJson(e)), next: page.next };
+  });
+
+  app.get('/api/v1/gallery/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const e = await galleryEntry(o.db, who.accountId, (req.params as { id: string }).id);
+    if (!e) return sendProblem(reply, problem(404, 'not-found', 'no such entry'));
+    return galleryJson(e);
+  });
+
+  // Publishing: one of the account's own ready avatars or items, under licence fields.
+  app.post('/api/v1/gallery', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const e = await publish(o.db, store, { id: a.id, trust: trustOf(a, now(), o.trust ?? DEFAULT_TRUST), tester: a.tester, status: a.status, displayName: a.displayName }, { kind: b['kind'], id: b['id'], name: str(b['name'], 200), licence: b['licence'], affirm: b['affirm'] }, now());
+      return reply.code(201).send(galleryJson(e));
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  // Taking an entry: the account's own ready copy, worn like its own.
+  app.post('/api/v1/gallery/:id/take', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    try {
+      return await take(o.db, { id: a.id, status: a.status }, (req.params as { id: string }).id, now());
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
+  app.delete('/api/v1/gallery/:id', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    if (!(await withdraw(o.db, who.accountId, (req.params as { id: string }).id, now()))) return sendProblem(reply, problem(404, 'not-found', 'no such entry of yours'));
+    return reply.code(204).send();
   });
 
   app.get('/api/v1/outfits', async (req, reply) => {

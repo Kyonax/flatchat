@@ -91,6 +91,10 @@ A player at trust level 1 (or a tester) uploads a VRM or a GLB from the client: 
 
 An item (clothes, hair, a hat, a prop) is uploaded the way an avatar is: a slot first, then the file, then a conversion in the same sandbox by the item converter (`tools/converter/src/item-cli.ts`), which may also read the three standard bodies in `kits/bodies/` (each checked against `kits.json`'s SHA-256) for its skeleton and clipping checks. A ready item names its slot and the bodies it fits; its fits (one per body) or its prop go to the store under their SHA-256. Anyone signed in fetches a ready item's files through signed links. Any account, a new one included, takes one of the three standard bodies with no upload and no trust level: the core converts the kit once per start and reuses that conversion for everyone after. An avatar whose source is a kit's exact bytes is that body, and its delivery says `kit`, so the client knows the items made for it fit. An outfit is a saved set of the account's own ready items (16 at most), wearable together (one item to a slot, one prop to a point, a full outfit alone), each prop's adjustment within 10 cm, 45 degrees and 80 to 125 percent; deleting an item takes it out of the outfits that held it.
 
+## The Free Gallery (S5.06)
+
+Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packages/content's `licence.ts`): an account at trust level 2 (or a tester) publishes one of its own ready ones, with its word that it may share it and that it keeps to the content rules; every field is required, the gallery takes only what everyone may wear, and an avatar's licence may be stricter than its file's own terms, never looser. Anyone signed in browses it (by kind, slot, body, words; newest first, 40 to a page) and takes an entry: the account's own ready copy, an `avatars` or `items` row naming the entry, worn, saved in outfits and delivered like its own. The publisher withdraws an entry, and deleting its original does too; copies taken stay. An upload slot for an exact copy (the same SHA-256) of someone else's live entry is refused (`licence`) unless the entry's licence allows copies.
+
 ## The API
 
 | Method and path | Auth | What |
@@ -125,6 +129,11 @@ An item (clothes, hair, a hat, a prop) is uploaded the way an avatar is: a slot 
 | `GET /api/v1/item-files/:manifest` | Bearer | A ready item's manifest and signed links to it and to each fit by body (`feminine`, `masculine`, `neutral`) or its `prop`; never its source |
 | `GET /api/v1/outfits` | Bearer | The account's outfits: `{ id, name, items: [{ item, adjust? }], updatedAt }`, 30 at most |
 | `POST /api/v1/outfits`, `PUT /api/v1/outfits/:id`, `DELETE /api/v1/outfits/:id` | Bearer | Save an outfit, new or in place (`{ name, items }`: the account's ready items as manifest SHA-256s, a prop's `adjust` in centimetres, degrees and percent), or delete one |
+| `GET /api/v1/gallery?kind=&slot=&body=&q=&before=` | Bearer | The free gallery (S5.06): `{ entries: [{ id, kind, name, authors, licence, slot, fits, rank, takes, publishedAt, publisher, manifest, mine, taken }], next }`; `next` goes back as `before` |
+| `GET /api/v1/gallery/:id` | Bearer | One live entry |
+| `POST /api/v1/gallery` | Bearer | Publish: `{ kind: avatar \| item, id, name?, licence, affirm: true }` → the entry; trust level 2 or a tester (`publish-trust`), the licence complete (`bad-request`) and fit for the gallery and the file (`licence`) |
+| `POST /api/v1/gallery/:id/take` | Bearer | The account's own ready copy → `{ kind, id }` (the same copy again; the publisher's own original) |
+| `DELETE /api/v1/gallery/:id` | Bearer | The publisher takes the entry out of the gallery; copies stay |
 | `GET /api/v1/files/:hash?e=…&s=…` | The link's signature | A file of the local store; immutable (a year's cache, an `ETag`, 304 on a repeat) |
 
 The pages: `/signup?invite=CODE`, `/signin?request=ID`, `/privacy`, each in English or Spanish (`?lang=es`, or the browser's language).

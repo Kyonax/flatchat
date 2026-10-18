@@ -35,6 +35,9 @@ export interface AvatarRow {
   wearing: boolean;
   /** The standard body it is, when its source is a kit's exact bytes. */
   kit: BodyKit | null;
+  /** Its gallery entry, when the account published it (S5.06); the entry it came from, when taken. */
+  published: string | null;
+  fromGallery: string | null;
 }
 
 /** A standard body as kits/bodies/kits.json names it: its VRM and that file's SHA-256 and size. */
@@ -232,11 +235,13 @@ export class Avatars {
   }
 
   async list(db: Sql, accountId: string): Promise<AvatarRow[]> {
-    const rows = await db.query<{ id: string; name: string; status: AvatarRow['status']; rank: string | null; problems: string; manifest_sha256: string | null; created_at: Date; wearing: boolean; kit: BodyKit | null }>(
-      'select v.id, v.name, v.status, v.rank, v.problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing, v.kit from avatars v join accounts a on a.id = v.owner_id where v.owner_id = $1 and v.deleted_at is null order by v.created_at desc limit 100',
+    const rows = await db.query<{ id: string; name: string; status: AvatarRow['status']; rank: string | null; problems: string; manifest_sha256: string | null; created_at: Date; wearing: boolean; kit: BodyKit | null; published: string | null; gallery_id: string | null }>(
+      `select v.id, v.name, v.status, v.rank, v.problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing, v.kit, v.gallery_id,
+         (select g.id from gallery g where g.avatar_id = v.id and g.withdrawn_at is null and g.removed_at is null limit 1) as published
+       from avatars v join accounts a on a.id = v.owner_id where v.owner_id = $1 and v.deleted_at is null order by v.created_at desc limit 100`,
       [accountId],
     );
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, rank: r.rank, problems: r.problems ? r.problems.split('\n') : [], manifest: r.manifest_sha256, createdAt: r.created_at, wearing: r.wearing === true, kit: r.kit }));
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, rank: r.rank, problems: r.problems ? r.problems.split('\n') : [], manifest: r.manifest_sha256, createdAt: r.created_at, wearing: r.wearing === true, kit: r.kit, published: r.published, fromGallery: r.gallery_id }));
   }
 
   /** Wears one of the account's ready avatars (or none). */
@@ -254,6 +259,8 @@ export class Avatars {
     if (!/^[0-9a-f-]{36}$/i.test(avatarId)) return false;
     const done = await db.query('update avatars set deleted_at = $3 where id = $1 and owner_id = $2 and deleted_at is null returning id', [avatarId, accountId, now]);
     if (done.length === 0) return false;
+    // Its gallery entry goes with it (S5.06); copies already taken stay.
+    await db.query('update gallery set withdrawn_at = $2 where avatar_id = $1 and withdrawn_at is null', [avatarId, now]);
     await db.query('update accounts set avatar_id = null where id = $1 and avatar_id = $2', [accountId, avatarId]);
     return true;
   }

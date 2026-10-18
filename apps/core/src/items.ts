@@ -37,6 +37,9 @@ export interface ItemRow {
   warnings: string[];
   manifest: string | null;
   createdAt: Date;
+  /** Its gallery entry, when the account published it (S5.06); the entry it came from, when taken. */
+  published: string | null;
+  fromGallery: string | null;
 }
 
 /** A worn item as an outfit keeps it and the protocol carries it. */
@@ -170,12 +173,14 @@ export class Items {
   }
 
   async list(db: Sql, accountId: string): Promise<ItemRow[]> {
-    const rows = await db.query<{ id: string; name: string; status: ItemRow['status']; slot: Slot | null; fits: string; problems: string; warnings: string; manifest_sha256: string | null; created_at: Date }>(
-      'select id, name, status, slot, fits, problems, warnings, manifest_sha256, created_at from items where owner_id = $1 and deleted_at is null order by created_at desc limit 500',
+    const rows = await db.query<{ id: string; name: string; status: ItemRow['status']; slot: Slot | null; fits: string; problems: string; warnings: string; manifest_sha256: string | null; created_at: Date; published: string | null; gallery_id: string | null }>(
+      `select i.id, i.name, i.status, i.slot, i.fits, i.problems, i.warnings, i.manifest_sha256, i.created_at, i.gallery_id,
+         (select g.id from gallery g where g.item_id = i.id and g.withdrawn_at is null and g.removed_at is null limit 1) as published
+       from items i where i.owner_id = $1 and i.deleted_at is null order by i.created_at desc limit 500`,
       [accountId],
     );
     const lines = (t: string): string[] => (t ? t.split('\n') : []);
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, slot: r.slot, fits: r.fits ? r.fits.split(',') : [], problems: lines(r.problems), warnings: lines(r.warnings), manifest: r.manifest_sha256, createdAt: r.created_at }));
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, slot: r.slot, fits: r.fits ? r.fits.split(',') : [], problems: lines(r.problems), warnings: lines(r.warnings), manifest: r.manifest_sha256, createdAt: r.created_at, published: r.published, fromGallery: r.gallery_id }));
   }
 
   /** Deletes an item; outfits that held it keep the rest. */
@@ -183,6 +188,8 @@ export class Items {
     if (!/^[0-9a-f-]{36}$/i.test(itemId)) return false;
     const [done] = await db.query<{ manifest_sha256: string | null }>('update items set deleted_at = $3 where id = $1 and owner_id = $2 and deleted_at is null returning manifest_sha256', [itemId, accountId, now]);
     if (!done) return false;
+    // Its gallery entry goes with it (S5.06); copies already taken stay.
+    await db.query('update gallery set withdrawn_at = $2 where item_id = $1 and withdrawn_at is null', [itemId, now]);
     if (done.manifest_sha256) {
       await db.query(
         "update outfits set items = coalesce((select jsonb_agg(e) from jsonb_array_elements(items) e where e->>'item' <> $2), '[]'::jsonb), updated_at = $3 where owner_id = $1 and items @> jsonb_build_array(jsonb_build_object('item', $2::text))",

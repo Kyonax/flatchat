@@ -17,7 +17,7 @@ export interface ConverterProgram {
 }
 
 /** What went wrong with an account's content: an upload, a standard body, an outfit. */
-export type ContentProblemCode = 'upload-trust' | 'upload-limit' | 'too-large' | 'bad-request' | 'not-found' | 'not-ready' | 'mismatch' | 'slot-expired' | 'outfit-limit';
+export type ContentProblemCode = 'upload-trust' | 'upload-limit' | 'too-large' | 'bad-request' | 'not-found' | 'not-ready' | 'mismatch' | 'slot-expired' | 'outfit-limit' | 'publish-trust' | 'licence';
 
 export class ContentProblem extends Error {
   readonly code: ContentProblemCode;
