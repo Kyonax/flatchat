@@ -949,6 +949,21 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     }
   });
 
+  // The starter wardrobe (P.08): any active account takes one of its items, with no upload.
+  app.post('/api/v1/items/starter', async (req, reply) => {
+    const who = await bearer(req, reply);
+    if (!who) return reply;
+    const a = await accountById(o.db, who.accountId);
+    if (!a) return sendProblem(reply, problem(401, 'unauthorized', 'sign in again'));
+    if (limited(limits.uploadByAccount, a.id, reply)) return reply;
+    try {
+      const s = await items.starter({ id: a.id, status: a.status }, str(((req.body ?? {}) as Record<string, unknown>)['starter'], 64), now());
+      return reply.code(s.status === 'ready' ? 200 : 202).send(s);
+    } catch (err) {
+      return contentProblem(reply, err);
+    }
+  });
+
   app.put('/api/v1/items/:id/source', { bodyLimit: ITEM_SOURCE_LIMIT + 1024 }, async (req, reply) => {
     if (limited(limits.apiByAddress, req.ip, reply)) return reply;
     const q = req.query as Record<string, unknown>;

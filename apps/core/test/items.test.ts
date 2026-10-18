@@ -4,6 +4,8 @@
 // for each; anyone signed in fetches its fits through signed links; a refused item keeps its
 // reasons. Any account, a new one too, takes a standard body without an upload, converted once and
 // then reused, and the delivery says which body it is (so does an upload of a kit's exact bytes).
+// So does the starter wardrobe (P.08): any account takes one of its items, converted once and
+// reused, never taken for a copy, never published to the gallery.
 // An outfit holds the account's own ready items, worn together, a prop's adjustment within limits;
 // deleting an item takes it out of the outfits that held it.
 import { createHash, randomBytes } from 'node:crypto';
@@ -11,6 +13,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { STRICT_LICENCE } from '@flatchat/content';
 import { sampleProp } from '@flatchat/converter/item-samples';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -153,6 +156,30 @@ describe('standard bodies', () => {
     expect(sha(vrm)).toBe(KITS.kits['neutral']!.vrmSha256);
     const exact = await settled(maker, 'avatars', await upload(maker, 'avatars', vrm, 'My neutral'));
     expect(exact).toMatchObject({ status: 'ready', kit: 'neutral' });
+  }, 150_000);
+});
+
+describe('the starter wardrobe', () => {
+  it('is taken by any account without an upload, converted once and reused, never a copy, never published', async () => {
+    const first = await account('wardrobe-one@example.org');
+    const took = await app.inject({ method: 'POST', url: '/api/v1/items/starter', headers: first.auth, payload: { starter: 'grey-fedora' } });
+    expect(took.statusCode, took.body).toBe(202);
+    const id = (took.json() as { id: string }).id;
+    const ready = await settled(first, 'items', id);
+    expect(ready).toMatchObject({ status: 'ready', name: 'Grey fedora', slot: 'hat', starter: 'grey-fedora', fits: ['feminine', 'masculine', 'neutral'], problems: [], warnings: [] });
+    // The same account taking it again gets the same item; another gets it ready at once, the same
+    // files, and not as a copy of the first's.
+    expect((await app.inject({ method: 'POST', url: '/api/v1/items/starter', headers: first.auth, payload: { starter: 'grey-fedora' } })).json()).toMatchObject({ id, status: 'ready' });
+    const second = await account('wardrobe-two@example.org', 2);
+    const again = await app.inject({ method: 'POST', url: '/api/v1/items/starter', headers: second.auth, payload: { starter: 'grey-fedora' } });
+    expect(again.statusCode, again.body).toBe(200);
+    const theirs = ((await app.inject({ method: 'GET', url: '/api/v1/items', headers: second.auth })).json() as { items: Array<Record<string, unknown>> }).items.find((i) => i['id'] === (again.json() as { id: string }).id)!;
+    expect(theirs).toMatchObject({ status: 'ready', manifest: ready['manifest'], starter: 'grey-fedora' });
+    // It is everyone's: not to be published as anyone's own.
+    const published = await app.inject({ method: 'POST', url: '/api/v1/gallery', headers: second.auth, payload: { kind: 'item', id: theirs['id'], licence: STRICT_LICENCE, affirm: true } });
+    expect(published.statusCode).toBe(404);
+    expect(published.json()).toMatchObject({ error: 'not-found' });
+    expect((await app.inject({ method: 'POST', url: '/api/v1/items/starter', headers: second.auth, payload: { starter: 'cape' } })).statusCode).toBe(404);
   }, 150_000);
 });
 

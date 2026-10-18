@@ -10,10 +10,13 @@
 // the file declares nothing. A ready item's files (a fit per body, or an attachment's prop) go to
 // the store and its manifest's SHA-256 names it; anyone signed in may fetch a ready item's files
 // through signed links (they see it worn in the world anyway); the source is never handed out.
+// The starter wardrobe (Track P's P.08, kits/items/) is any account's for the taking, with no upload,
+// as a standard body is: converted once per start of the core and reused, never taken for a copy
+// (its fingerprints, like the bodies', explain what they match), never published to the gallery.
 // An outfit is an account's saved set of its ready items (16 at most, the protocol's OUTFIT_MAX),
 // worn together under packages/content's outfitProblems and with each prop's adjustment within
 // WORN_LIMITS; the client sends the one it puts on to the world.
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +49,30 @@ export interface ItemRow {
   /** Its gallery entry, when the account published it (S5.06); the entry it came from, when taken. */
   published: string | null;
   fromGallery: string | null;
+  /** The starter wardrobe's id for it, when it is one (P.08). */
+  starter: string | null;
+}
+
+/** A starter item as kits/items/wardrobe.json lists it: its name, its file, that file's SHA-256 and size. */
+export interface StarterFile {
+  id: string;
+  name: string;
+  file: string;
+  sha256: string;
+  bytes: number;
+}
+
+/** The starter wardrobe in a folder (kits/items/), by id; none when it has no wardrobe.json. */
+export function readStarters(dir: string): Map<string, StarterFile> {
+  const out = new Map<string, StarterFile>();
+  const file = join(dir, 'wardrobe.json');
+  if (!existsSync(file)) return out;
+  const listed = JSON.parse(readFileSync(file, 'utf8')) as { items?: Array<{ id?: unknown; name?: unknown; file?: unknown; sha256?: unknown; bytes?: unknown }> };
+  for (const i of listed.items ?? []) {
+    if (typeof i.id !== 'string' || !/^[a-z0-9-]{1,64}$/.test(i.id) || typeof i.file !== 'string' || typeof i.sha256 !== 'string' || !HASH.test(i.sha256) || !Number.isInteger(i.bytes)) continue;
+    out.set(i.id, { id: i.id, name: typeof i.name === 'string' ? i.name : i.id, file: join(dir, i.file), sha256: i.sha256, bytes: i.bytes as number });
+  }
+  return out;
 }
 
 /** A worn item as an outfit keeps it and the protocol carries it. */
@@ -73,6 +100,8 @@ export interface ItemsOptions {
   converter?: ConverterProgram;
   /** The standard bodies' folder the converter reads (default: the repository's kits/bodies/). */
   kits?: string;
+  /** The starter wardrobe's folder (default: the repository's kits/items/). */
+  wardrobe?: string;
   /** Headless Blender (its executable), for FBX, OBJ and .blend; without it those are refused. */
   blender?: string;
 }
@@ -84,8 +113,12 @@ export class Items {
   private readonly isolated: boolean;
   private readonly converter: ConverterProgram;
   private readonly kits: string;
-  /** The standard bodies' fingerprints (S5.09): what they explain is no evidence of a copy. */
+  /** The standard bodies' and the starter items' fingerprints (S5.09): what they explain is no
+   *  evidence of a copy. */
   private readonly kitPrints: Fingerprint[];
+  /** The starter wardrobe (P.08), by id. */
+  readonly starters: Map<string, StarterFile>;
+  private readonly startedAt = new Date();
   /** Conversions waiting or running, for tests and a clean shutdown. */
   pending = 0;
 
@@ -100,7 +133,45 @@ export class Items {
       reads: [join(ROOT, 'node_modules'), join(ROOT, 'tools', 'converter'), join(ROOT, 'packages')],
     };
     this.kits = o.kits ?? join(ROOT, 'kits', 'bodies');
-    this.kitPrints = readKitFingerprints(this.kits);
+    const wardrobe = o.wardrobe ?? join(ROOT, 'kits', 'items');
+    this.starters = readStarters(wardrobe);
+    this.kitPrints = [...readKitFingerprints(this.kits), ...readKitFingerprints(wardrobe)];
+  }
+
+  /** A starter item for an account (P.08), with no upload: the one it took already, or one this
+   *  start of the core converted (ready at once), or the wardrobe's file converted like an upload. */
+  async starter(account: { id: string; status: string }, id: string, now: Date): Promise<{ id: string; status: 'converting' | 'ready' }> {
+    if (account.status !== 'active') throw new ContentProblem('upload-trust', 'this account cannot take items');
+    const s = this.starters.get(id);
+    if (!s) throw new ContentProblem('not-found', 'no such starter item');
+    const [mine] = await this.o.db.query<{ id: string; status: 'converting' | 'ready' }>(
+      "select id, status from items where owner_id = $1 and starter = $2 and source_sha256 = $3 and status in ('converting', 'ready') and deleted_at is null order by created_at desc limit 1",
+      [account.id, id, s.sha256],
+    );
+    if (mine) return mine;
+    const [n] = await this.o.db.query<{ n: string }>('select count(*) as n from items where owner_id = $1 and deleted_at is null', [account.id]);
+    if (Number(n?.n ?? 0) >= MAX_ITEMS) throw new ContentProblem('upload-limit', `${MAX_ITEMS} items at most: delete one first`);
+    const [done] = await this.o.db.query<{ manifest_sha256: string; slot: Slot; fits: string; warnings: string; name: string; fingerprint: unknown }>(
+      "select manifest_sha256, slot, fits, warnings, name, fingerprint from items where starter = $1 and source_sha256 = $2 and status = 'ready' and converted_at >= $3 order by converted_at desc limit 1",
+      [id, s.sha256, this.startedAt],
+    );
+    if (done && this.o.store.has(done.manifest_sha256)) {
+      const [row] = await this.o.db.query<{ id: string }>(
+        "insert into items (owner_id, name, status, source_sha256, source_bytes, manifest_sha256, slot, fits, warnings, fingerprint, starter, created_at, converted_at) values ($1, $2, 'ready', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id",
+        [account.id, done.name, s.sha256, s.bytes, done.manifest_sha256, done.slot, done.fits, done.warnings, done.fingerprint === null ? null : JSON.stringify(done.fingerprint), id, now, new Date()],
+      );
+      return { id: row!.id, status: 'ready' };
+    }
+    const bytes = new Uint8Array(readFileSync(s.file));
+    if (bytes.length !== s.bytes || sha256(bytes) !== s.sha256) throw new Error(`the starter item ${id} is not the one wardrobe.json names`);
+    this.o.store.put(bytes);
+    const [row] = await this.o.db.query<{ id: string }>(
+      "insert into items (owner_id, name, status, source_sha256, source_bytes, starter, created_at) values ($1, $2, 'converting', $3, $4, $5, $6) returning id",
+      [account.id, cleanName(s.name, NAME_MAX), s.sha256, s.bytes, id, now],
+    );
+    this.pending += 1;
+    this.queue = this.queue.then(() => this.convert(row!.id, s.sha256)).finally(() => (this.pending -= 1));
+    return { id: row!.id, status: 'converting' };
   }
 
   /** An upload slot: checked against the account's trust, its items and the size limit. */
@@ -163,7 +234,7 @@ export class Items {
       mkdirSync(out);
       const more: string[] = [this.kits];
       const reads: string[] = [this.kits];
-      const [row] = await this.o.db.query<{ declaration: unknown; owner_id: string }>('select declaration, owner_id from items where id = $1', [id]);
+      const [row] = await this.o.db.query<{ declaration: unknown; owner_id: string; starter: string | null }>('select declaration, owner_id, starter from items where id = $1', [id]);
       if (row?.declaration) {
         const declared = join(dir, 'declaration.json');
         writeFileSync(declared, JSON.stringify(row.declaration));
@@ -182,9 +253,10 @@ export class Items {
       const { code, result } = run;
       if (result?.ok && code === 0) {
         const manifest = checkItemManifest(result.manifest);
-        // A copy of something taken down, or of another's closed gallery entry, goes no further (S5.09).
+        // A copy of something taken down, or of another's closed gallery entry, goes no further
+        // (S5.09); a starter item is everyone's.
         const fingerprint = readFingerprint(result.fingerprint);
-        const caught = fingerprint && row ? await copyOf(this.o.db, fingerprint, row.owner_id, this.kitPrints) : undefined;
+        const caught = fingerprint && row && !row.starter ? await copyOf(this.o.db, fingerprint, row.owner_id, this.kitPrints) : undefined;
         if (caught) {
           if (caught.of === 'removed') await strike(this.o.db, row!.owner_id, 'copy', caught.detail, new Date());
           this.o.log?.('item-copy', { of: caught.of });
@@ -222,14 +294,14 @@ export class Items {
   }
 
   async list(db: Sql, accountId: string): Promise<ItemRow[]> {
-    const rows = await db.query<{ id: string; name: string; status: ItemRow['status']; slot: Slot | null; fits: string; problems: string; warnings: string; manifest_sha256: string | null; created_at: Date; published: string | null; gallery_id: string | null }>(
-      `select i.id, i.name, i.status, i.slot, i.fits, case when i.status = 'removed' then i.removal else i.problems end as problems, i.warnings, i.manifest_sha256, i.created_at, i.gallery_id,
+    const rows = await db.query<{ id: string; name: string; status: ItemRow['status']; slot: Slot | null; fits: string; problems: string; warnings: string; manifest_sha256: string | null; created_at: Date; published: string | null; gallery_id: string | null; starter: string | null }>(
+      `select i.id, i.name, i.status, i.slot, i.fits, case when i.status = 'removed' then i.removal else i.problems end as problems, i.warnings, i.manifest_sha256, i.created_at, i.gallery_id, i.starter,
          (select g.id from gallery g where g.item_id = i.id and g.withdrawn_at is null and g.removed_at is null limit 1) as published
        from items i where i.owner_id = $1 and i.deleted_at is null order by i.created_at desc limit 500`,
       [accountId],
     );
     const lines = (t: string): string[] => (t ? t.split('\n') : []);
-    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, slot: r.slot, fits: r.fits ? r.fits.split(',') : [], problems: lines(r.problems), warnings: lines(r.warnings), manifest: r.manifest_sha256, createdAt: r.created_at, published: r.published, fromGallery: r.gallery_id }));
+    return rows.map((r) => ({ id: r.id, name: r.name, status: r.status, slot: r.slot, fits: r.fits ? r.fits.split(',') : [], problems: lines(r.problems), warnings: lines(r.warnings), manifest: r.manifest_sha256, createdAt: r.created_at, published: r.published, fromGallery: r.gallery_id, starter: r.starter }));
   }
 
   /** Deletes an item; outfits that held it keep the rest. */

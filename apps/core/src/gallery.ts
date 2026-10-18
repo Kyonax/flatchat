@@ -113,8 +113,8 @@ export async function publish(
   const [row] =
     kind === 'avatar'
       ? await db.query<Own>("select id, name, manifest_sha256, source_sha256, rank from avatars where id = $1 and owner_id = $2 and status = 'ready' and deleted_at is null and gallery_id is null", [req.id, account.id])
-      : await db.query<Own>("select id, name, manifest_sha256, source_sha256, slot, fits from items where id = $1 and owner_id = $2 and status = 'ready' and deleted_at is null and gallery_id is null", [req.id, account.id]);
-  if (!row) throw new ContentProblem('not-found', `no ready ${kind} of yours by that id (a copy taken from the gallery is not yours to publish)`);
+      : await db.query<Own>("select id, name, manifest_sha256, source_sha256, slot, fits from items where id = $1 and owner_id = $2 and status = 'ready' and deleted_at is null and gallery_id is null and starter is null", [req.id, account.id]);
+  if (!row) throw new ContentProblem('not-found', `no ready ${kind} of yours by that id (a copy taken from the gallery, or a starter item, is not yours to publish)`);
   const bytes = store.read(row.manifest_sha256);
   if (!bytes) throw new ContentProblem('not-found', 'its files are gone');
   const manifest = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
