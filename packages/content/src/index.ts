@@ -168,3 +168,4 @@ export {
   type OverlayWhose,
   readOverlayLook,
 } from './overlay.ts';
+export { POLICY_PAGE_IDS, POLICY_PAGES, type PolicyPage } from './policies.ts';
