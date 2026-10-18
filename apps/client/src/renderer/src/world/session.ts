@@ -81,8 +81,9 @@ export interface WorldState {
   /** The built world's name, once it has loaded. */
   world: string;
   flying: boolean;
-  /** How many of the world's sound emitters play (S2.14). */
+  /** How many of the world's sound emitters play (S2.14), and footsteps have sounded (P.06). */
   sounds: number;
+  footsteps: number;
   /** How many base library parts the world placed (S2.05). */
   parts: number;
   /** A short notice the page words in its language ('' for none). */
@@ -264,6 +265,7 @@ export class WorldSession {
       world: '',
       flying: false,
       sounds: 0,
+      footsteps: 0,
       parts: 0,
       notice: '',
       people: [],
@@ -1104,6 +1106,7 @@ export class WorldSession {
       const near = Math.hypot(p.x - this.me.x, p.z - this.me.z) <= 12;
       if (s.step(p.x, p.z, stance === 'standing', false) && near) sounds.footstep({ x: p.x, y: p.y, z: p.z }, 0.18);
     }
+    if (this.state.footsteps !== sounds.steps) this.state.footsteps = sounds.steps;
   }
 
   /** A player's drawn size: the world's fitted height over the standard body's. */

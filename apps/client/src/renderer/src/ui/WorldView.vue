@@ -354,6 +354,7 @@ onBeforeUnmount(() => {
       hidden
       data-test="sounds"
       :data-playing="state.sounds"
+      :data-footsteps="state.footsteps"
       :data-parts="state.parts"
     />
     <span

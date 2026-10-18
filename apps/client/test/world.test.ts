@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-// Downloading a world (S2.04) and moving through it with Rapier (S2.06), without a window.
+// Downloading a world (S2.04) and moving through it with Rapier (S2.06), without a window. Its
+// sounds (S2.14) with the platform's default footsteps and interface sounds (Track P's P.06).
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Collider } from '@flatchat/content';
 import { fromHex, type Message, toHex } from '@flatchat/protocol';
 import { BODY, MOVE, type MoveInput, PLAZA } from '@flatchat/sim';
@@ -15,7 +17,8 @@ import * as THREE from 'three/webgpu';
 import { checkGlb, levelsOfDetail, lodDistances, SceneError } from '../src/renderer/src/world/scene-loader';
 import { buildParts, partGeometry } from '../src/renderer/src/world/parts';
 import { mapColliders } from '../src/renderer/src/world/session';
-import { MAX_EMITTERS, planEmitters, type SoundContext, Strides, WorldSounds } from '../src/renderer/src/world/sounds';
+import { FOOTSTEPS, soundBytes, UI_SOUNDS } from '../src/renderer/src/world/default-sounds';
+import { MAX_EMITTERS, planEmitters, type SoundContext, Strides, UiSounds, WorldSounds } from '../src/renderer/src/world/sounds';
 
 const sha = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 const dirs: string[] = [];
@@ -281,7 +284,7 @@ describe('world sounds (S2.14)', () => {
         panners.push(p);
         return p;
       },
-      createBufferSource: () => ({ ...node(), start: () => (started += 1), stop: () => undefined }),
+      createBufferSource: () => ({ ...node(), playbackRate: param(), start: () => (started += 1), stop: () => undefined }),
       createBuffer: () => ({ getChannelData: () => new Float32Array(8) }),
       decodeAudioData: async (b: ArrayBuffer) => {
         if (b.byteLength === 1) throw new Error('not audio');
@@ -312,8 +315,87 @@ describe('world sounds (S2.14)', () => {
     expect(listener['forwardX']!.value).toBeCloseTo(-1);
     expect(listener['forwardZ']!.value).toBeCloseTo(0);
     // A footstep elsewhere gets its own panner there.
+    await sounds.ready;
     sounds.footstep({ x: 9, y: 0, z: 9 });
     expect(at(panners.at(-1)!)).toEqual([9, 0, 9]);
+    expect(sounds.steps).toBe(1);
+  });
+
+  it('plays the default footsteps: each a recording, never the same twice running, at its loudness', async () => {
+    const played: Array<{ buffer: unknown; rate: number; gain: number }> = [];
+    const param = (): { value: number } => ({ value: 0 });
+    // A step's gain node is the last one made before it starts.
+    const gains: Array<{ value: number }> = [];
+    // Each decoded footstep is the bytes it came from, so the test sees which one played.
+    const fake = {
+      createGain: () => {
+        const g = { gain: param(), connect: (to: unknown) => to };
+        gains.push(g.gain);
+        return g;
+      },
+      createPanner: () => ({ positionX: param(), positionY: param(), positionZ: param(), connect: (to: unknown) => to }),
+      createBufferSource: () => {
+        const src = { buffer: null as unknown, playbackRate: param(), connect: (to: unknown) => to, start: () => played.push({ buffer: src.buffer, rate: src.playbackRate.value, gain: gains.at(-1)!.value }) };
+        return src;
+      },
+      decodeAudioData: async (b: ArrayBuffer) => ({ bytes: b.byteLength }),
+      destination: {},
+      listener: {},
+      close: async () => undefined,
+      resume: async () => undefined,
+    } as unknown as SoundContext;
+    const sounds = new WorldSounds(1, fake);
+    await sounds.ready;
+    for (let k = 0; k < 200; k++) sounds.footstep(undefined, 0.3);
+    expect(played).toHaveLength(200);
+    const which = played.map((p) => (p.buffer as { bytes: number }).bytes);
+    for (let k = 1; k < which.length; k++) expect(which[k]).not.toBe(which[k - 1]);
+    expect(new Set(which).size).toBe(FOOTSTEPS.length);
+    for (const p of played) {
+      expect(p.rate).toBeGreaterThanOrEqual(0.94);
+      expect(p.rate).toBeLessThanOrEqual(1.06);
+      expect(p.gain).toBe(0.3);
+    }
+  });
+
+  it('plays the interface sounds, once decoded, at their volume', async () => {
+    const started: string[] = [];
+    let master = { value: 0 };
+    const fake = {
+      createGain: () => {
+        const g = { gain: { value: 0 }, connect: (to: unknown) => to };
+        if (master.value === 0) master = g.gain;
+        return g;
+      },
+      createBufferSource: () => {
+        const src = { buffer: null as unknown, connect: (to: unknown) => to, start: () => started.push(String((src.buffer as { kind: string }).kind)) };
+        return src;
+      },
+      decodeAudioData: async (b: ArrayBuffer) => ({ kind: Object.entries(UI_SOUNDS).find(([, url]) => soundBytes(url).byteLength === b.byteLength)?.[0] }),
+      destination: {},
+    } as unknown as ConstructorParameters<typeof UiSounds>[1];
+    const ui = new UiSounds(0.5, fake);
+    // Before it is decoded, a sound is silent.
+    ui.play('click');
+    expect(started).toEqual([]);
+    await ui.ready;
+    for (const kind of ['click', 'chime', 'blip'] as const) ui.play(kind);
+    expect(started).toEqual(['click', 'chime', 'blip']);
+    expect(master.value).toBe(0.5);
+    ui.volume = 0.2;
+    expect(master.value).toBe(0.2);
+  });
+
+  it('carries the default sounds kits/sounds/sounds.json lists, each the file it names', () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'kits', 'sounds');
+    const listed = (JSON.parse(readFileSync(join(dir, 'sounds.json'), 'utf8')) as { sounds: Array<{ name: string; kind: string; file: string; sha256: string }> }).sounds;
+    const carried = new Map([...Object.entries(UI_SOUNDS), ...FOOTSTEPS.map((url, k) => [`footstep${k}`, url] as const)]);
+    expect(listed.map((l) => l.name).sort()).toEqual([...carried.keys()].sort());
+    for (const l of listed) {
+      const bytes = new Uint8Array(readFileSync(join(dir, l.file)));
+      expect(createHash('sha256').update(bytes).digest('hex'), l.name).toBe(l.sha256);
+      expect(new Uint8Array(soundBytes(carried.get(l.name)!)), l.name).toEqual(bytes);
+    }
   });
 
   it('counts a stride every 0.7 m on the ground, never in the air or across a teleport', () => {
