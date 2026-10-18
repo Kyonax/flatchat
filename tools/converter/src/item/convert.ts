@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import type { Document, Node } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
-import { BODY_KITS, type BodyKit, checkItemFit, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
+import { BODY_KITS, type BodyKit, checkItemFit, checkItemProp, ITEM_EXTENSIONS, ITEM_FORMAT, ITEM_SOURCE_LIMIT, type ItemClipping, type ItemDeclaration, type ItemFit, ItemFormatError, type ItemManifest, KIT_BONES, readGltf, readItemDeclaration, SLOTS } from '@flatchat/content';
 import { avatarIO, validateGltf } from '../avatar/convert.ts';
 import { fitTextures } from '../textures.ts';
 import { CLIP_TOLERANCE, clippingOf, type KitBody, skeletonOffset } from './clipping.ts';
@@ -123,6 +123,7 @@ export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promi
   const cap = SLOTS[declared.slot];
 
   const io = avatarIO();
+  if (declared.slot === 'attachment') return convertProp(bytes, declared, warnings, warn, ktx2);
   const { fits, problems } = fitNodes(await io.readBinary(bytes));
   for (const [body, node] of fits) {
     const triangles = countTriangles(node);
@@ -196,4 +197,57 @@ export async function convertItem(bytes: Uint8Array, o: ItemOptions = {}): Promi
   };
   const manifestBytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
   return { manifest, manifestBytes, id: sha256(manifestBytes), files };
+}
+
+/** An attachment (S5.04): its rigid meshes as one prop, its origin the point it is worn at. */
+async function convertProp(bytes: Uint8Array, declared: ItemDeclaration, warnings: string[], warn: (w: string) => void, ktx2: boolean): Promise<ItemResult> {
+  const cap = SLOTS.attachment;
+  const io = avatarIO();
+  const doc = await io.readBinary(bytes);
+  const root = doc.getRoot();
+  const problems: string[] = [];
+  if (root.listSkins().length > 0) problems.push('an attachment is carried whole at its point: rigid meshes, no skin');
+  const meshes = root.listNodes().filter((n) => n.getMesh());
+  if (meshes.length === 0) problems.push('an attachment needs a mesh');
+  const triangles = meshes.reduce((n, node) => n + countTriangles(node), 0);
+  const slots = meshes.reduce((n, node) => n + node.getMesh()!.listPrimitives().length, 0);
+  if (triangles > cap.triangles) problems.push(`the prop has ${triangles} triangles, more than an attachment may (${cap.triangles})`);
+  if (slots > cap.materials) problems.push(`the prop has ${slots} material slots, more than an attachment may (${cap.materials})`);
+  if (problems.length) throw new ItemError(problems);
+  for (const a of root.listAnimations()) a.dispose();
+  for (const node of root.listNodes()) node.setCamera(null);
+  for (const c of root.listCameras()) c.dispose();
+  for (const e of root.listExtensionsUsed()) {
+    if (ITEM_EXTENSIONS.has(e.extensionName)) continue;
+    warn(`the ${e.extensionName} extension is left out: the platform's items do not carry it`);
+    e.dispose();
+  }
+  for (const scene of root.listScenes()) scene.setExtras({});
+  root.setExtras({});
+  await doc.transform(prune({ keepLeaves: false, keepAttributes: true }));
+  const textureBytes = await fitTextures([doc], { side: cap.textureSide, budget: 4 * 1024 * 1024 }, ktx2, warn);
+  const file = await io.writeBinary(doc);
+  try {
+    checkItemProp(readGltf(file, 'prop.glb').json as unknown as Record<string, unknown>);
+  } catch (err) {
+    throw new Error(`the converter made a prop the client refuses: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+  }
+  const hash = sha256(file);
+  const manifest: ItemManifest = {
+    format: ITEM_FORMAT,
+    kind: 'item',
+    converter: ITEM_CONVERTER_VERSION,
+    source: { sha256: sha256(bytes), bytes: bytes.length },
+    name: declared.name,
+    authors: declared.authors,
+    slot: 'attachment',
+    hides: [],
+    fits: {},
+    clipping: {},
+    attach: declared.attach!,
+    prop: { file: hash, bytes: file.length, triangles, materialSlots: slots, textureBytes, joints: 0 },
+    warnings,
+  };
+  const manifestBytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
+  return { manifest, manifestBytes, id: sha256(manifestBytes), files: new Map([[hash, file]]) };
 }
