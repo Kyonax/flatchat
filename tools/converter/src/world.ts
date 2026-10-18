@@ -19,10 +19,12 @@ import { join, relative, sep } from 'node:path';
 import {
   BASE_PARTS,
   BUILT_FORMAT,
+  type BuiltEffect,
   type BuiltEmitter,
   type BuiltScene,
   type BuiltWorld,
   type Collider,
+  EFFECT_LIMITS,
   encodeColliders,
   FILE_LIMIT,
   FOLDER_LIMIT,
@@ -44,12 +46,19 @@ import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { MeshoptSimplifier } from 'meshoptimizer/simplifier';
 import { exportNavMesh, init as initRecast } from 'recast-navigation';
 import { generateSoloNavMesh } from 'recast-navigation/generators';
+import { convertEffect, EffectError, type EffectResult, folderEffect } from './effect/convert.ts';
+import { DryRunner, type DryRunnerOptions } from './effect/dry-run.ts';
 import { fitTextures } from './textures.ts';
 
 export interface ConvertOptions {
   /** Skip KTX2 (tests, quick previews): textures are only fitted to the size limits. */
   ktx2?: boolean;
   log?: (event: string, fields: Record<string, unknown>) => void;
+  /** Dry-run the world's effects in this thread, with no deadline (where threads are not
+   *  allowed); otherwise each runs in a worker thread with one (S6.01). */
+  effectsInThread?: boolean;
+  /** How that worker starts, where the converter is bundled (the client's main process). */
+  dryRunner?: DryRunnerOptions;
 }
 
 export interface ConvertResult {
@@ -361,56 +370,97 @@ export async function convertWorld(files: ReadonlyMap<string, Uint8Array>, o: Co
   await fitTextures(docs, TEXTURE_LIMITS, o.ktx2 ?? true, warn);
 
   const scenes: BuiltScene[] = [];
-  for (const [i, doc] of docs.entries()) {
-    const { info, json, base } = parsed[i]!;
-    doc.setLogger(new Logger(Logger.Verbosity.ERROR));
-    await doc.transform(dedup(), prune(), weld());
-    const lods = addLevelsOfDetail(doc);
-    if (lods > 0) o.log?.('levels-of-detail', { scene: info.file, meshes: lods });
-    await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
-    const glb = await io.writeBinary(doc);
-    const emitters: BuiltEmitter[] = [];
-    const audio = (json.extensions?.['KHR_audio_emitter'] ?? {}) as { audio?: Array<{ uri?: string }>; sources?: Array<{ audio?: number; gain?: number; loop?: boolean; autoPlay?: boolean }>; emitters?: Array<{ type?: string; gain?: number; sources?: number[]; positional?: { refDistance?: number; maxDistance?: number } }> };
-    for (const e of info.emitters) {
-      const em = audio.emitters?.[e.emitter];
-      const src = audio.sources?.[em?.sources?.[0] ?? -1];
-      const uri = audio.audio?.[src?.audio ?? -1]?.uri;
-      const file = uri ? files.get(base + decodeURIComponent(uri)) : undefined;
-      if (!em || !src || !file) {
-        warn(`${info.file}: an audio emitter without a sound file beside the scene is skipped`);
-        continue;
+  const measured = new Map<string, EffectResult>();
+  let runner: DryRunner | undefined;
+  try {
+    for (const [i, doc] of docs.entries()) {
+      const { info, json, base } = parsed[i]!;
+      doc.setLogger(new Logger(Logger.Verbosity.ERROR));
+      await doc.transform(dedup(), prune(), weld());
+      const lods = addLevelsOfDetail(doc);
+      if (lods > 0) o.log?.('levels-of-detail', { scene: info.file, meshes: lods });
+      await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+      const glb = await io.writeBinary(doc);
+      const emitters: BuiltEmitter[] = [];
+      const audio = (json.extensions?.['KHR_audio_emitter'] ?? {}) as { audio?: Array<{ uri?: string }>; sources?: Array<{ audio?: number; gain?: number; loop?: boolean; autoPlay?: boolean }>; emitters?: Array<{ type?: string; gain?: number; sources?: number[]; positional?: { refDistance?: number; maxDistance?: number } }> };
+      for (const e of info.emitters) {
+        const em = audio.emitters?.[e.emitter];
+        const src = audio.sources?.[em?.sources?.[0] ?? -1];
+        const uri = audio.audio?.[src?.audio ?? -1]?.uri;
+        const file = uri ? files.get(base + decodeURIComponent(uri)) : undefined;
+        if (!em || !src || !file) {
+          warn(`${info.file}: an audio emitter without a sound file beside the scene is skipped`);
+          continue;
+        }
+        emitters.push({
+          position: transformPoint(e.matrix, [0, 0, 0]),
+          audio: put(file, 'audio'),
+          positional: em.type !== 'global',
+          gain: Math.min(4, Math.max(0, (em.gain ?? 1) * (src.gain ?? 1))),
+          loop: src.loop ?? false,
+          autoPlay: src.autoPlay ?? true,
+          refDistance: Math.max(0.01, em.positional?.refDistance ?? 1),
+          maxDistance: Math.max(0.01, em.positional?.maxDistance ?? 50),
+        });
       }
-      emitters.push({
-        position: transformPoint(e.matrix, [0, 0, 0]),
-        audio: put(file, 'audio'),
-        positional: em.type !== 'global',
-        gain: Math.min(4, Math.max(0, (em.gain ?? 1) * (src.gain ?? 1))),
-        loop: src.loop ?? false,
-        autoPlay: src.autoPlay ?? true,
-        refDistance: Math.max(0.01, em.positional?.refDistance ?? 1),
-        maxDistance: Math.max(0.01, em.positional?.maxDistance ?? 50),
+      // Effects (S6.01): each file dry-run once for where it plays, its bundle a file of the world.
+      const effects: BuiltEffect[] = [];
+      for (const e of info.effects) {
+        const key = `${e.path}@${e.scale}`;
+        let fx = measured.get(key);
+        if (!fx) {
+          try {
+            runner ??= o.effectsInThread ? undefined : new DryRunner(o.dryRunner);
+            fx = await convertEffect(folderEffect(files, e.path), { where: 'world', scale: e.scale, ...(runner ? { runner } : {}) });
+          } catch (err) {
+            const problems = err instanceof EffectError ? err.problems : [String(err)];
+            throw new ConvertError({ ...report, ok: false, problems: problems.map((m) => ({ code: 'effect-refused', severity: 'error' as const, file: e.path, at: `nodes[${e.node}]`, message: m })) });
+          }
+          measured.set(key, fx);
+          for (const w of fx.warnings) warn(`${e.path}: ${w}`);
+        }
+        effects.push({ file: put(fx.bundle, 'effect'), matrix: e.matrix, scale: e.scale, peak: fx.fit.peak });
+      }
+      const boxOf = (m: Mat4, size: [number, number, number]): { center: [number, number, number]; half: [number, number, number]; yaw: number } => {
+        const d = decompose(m);
+        return { center: d.position, half: [(size[0] * d.scale[0]) / 2, (size[1] * d.scale[1]) / 2, (size[2] * d.scale[2]) / 2], yaw: Math.atan2(m[8]!, m[10]!) };
+      };
+      scenes.push({
+        id: report.manifest.scenes[i]!.id,
+        glb: put(glb, 'scene'),
+        spawns: info.spawns.map((s) => ({ position: s.position, yaw: s.yaw, title: s.title, group: s.group })),
+        seats: [
+          ...info.seats.map((s) => ({ position: transformPoint(s.matrix, [0, 0, 0]), yaw: Math.atan2(-s.matrix[8]!, -s.matrix[10]!) })),
+          ...info.parts.flatMap((p) => (BASE_PARTS[p.id]!.seats ?? []).map((seat) => ({ position: transformPoint(p.matrix, seat.position), yaw: Math.atan2(-p.matrix[8]!, -p.matrix[10]!) + seat.yaw }))),
+        ],
+        parts: info.parts.map((p) => {
+          const d = decompose(p.matrix);
+          return { id: p.id, position: d.position, rotation: d.rotation, scale: d.scale };
+        }),
+        portals: info.portals.map((p) => ({ ...boxOf(p.matrix, p.size), world: p.world, spawn: p.spawn })),
+        zones: info.zones.map((z) => ({ ...boxOf(z.matrix, z.size), kind: z.kind, ...(z.range !== undefined ? { range: z.range } : {}), ...(z.gain !== undefined ? { gain: z.gain } : {}) })),
+        emitters,
+        effects,
+        triangles: info.triangles,
       });
     }
-    const boxOf = (m: Mat4, size: [number, number, number]): { center: [number, number, number]; half: [number, number, number]; yaw: number } => {
-      const d = decompose(m);
-      return { center: d.position, half: [(size[0] * d.scale[0]) / 2, (size[1] * d.scale[1]) / 2, (size[2] * d.scale[2]) / 2], yaw: Math.atan2(m[8]!, m[10]!) };
-    };
-    scenes.push({
-      id: report.manifest.scenes[i]!.id,
-      glb: put(glb, 'scene'),
-      spawns: info.spawns.map((s) => ({ position: s.position, yaw: s.yaw, title: s.title, group: s.group })),
-      seats: [
-        ...info.seats.map((s) => ({ position: transformPoint(s.matrix, [0, 0, 0]), yaw: Math.atan2(-s.matrix[8]!, -s.matrix[10]!) })),
-        ...info.parts.flatMap((p) => (BASE_PARTS[p.id]!.seats ?? []).map((seat) => ({ position: transformPoint(p.matrix, seat.position), yaw: Math.atan2(-p.matrix[8]!, -p.matrix[10]!) + seat.yaw }))),
-      ],
-      parts: info.parts.map((p) => {
-        const d = decompose(p.matrix);
-        return { id: p.id, position: d.position, rotation: d.rotation, scale: d.scale };
-      }),
-      portals: info.portals.map((p) => ({ ...boxOf(p.matrix, p.size), world: p.world, spawn: p.spawn })),
-      zones: info.zones.map((z) => ({ ...boxOf(z.matrix, z.size), kind: z.kind, ...(z.range !== undefined ? { range: z.range } : {}), ...(z.gain !== undefined ? { gain: z.gain } : {}) })),
-      emitters,
-      triangles: info.triangles,
+  } finally {
+    // The dry runs' worker, ended however the scenes end.
+    await runner?.close();
+  }
+  // A world's effects together, as every visitor plays them at once.
+  const sum = { instances: 0, quads: 0, triangles: 0 };
+  for (const e of scenes.flatMap((s) => s.effects)) {
+    sum.instances += e.peak.instances;
+    sum.quads += e.peak.quads;
+    sum.triangles += e.peak.triangles;
+  }
+  const cap = EFFECT_LIMITS.world;
+  if (sum.instances > cap.instances || sum.quads > cap.quads || sum.triangles > cap.triangles) {
+    throw new ConvertError({
+      ...report,
+      ok: false,
+      problems: [{ code: 'effects-over-budget', severity: 'error', file: '', at: 'effects', message: `the world's effects have up to ${sum.instances} particles, ${sum.quads} quads and ${sum.triangles} model triangles together; a world's may have ${cap.instances}, ${cap.quads} and ${cap.triangles}` }],
     });
   }
 

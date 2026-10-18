@@ -8,16 +8,17 @@
 // thread with a deadline, ends the thread past it, and keeps one worker for many effects.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Worker } from 'node:worker_threads';
+import { Worker, type WorkerOptions } from 'node:worker_threads';
 import { EFFECT_LIMITS, type EffectBundle } from '@flatchat/content';
 import { type DryRun, DryRunFailed, type DryRunOptions, measure, type NativeFactory, standIn, type WebGLBuild } from '@flatchat/effects';
 
 let webgl: WebGLBuild | undefined;
-/** The WebGL build, read from @flatchat/effects' third_party/effekseer once. */
-export async function webglBuild(): Promise<WebGLBuild> {
+/** The WebGL build, read from @flatchat/effects' third_party/effekseer once; or with the
+ *  WebAssembly given, where the package's files are bundled away (the client's main process). */
+export async function webglBuild(wasm?: Uint8Array): Promise<WebGLBuild> {
   webgl ??= {
     factory: ((await import('@flatchat/effects/runtime/effekseer-webgl-native.js')) as { default: NativeFactory }).default,
-    wasm: new Uint8Array(readFileSync(fileURLToPath(import.meta.resolve('@flatchat/effects/runtime/wasm/effekseer-webgl-native.wasm')))),
+    wasm: wasm ?? new Uint8Array(readFileSync(fileURLToPath(import.meta.resolve('@flatchat/effects/runtime/wasm/effekseer-webgl-native.wasm')))),
   };
   return webgl;
 }
@@ -39,19 +40,31 @@ interface Reply {
   error?: string;
 }
 
+export interface DryRunnerOptions {
+  deadlineMs?: number;
+  /** Starts the worker thread (dry-run-worker.ts). The client's main process is bundled, so it
+   *  passes its own (electron-vite's `?nodeWorker`), with the runtime's WebAssembly it read. */
+  worker?: (o: WorkerOptions) => Worker;
+  wasm?: Uint8Array;
+}
+
 /** Dry runs in a worker thread, each with a deadline. */
 export class DryRunner {
   private worker: Worker | undefined;
   private next = 0;
   private readonly waiting = new Map<number, { resolve: (r: DryRun) => void; reject: (e: Error) => void }>();
   readonly deadlineMs: number;
+  private readonly makeWorker: (o: WorkerOptions) => Worker;
+  private readonly wasm: Uint8Array | undefined;
 
-  constructor(o: { deadlineMs?: number } = {}) {
+  constructor(o: DryRunnerOptions = {}) {
     this.deadlineMs = o.deadlineMs ?? EFFECT_LIMITS.dryRunMs;
+    this.makeWorker = o.worker ?? ((w) => new Worker(new URL('./dry-run-worker.ts', import.meta.url), w));
+    this.wasm = o.wasm;
   }
 
   private start(): Worker {
-    const w = new Worker(new URL('./dry-run-worker.ts', import.meta.url));
+    const w = this.makeWorker({ workerData: { wasm: this.wasm } });
     w.on('message', (m: Reply) => {
       const p = this.waiting.get(m.id);
       if (!p) return;

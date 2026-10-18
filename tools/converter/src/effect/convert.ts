@@ -130,6 +130,25 @@ function packageUpload(entries: Record<string, Uint8Array>, meta: Uint8Array): E
   return relativeTo(main, Object.fromEntries(files));
 }
 
+/** An effect in a world folder (S6.01), with the files it names beside it, as a bundle. Files it
+ *  names that are not there are left out: the validator reported them, the dry run will too. */
+export function folderEffect(files: ReadonlyMap<string, Uint8Array>, path: string): EffectBundle {
+  const main = files.get(path);
+  if (!main) throw new EffectError([`${path} is not in the folder`]);
+  const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
+  const name = path.slice(dir.length);
+  const own = new Map<string, Uint8Array>([[name, main]]);
+  try {
+    for (const f of effectFiles(readEffectFile(main))) {
+      const bytes = files.get(effectPath(dir + f.path));
+      if (bytes) own.set(f.path, bytes);
+    }
+  } catch (err) {
+    throw new EffectError(err instanceof EffectFormatError ? err.problems : [String(err)]);
+  }
+  return { main: name, files: own };
+}
+
 export interface EffectOptions {
   where: 'avatar' | 'world';
   /** The scale it plays at (the declaration's). */

@@ -16,7 +16,8 @@
     "./item-samples": "./src/item/samples.ts",
     "./animation-samples": "./src/animation/samples.ts",
     "./format-samples": "./src/source/samples.ts",
-    "./effect-samples": "./src/effect/samples.ts"
+    "./effect-samples": "./src/effect/samples.ts",
+    "./dry-run-worker": "./src/effect/dry-run-worker.ts"
   },
   "scripts": {
     "convert": "node src/cli.ts",

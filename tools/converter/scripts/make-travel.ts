@@ -10,6 +10,9 @@
 //        [--modes reset,persistent]   (each world's persistence; the kits' own when left out)
 //        [--quiet]                    (Stage 3's acceptance, S3.13: the second world gets a quiet zone,
 //                                      with a spawn group `quiet` inside it and `near-quiet` 7 m outside)
+//        [--effect]                   (S6.01: the second world gets an effect, Effekseer's CC0 tornado
+//                                      sample from kits/effects/samples, 6 m in front of its arrivals
+//                                      and 3 m to the right, beside the avatar in the camera's view)
 //
 // Writes OUT/a and OUT/b (world folders) and OUT/a.built and OUT/b.built. One JSON line names each
 // world's portal centre and arrival point, in its metres (and the first world's at the top).
@@ -25,7 +28,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false } },
+  options: { worlds: { type: 'string' }, names: { type: 'string', default: 'Travel A,Travel B' }, kits: { type: 'string', default: 'plaza,plaza' }, modes: { type: 'string' }, quiet: { type: 'boolean', default: false }, effect: { type: 'boolean', default: false } },
 });
 const out = positionals[0];
 const ids = (values.worlds ?? '').split(',');
@@ -98,12 +101,20 @@ function quietMarkers(kit: 'plaza' | 'park'): NodeSpec[] {
   ];
 }
 
-function travelScene(kit: 'plaza' | 'park', to: string, quiet = false): Uint8Array {
+/** The effect of --effect: the tornado's file and its texture, beside the travel scene. */
+const TORNADO = join(ROOT, 'kits', 'effects', 'samples', '00_Version16');
+function tornadoMarker(kit: 'plaza' | 'park'): NodeSpec {
+  const [x, y, z] = LAYOUT[kit].arrival;
+  return { name: 'tornado', translation: [x + 3, y, z - 6], extensions: { FLATCHAT_world: { effect: { uri: 'effects/ForceFieldTornado.efkefc', scale: 0.25 } } } };
+}
+
+function travelScene(kit: 'plaza' | 'park', to: string, quiet = false, effect = false): Uint8Array {
   const { portal, arrival } = LAYOUT[kit];
   const markers: NodeSpec[] = [
     { name: 'portal', translation: portal, extensions: { FLATCHAT_world: { portal: { world: to, spawn: 'arrival', size: SIZE } } } },
     { name: 'arrival', translation: arrival, extensions: { OMI_spawn_point: { title: 'Arrivals', group: 'arrival' } } },
     ...(quiet ? quietMarkers(kit) : []),
+    ...(effect ? [tornadoMarker(kit)] : []),
   ];
   if (kit === 'park') {
     // The base library's arch around the portal: still no geometry in the park's files.
@@ -135,7 +146,13 @@ for (const [k, label] of [[0, 'a'], [1, 'b']] as const) {
   const dir = join(out, label);
   mkdirSync(dir, { recursive: true });
   cpSync(join(ROOT, 'kits', 'worlds', kit), dir, { recursive: true });
-  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!, values.quiet && label === 'b'));
+  const effect = values.effect && label === 'b';
+  writeFileSync(join(dir, 'scenes', 'travel.glb'), travelScene(kit, ids[1 - k]!, values.quiet && label === 'b', effect));
+  if (effect) {
+    mkdirSync(join(dir, 'scenes', 'effects', 'Textures'), { recursive: true });
+    cpSync(join(TORNADO, 'ForceFieldTornado.efkefc'), join(dir, 'scenes', 'effects', 'ForceFieldTornado.efkefc'));
+    cpSync(join(TORNADO, 'Textures', 'Particle01.png'), join(dir, 'scenes', 'effects', 'Textures', 'Particle01.png'));
+  }
   if (kit === 'plaza') writeFileSync(join(dir, 'scenes', 'fountain.wav'), fountainWav());
   let toml = readFileSync(join(dir, 'world.toml'), 'utf8').replace(/^name = ".*"$/m, `name = ${JSON.stringify(names[k])}`);
   if (modes) toml = toml.replace(/^mode = ".*"$/m, `mode = "${modes[k]}"`);

@@ -156,3 +156,63 @@ describe('an effect as an item', () => {
     }
   }, 120_000);
 });
+
+describe('effects in a world', () => {
+  /** The plaza with a scene of `count` trails, Effekseer's sample, beside it. The trail, not the
+   *  tornado: its updates take a fifth of the tornado's, so the update limit stays out of these
+   *  tests even under the harness's load (which made the tornado's 0.29 ms take 2.1 ms). */
+  async function plazaWith(count: number): Promise<Map<string, Uint8Array>> {
+    const { writeGlb } = await import('../src/glb-writer.ts');
+    const { readFolder } = await import('../src/world.ts');
+    const files = readFolder(join(ROOT, 'kits', 'worlds', 'plaza'));
+    const nodes = Array.from({ length: count }, (_, i) => ({ name: `trail-${i}`, translation: [10 + i * 4, 0, 10] as [number, number, number], extensions: { FLATCHAT_world: { effect: { uri: 'fx/Simple_Track1.efkefc', scale: 0.1 } } } }));
+    files.set('scenes/fx.glb', writeGlb([], nodes, {}, ['FLATCHAT_world']));
+    const t = sampleBundle('00_Basic/Simple_Track1.efkefc');
+    for (const [p, b] of t.files) files.set(`scenes/fx/${p}`, b);
+    files.set('world.toml', new TextEncoder().encode(`${new TextDecoder().decode(files.get('world.toml')!).trimEnd()}\n\n[[scenes]]\nid = "fx"\nfile = "scenes/fx.glb"\n`));
+    return files;
+  }
+
+  it('bundles each effect once, places it, and lists what it measured', async () => {
+    const { convertWorld } = await import('../src/world.ts');
+    const { world, out } = await convertWorld(await plazaWith(1), { ktx2: false, effectsInThread: true });
+    const fx = world.scenes.find((s) => s.id === 'fx')!.effects;
+    expect(fx).toHaveLength(1);
+    expect(fx[0]).toMatchObject({ scale: 0.1, peak: { instances: 406, quads: 800 } });
+    expect(fx[0]!.matrix.slice(12, 15)).toEqual([10, 0, 10]);
+    expect(world.files.find((f) => f.hash === fx[0]!.file)?.kind).toBe('effect');
+    expect(readBundle(out.get(`content/${fx[0]!.file}`)!).main).toBe('Simple_Track1.efkefc');
+  }, 120_000);
+
+  it('refuses a world whose effects together are more than a world may play', async () => {
+    const { convertWorld, ConvertError } = await import('../src/world.ts');
+    // Five trails of 406 particles: each fits a world, together they are over its 2,000.
+    const err = await convertWorld(await plazaWith(5), { ktx2: false, effectsInThread: true }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConvertError);
+    expect((err as InstanceType<typeof ConvertError>).report.problems).toEqual([expect.objectContaining({ code: 'effects-over-budget', message: expect.stringMatching(/2030 particles, 4000 quads/) })]);
+  }, 120_000);
+});
+
+describe('a dry runner started by its host', () => {
+  it('runs in the worker it is given, with the WebAssembly it is handed', async () => {
+    const { Worker } = await import('node:worker_threads');
+    const { DryRunner } = await import('../src/effect/dry-run.ts');
+    const wasm = new Uint8Array(readFileSync(join(ROOT, 'packages', 'effects', 'third_party', 'effekseer', 'wasm', 'effekseer-webgl-native.wasm')));
+    const started: unknown[] = [];
+    // As the client's bundled main process starts it: its own worker, the bytes in its data.
+    const runner = new DryRunner({
+      wasm,
+      worker: (o) => {
+        started.push((o.workerData as { wasm?: Uint8Array }).wasm?.length);
+        return new Worker(new URL('../src/effect/dry-run-worker.ts', import.meta.url), o);
+      },
+    });
+    try {
+      const run = await runner.run(sampleBundle('00_Basic/Laser01.efkefc'), { scale: 1 });
+      expect(run.peak).toEqual({ instances: 122, quads: 121, triangles: 0 });
+      expect(started).toEqual([wasm.length]);
+    } finally {
+      await runner.close();
+    }
+  }, 120_000);
+});
