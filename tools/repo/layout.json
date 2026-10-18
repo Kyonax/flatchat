@@ -29,6 +29,7 @@
     "packages/sim": "Apache-2.0",
     "packages/content": "Apache-2.0",
     "packages/plugin-sdk": "Apache-2.0",
+    "packages/effects": "Apache-2.0",
     "tools/converter": "MPL-2.0",
     "tools/host-tool": "MPL-2.0",
     "tools/bots": "MPL-2.0",
