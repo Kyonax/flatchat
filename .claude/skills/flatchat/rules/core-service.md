@@ -12,7 +12,7 @@ tags: core, apps/core, starter wardrobe, POST /api/v1/items/starter, readStarter
 | File | Job |
 |---|---|
 | `src/main.ts` | The program: migrates, listens (127.0.0.1:8787 by default), JSON log lines `ready`, `request`, `stopped`; SIGINT, SIGTERM and `--stop-on-stdin` |
-| `src/config.ts` | Settings from the environment only (`FLATCHAT_CORE_DB`, `FLATCHAT_CORE_SECRET`, `FLATCHAT_CORE_URL`, `FLATCHAT_CORE_OPERATOR`, `FLATCHAT_CORE_CONTACT`, `FLATCHAT_CORE_TUNNEL`, `FLATCHAT_CORE_TRUST`, the TURN settings) |
+| `src/config.ts` | Settings from the environment only (`FLATCHAT_CORE_DB`, `FLATCHAT_CORE_SECRET`, `FLATCHAT_CORE_URL`, `FLATCHAT_CORE_OPERATOR`, `FLATCHAT_CORE_CONTACT`, `FLATCHAT_CORE_ADDRESS` and `FLATCHAT_CORE_PHONE` (S7.02, the data policy names both), `FLATCHAT_CORE_TUNNEL`, `FLATCHAT_CORE_TRUST`, the TURN settings) |
 | `src/trust.ts` | Trust levels (S3.09): `DEFAULT_TRUST`, `parseTrust`, `earnedTrust`, `trustOf` (pure) |
 | `src/mail.ts`, `src/verify.ts` | Mail (S3.03, DR-21): `Mailer` (`resendMailer` over Resend's HTTP API, `folderMailer` writing `.eml` files, `noMailer`), chosen by `FLATCHAT_CORE_MAIL`; verification links (a day, one every ten minutes, digests in `email_verifications`), `GET /verify`, `POST /api/v1/me/verify`. Never log an address or a link. `FLATCHAT_CORE_SIGNUP=open` lets `/signup` take anyone without an invitation; the tests run Resend's API as a mail catcher on loopback (`test/mail.test.ts`) |
 | `src/moderation.ts` | Moderation (S3.07): platform decisions with reasons, appeals (platform and world bans), `world_unbans`, the host agreement's version; rule `roles-and-moderation` |
@@ -29,7 +29,8 @@ tags: core, apps/core, starter wardrobe, POST /api/v1/items/starter, readStarter
 | `src/accounts.ts` | Fields, invitations, sign-up, the sign-in check |
 | `src/sessions.ts` | Login requests, codes, sessions, refresh rotation |
 | `src/worlds.ts` | Registration, approval, revocation, connect tokens |
-| `src/pages.ts`, `src/strings.ts`, `src/countries.ts` | The sign-in, sign-up and privacy pages; every word in English and Spanish |
+| `src/pages.ts`, `src/strings.ts`, `src/countries.ts` | The sign-in and sign-up pages and `documentPage` (S7.02); every word in English and Spanish |
+| `src/documents.ts` | The rules and policies (S7.02, drafts for the lawyer's review, OQ-19): `rules`, `terms`, `privacy`, `dataPolicy` (Colombia's, every item of Decreto 1377 art. 13), `teens`, `guardians`, `lawEnforcement`, in both languages with the same sections; placeholders `{operator}`, `{contact}`, `{address}`, `{phone}`, `{effective}`; `[TO DECIDE: …]` notes are the owner's and the lawyer's open questions (listed in `docs/policies.md`). Served at `POLICY_PAGES` (packages/content's `policies.ts`, the client links the same list) with a draft banner, the other language and every other document linked; `test/documents.test.ts` |
 | `src/admin.ts` | The admin command line |
 | `scripts/pg.ts`, `scripts/db.ts` | A private PostgreSQL cluster in a folder (no root, no port); `npm run core:db` |
 | `test/` | `global-setup.ts` starts one throwaway cluster per run, `db.ts` makes a migrated database per file |

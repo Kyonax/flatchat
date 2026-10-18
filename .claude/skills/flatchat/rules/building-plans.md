@@ -16,6 +16,7 @@ Track P's P.01 (dp-007): a building is a semantic SVG plan, a layer per floor, i
 | `src/plan/build.ts` | `buildPlan(plan, id)` → `{ glb, worldToml, triangles, materials, solids, parts }`; `planSolids` for previews; `earClip` |
 | `src/plan/materials.ts` | The trim sheet (`BANDS`: hull, panel, kick, trim), the deck plate, the landing pad and the star field, drawn from a seeded generator |
 | `src/glb-writer.ts` | Writes the scene: textures (`ImageSpec`), UVs, `COLOR_0`, emissive; unchanged output for meshes that use none |
+| `scripts/make-hangout.ts` | The owner's hangout (S7.03): the docking bay built again from its plan as the scene `bay`, a lounge of base parts as `lounge` (benches, tables, lamps, a stage, planters), a hall reverb zone and a seeded hum, a station's `[look]`; writes `kits/worlds/hangout/` and converts it to check; the offline check plays it (`kit:hangout`) |
 | `scripts/build-plan.ts`, `scripts/plan-preview.ts` | Build a plan into its folder; draw an isometric cut-away with the anatomy skill or iso-figures (`--kit DIR`, never vendored) |
 | `test/plan.test.ts` | The reader, the problems, openings into sills and lintels, box or trimesh slabs, the light and its shadows, and the docking bay: the same bytes as committed, validated and converted with no warning |
 
