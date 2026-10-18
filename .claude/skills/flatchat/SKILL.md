@@ -3,7 +3,7 @@ name: flatchat
 description: "The engine skill for FlatChat (a social world platform, VRChat on a flat screen): TypeScript end to end on Node.js 24 with npm workspaces; the Electron 44 client (main, preload, renderer, Vue 3.5, three.js r186 WebGPU or WebGL2, smoke and bench modes); the core (accounts, the age rule, browser sign-in, sessions, worlds, connect tokens, trust levels, PostgreSQL); the world server, its plugins, entry rules and roles, its transports (WebRTC via node-datachannel, raw UDP with our own encryption), joins, interest management, snapshots, voice forwarding; the wire protocol (codecs, messages, connect tokens, the handshake, golden packets); headless bots and load tests; VRM avatar crowds; licences by folder and SPDX headers; untrusted-input security; offline tests; the harness (npm run harness) and its trap linter (T01-T21); GitHub Actions CI on GPU-less runners; Linux and Windows packaging; the weak-laptop stand-in. Use for any change, test, CI failure, build or measurement here, and before calling work done."
 user-invocable: true
 metadata:
-  version: "1.34.0"
+  version: "1.35.0"
   verified: "2026-10-18"
 ---
 
@@ -76,6 +76,7 @@ Reference these guidelines when:
 | The three standard bodies: making or changing the body kits, headless Blender with MPFB and the VRM add-on, `kits/bodies/` | `rules/body-kits.md` + `rules/avatar-converter.md` |
 | Items (clothes, hair, hats, glasses): the item format, slots and caps, hide-mask regions, the item converter, the no-clipping check, outfits and what can be worn together | `rules/items.md` + `rules/body-kits.md` |
 | Item uploads, saved outfits, the standard bodies as avatars (`POST /api/v1/avatars/kit`), the converters' sandbox | `rules/core-service.md` + `rules/items.md` + `rules/security-untrusted-input.md` |
+| Wearing outfits in the client: the standard-body buttons, the items panel, the quick menu (O), fits on a body's bones, hidden regions, props at points | `rules/client-app.md` + `rules/items.md` + `rules/avatars-and-crowds.md` |
 | Hosting by others: the host tool, approvals and the admin page, world keys, packaging, the container, capacity advice, the world's database | `rules/host-tool.md` + `rules/core-service.md` |
 | World plugins: plugin.toml, the loader, hooks, the host interface and permissions, failures and async code, the entry rules, `host plugins` | `rules/plugins.md` + `rules/security-untrusted-input.md` |
 | Trust levels, active days, the tester flag, `FLATCHAT_CORE_TRUST` | `rules/core-service.md` + `rules/plugins.md` |
@@ -103,7 +104,7 @@ A trap-linter finding names its rule; read that rule.
 | `voice-chain` | The client's voice: Opus as WebAssembly (why not WebCodecs), the capture and playout worklets, the playout buffer's rules, distance and HRTF, mouth shapes, the voice and load tests. |
 | `avatars-and-crowds` | VRM on the WebGPU renderer (MToon node materials, shared textures, VRM 0.x poses), what the converter must do (merge materials, texture budgets), paced swaps, the crowd bench and S0.09's pass lines, the test-avatar sets. |
 | `bots-and-load-tests` | `tools/bots`: movement, talking, the bot, swarms; `npm run bots -- smoke|run|report|render`; an isolated network with wire counters, core pinning, netem; the report and S0.07's pass lines. |
-| `client-app` | The app mode: sign-in in the main process (core-api, loopback, auth, safeStorage), settings and bindings, vue-i18n with the bare-strings rule, the world view (session, controls, remotes, camera, instanced avatars), chat and voice limits, the end-to-end test with Playwright. |
+| `client-app` | The app mode: sign-in in the main process (core-api, loopback, auth, safeStorage), settings and bindings, vue-i18n with the bare-strings rule, the world view (session, controls, remotes, camera, instanced avatars), standard bodies, items and the outfits menu (fits on bodies, hidden regions, props), chat and voice limits, the end-to-end test with Playwright. |
 | `host-tool` | `tools/host-tool`: sign-in from a terminal, request, approve on `/admin` (CSRF, session cookie), key, run; the capacity advisor; the package and container image; the world's SQLite database. |
 | `plugins` | World plugins (S3.01, S3.05): plugin.toml checks, the in-process model and the narrow `HostApi` (T-04), permissions and `HOOK_NEEDS`, refusals, `guard` with promise handling, fail-closed entry rules, the three entry rules, `host plugins`. |
 | `roles-and-moderation` | Roles per world (S3.06): `RIGHTS` and `can`, the owner from the token, roles in the world's database, `giveRole`'s rules, the People panel, builds by others (`put`/`got`/`publish`, staging, `loadBuiltWorld`, the swap, exit 75, the client's rejoin). |

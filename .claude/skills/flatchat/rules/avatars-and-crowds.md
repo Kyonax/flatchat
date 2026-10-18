@@ -62,3 +62,7 @@ The report: frame times (warm-up 5 s excluded), `framesOver100`, `duringLoads`, 
 |---|---|---|
 | VRoid Studio samples (VRoid Project, pixiv) | 8 VRM 0.x avatars, 26.7k to 39.5k triangles (on the plan's 20–30k), 15 to 17 materials, 134 to 498 joints, springs; CC0 on OpenGameArt, VRoid Hub's free-use terms in six files | `~/.cache/flatchat/avatars/vroid-cc0` (manifest, SOURCE.md); never in the repository |
 | 100Avatars R1 (Polygonal Mind) | 60 VRM 0.x avatars, about 3.9k triangles, 1 material, CC0 | `~/.cache/flatchat/avatars/100avatars` (manifest) |
+
+## Outfits on Avatars (S5.05)
+
+The avatar layer also dresses players (rule `client-app`, Standard Bodies, Items and Outfits): clothes only on the three standard bodies (an avatar whose delivery says `kit`), each fit bound to the body's own bones with the fit's inverse bind matrices, the regions it hides taken off the body's triangles; props on any avatar at their points. Only LOD0 to LOD2 wear them; impostors show the body alone, so a crowd's cost past LOD2 is unchanged. A fit shares its parsed geometry and material with every wearer, which adds a skinned mesh (a draw call or two) per item per dressed avatar: the bench (S4.12) has not been run with outfits yet.

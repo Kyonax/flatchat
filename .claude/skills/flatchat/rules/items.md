@@ -53,6 +53,8 @@ An attachment item is `slot: attachment` with `attach`: one rigid mesh, no skin,
 | Uploads, saved outfits, the standard bodies | The core (rule `core-service`: `src/items.ts`, `item-cli.ts` in the sandbox with `kits/bodies/`, `POST /api/v1/avatars/kit`, an avatar of a kit's exact bytes marked `kit`) |
 | A sample prop | `sampleProp(declare, skinned?)` in `tools/converter/src/item/samples.ts` (`@flatchat/converter/item-samples`), for the converter's and the core's tests |
 
+The client wears them (S5.05c, rule `client-app`): a fit on a standard body by bone names with its own inverse bind matrices, the regions it hides taken off the body, props at their points on any avatar, the outfits quick menu (O), the worn outfit kept by account in the settings.
+
 ## Not Yet
 
-The client wearing them (a fit on a kit body by bone names, regions hidden, props at their points, the skin composited at an outfit change, the outfits menu) is S5.05c; the gallery and licence fields are S5.06.
+Skin layers in the world: no item kind carries a tattoo or makeup layer yet, so nothing calls `compositeSkin` at an outfit change (the kits' textures already hold the underwear); a layer item comes with the wardrobe (Track P.08) or the gallery's effects. Items on impostors (an impostor-sized fit per item) are not made: past LOD2 a player shows the body alone. The gallery and licence fields are S5.06.
