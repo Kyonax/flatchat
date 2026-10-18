@@ -28,6 +28,10 @@ Scale doesn't matter: centimetres, inches or metres all work, because each clien
 
 FlatChat converts every animation on its own servers, in a sandbox. FBX needs Blender there; a server without it refuses FBX and says so, so export a GLB or a BVH instead. Your animations are listed with their status, use (an emote plays once, a dance loops), length, whether they loop, and any warnings or reasons for a refusal.
 
+## Playing them
+
+Upload an emote or a dance from the client's home screen (Upload an emote, Upload a dance). In a world, press B for your emotes and dances and pick one: everyone nearby sees it, in step, from the moment it started. A dance repeats until you stop it or walk; an emote plays once. Players far away, drawn as impostors, keep walking instead.
+
 ## Making a good one
 
 - Rest the skeleton in a T-pose, or close to it. An A-pose is straightened, but a pose far from either is measured from its own rest.
