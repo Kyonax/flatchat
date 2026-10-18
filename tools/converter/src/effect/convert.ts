@@ -11,23 +11,7 @@
 //   - a zip with one effect in it and its files at the paths the effect names, relative to it;
 //   - the platform's own bundle (FCFX), which may carry the item's declaration (the starters).
 import { unzipSync } from 'fflate';
-import {
-  EFFECT_LIMITS,
-  EFFECT_RUNTIME,
-  EFFECT_SOURCE_LIMIT,
-  type EffectBundle,
-  editorVersion,
-  type EffectFit,
-  effectFiles,
-  effectFitProblems,
-  EffectFormatError,
-  effectPath,
-  imageSize,
-  readBundle,
-  readEffectFile,
-  writeBundle,
-  bundlePathOf,
-} from '@flatchat/content';
+import { checkEffectBundle, EFFECT_SOURCE_LIMIT, type EffectBundle, type EffectFit, effectFiles, effectFitProblems, EffectFormatError, effectPath, readBundle, readEffectFile, writeBundle } from '@flatchat/content';
 import { DryRunFailed } from '@flatchat/effects';
 import { createHash } from 'node:crypto';
 import { dryRun, type DryRunner } from './dry-run.ts';
@@ -42,7 +26,6 @@ export class EffectError extends Error {
 
 const sha256 = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
 const EFFECT_FILE = /\.(efkefc|efk)$/i;
-const PNG = (b: Uint8Array): boolean => b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 /** A zip's entries at most, and the most any one may unpack to. */
 const ZIP_ENTRIES = 256;
 const ZIP_ENTRY_BYTES = EFFECT_SOURCE_LIMIT;
@@ -164,63 +147,18 @@ export interface EffectResult {
   warnings: string[];
 }
 
-/** Checks, bundles and dry-runs the effect in an upload. Throws EffectError with every problem. */
+/** Checks (packages/content's checkEffectBundle), bundles and dry-runs the effect in an upload.
+ *  Throws EffectError with every problem. */
 export async function convertEffect(upload: Uint8Array | EffectBundle, o: EffectOptions): Promise<EffectResult> {
   const given = upload instanceof Uint8Array ? effectUpload(upload) : upload;
-  const main = given.files.get(given.main)!;
-  let file;
+  let check;
   try {
-    file = readEffectFile(main);
+    check = checkEffectBundle(given, o.where);
   } catch (err) {
     throw new EffectError(err instanceof EffectFormatError ? err.problems : [String(err)]);
   }
-  if (file.version > EFFECT_RUNTIME.bodyVersion) {
-    throw new EffectError([`the effect was saved by Effekseer ${editorVersion(file.version)}, newer than the platform's runtime (Effekseer ${EFFECT_RUNTIME.effekseer}): save it with Effekseer 1.8 or older`]);
-  }
-  const problems: string[] = [];
-  const warnings: string[] = [];
-  if (file.resources.materials.length) problems.push(`the effect uses material files (${file.resources.materials.join(', ')}): those are creator shaders, which the platform does not take yet; use Effekseer's built-in materials`);
-  const files = new Map<string, Uint8Array>([[given.main, main]]);
-  let textures = 0;
-  let pixels = 0;
-  let models = 0;
-  let sounds = 0;
-  for (const { path, kind } of effectFiles(file)) {
-    if (kind === 'materials') continue;
-    const found = bundlePathOf(given.files.keys(), path);
-    if (kind === 'sounds') {
-      sounds += 1;
-      if (o.where === 'avatar') continue;
-      if (found === undefined) {
-        warnings.push(`the effect's sound ${path} is not in the upload: it plays without it`);
-        continue;
-      }
-      files.set(path, given.files.get(found)!);
-      continue;
-    }
-    if (found === undefined) {
-      problems.push(`the effect needs ${path}, which the upload does not have`);
-      continue;
-    }
-    const bytes = given.files.get(found)!;
-    if (kind === 'colorImages' || kind === 'normalImages' || kind === 'distortionImages') {
-      const size = imageSize(bytes);
-      if (!PNG(bytes) || !size) {
-        problems.push(`${path}: the platform's runtime takes PNG textures; save it as a PNG`);
-        continue;
-      }
-      if (Math.max(size.width, size.height) > EFFECT_LIMITS.textureSide) problems.push(`${path} is ${size.width}×${size.height}: ${EFFECT_LIMITS.textureSide} px a side at most`);
-      textures += 1;
-      pixels += size.width * size.height;
-    } else if (kind === 'models') models += 1;
-    files.set(path, bytes);
-  }
-  if (files.size > EFFECT_LIMITS.files) problems.push(`the effect uses ${files.size} files; ${EFFECT_LIMITS.files} at most`);
-  if (sounds && o.where === 'avatar') warnings.push("its sounds do not play: an avatar's effects make no sound");
-  if (file.resources.distortionImages.length) warnings.push('its distortion parts do not draw: no client draws distortion');
-  if (problems.length) throw new EffectError(problems);
-
-  const bundle: EffectBundle = { main: given.main, files };
+  if (check.problems.length) throw new EffectError(check.problems);
+  const { file, bundle, warnings } = check;
   let run;
   try {
     run = o.runner ? await o.runner.run(bundle, { scale: o.scale }) : await dryRun(bundle, { scale: o.scale });
@@ -235,11 +173,11 @@ export async function convertEffect(upload: Uint8Array | EffectBundle, o: Effect
     version: file.version,
     peak: run.peak,
     frames: run.frames,
-    textures,
-    texturePixels: pixels,
-    models,
+    textures: check.textures,
+    texturePixels: check.texturePixels,
+    models: check.models,
     distortion: file.resources.distortionImages.length > 0,
-    sounds,
+    sounds: check.sounds,
     scale: o.scale,
     updateUs: run.updateUs,
   };

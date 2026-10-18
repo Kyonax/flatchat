@@ -52,7 +52,8 @@ export interface DryRunnerOptions {
 export class DryRunner {
   private worker: Worker | undefined;
   private next = 0;
-  private readonly waiting = new Map<number, { resolve: (r: DryRun) => void; reject: (e: Error) => void }>();
+  /** Runs not yet answered, each with the worker it was sent to. */
+  private readonly waiting = new Map<number, { worker: Worker; resolve: (r: DryRun) => void; reject: (e: Error) => void }>();
   readonly deadlineMs: number;
   private readonly makeWorker: (o: WorkerOptions) => Worker;
   private readonly wasm: Uint8Array | undefined;
@@ -72,18 +73,23 @@ export class DryRunner {
       if (m.ok && m.result) p.resolve(m.result);
       else p.reject(new DryRunFailed(m.error ?? 'the dry run failed'));
     });
-    w.on('error', (err) => this.failAll(new DryRunFailed(`the dry run's worker failed: ${err.message.slice(0, 200)}`)));
+    w.on('error', (err) => this.failAll(w, new DryRunFailed(`the dry run's worker failed: ${err.message.slice(0, 200)}`)));
     w.on('exit', () => {
       if (this.worker === w) this.worker = undefined;
-      this.failAll(new DryRunFailed('the dry run stopped'));
+      this.failAll(w, new DryRunFailed('the dry run stopped'));
     });
     w.unref();
     return w;
   }
 
-  private failAll(err: Error): void {
-    for (const p of this.waiting.values()) p.reject(err);
-    this.waiting.clear();
+  /** Fails the runs sent to one worker. A worker ended past a deadline exits after a new one has
+   *  started: its exit must not fail the new worker's runs (the fuzzed corpus caught that). */
+  private failAll(w: Worker, err: Error): void {
+    for (const [id, p] of this.waiting) {
+      if (p.worker !== w) continue;
+      this.waiting.delete(id);
+      p.reject(err);
+    }
   }
 
   /** Measures one effect; refuses it (DryRunFailed) when it fails or runs past the deadline. */
@@ -101,6 +107,7 @@ export class DryRunner {
         reject(new DryRunFailed(`the effect took longer than ${Math.round(this.deadlineMs / 1000)} s to play`));
       }, this.deadlineMs);
       this.waiting.set(id, {
+        worker,
         resolve: (r) => {
           clearTimeout(timer);
           resolve(r);
