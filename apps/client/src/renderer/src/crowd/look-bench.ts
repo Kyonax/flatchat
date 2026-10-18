@@ -33,12 +33,45 @@ const CONFIGS: ReadonlyArray<{ name: string; on: { bloom: boolean; shafts: boole
   { name: 'all', on: { bloom: true, shafts: true, reflections: true, filters: true } },
 ];
 const WARMUP_MS = 1000;
+const WARMUP_FRAMES = 20;
 
-/** Waits until the GPU has done everything submitted so far. */
+/** Waits until the GPU has done everything submitted so far. WebGL's finish() does not wait in
+ *  Chromium (it only flushes), and reading a pixel back costs more after some frames than others
+ *  (the canvas's samples are resolved first), so on WebGL2 a fence is waited for: the same cost
+ *  after every frame. */
 async function gpuDone(renderer: THREE.WebGPURenderer): Promise<void> {
   const backend = renderer.backend as { device?: GPUDevice; gl?: WebGL2RenderingContext };
-  if (backend.device) await backend.device.queue.onSubmittedWorkDone();
-  else backend.gl?.finish();
+  if (backend.device) {
+    await backend.device.queue.onSubmittedWorkDone();
+    return;
+  }
+  const gl = backend.gl;
+  const fence = gl?.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  if (!gl || !fence) return;
+  gl.flush();
+  try {
+    // A fence's state changes only between tasks: look again after each breath, for at most 2 s.
+    for (const until = performance.now() + 2000; performance.now() < until; ) {
+      const state = gl.clientWaitSync(fence, 0, 0);
+      if (state !== gl.TIMEOUT_EXPIRED) return;
+      await breathe();
+    }
+  } finally {
+    gl.deleteSync(fence);
+  }
+}
+
+/** Lets the page breathe: a message, not a timer (a window Chromium thinks hidden runs timers once a
+ *  second, which left each effect thirty frames in CI). */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(0);
+  });
 }
 
 function buildScene(): { scene: THREE.Scene; camera: THREE.PerspectiveCamera; spin: THREE.Object3D } {
@@ -84,19 +117,27 @@ export async function runLookBench(canvas: HTMLCanvasElement, o: { seconds: numb
       o.onProgress(`Look bench: ${c.name}…`);
       const on = lookEffects(LOOK, c.on, false);
       const pipeline = c.name === 'none' ? undefined : new LookPipeline(renderer, scene, camera, LOOK, on, sun);
-      const times: number[] = [];
-      // Frames back to back, each waited for on the GPU: the time is the frame's whole cost, not
-      // how fast its commands were queued (the display's pace has no part in it).
-      const start = performance.now();
-      while (performance.now() - start < WARMUP_MS + o.seconds * 1000) {
-        const t0 = performance.now();
+      const draw = async (): Promise<void> => {
         spin.rotation.y += 0.004;
         if (pipeline) pipeline.render();
         else renderer.render(scene, camera);
         await gpuDone(renderer);
-        if (t0 - start >= WARMUP_MS) times.push(performance.now() - t0);
-        // Let the page breathe now and then.
-        if (times.length % 30 === 0) await new Promise((r) => setTimeout(r, 0));
+      };
+      // A warm-up first (the shaders compile on the first frames), then frames back to back, each
+      // waited for on the GPU: the time is the frame's whole cost, not how fast its commands were
+      // queued (the display's pace has no part in it).
+      const warm = performance.now();
+      for (let n = 0; n < WARMUP_FRAMES || performance.now() - warm < WARMUP_MS; n++) {
+        await draw();
+        if (n % 10 === 9) await breathe();
+      }
+      const times: number[] = [];
+      const start = performance.now();
+      while (performance.now() - start < o.seconds * 1000) {
+        const t0 = performance.now();
+        await draw();
+        times.push(performance.now() - t0);
+        if (times.length % 30 === 0) await breathe();
       }
       pipeline?.dispose();
       const s = summarizeFrames(times);

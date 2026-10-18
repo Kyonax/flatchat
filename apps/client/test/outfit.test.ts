@@ -2,13 +2,14 @@
 // Outfits on avatars (S5.05), without a window: the test tee's fit for the feminine body, as the
 // item converter writes it, put on the feminine body's own converted level by bone names, stays
 // 8 mm out from the skin (it was made 8 mm out along the body's normals) at rest and in poses, as
-// the skin under it moves; bound wrongly, it would not. At the ends of the arms slider the limbs'
+// the skin under it moves; bound wrongly, it would not. Each standard body wears its own fit on its
+// own bones. At the ends of the arms slider the limbs'
 // skin stretches along each bone and the sleeves with it (segments.ts, P.08). The regions it hides
 // leave the body's triangles, and come back; a prop rides its point's bone.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ATTACH_POINTS, type Region } from '@flatchat/content';
+import { ATTACH_POINTS, BODY_KITS, type Region } from '@flatchat/content';
 import { convertItem } from '@flatchat/converter';
 import { avatarIO, convertAvatar } from '@flatchat/converter/avatar';
 // trap-lint: allow T11 because the test reads the converter's own output to measure it, never a creator's file
@@ -116,6 +117,26 @@ describe('a fit on its body', () => {
     robot.add(new THREE.Bone());
     expect(wearFit(fitTemplate(fit), robot)).toBeUndefined();
   });
+});
+
+describe('each standard body', () => {
+  // The tee's file holds a fit for each body, each skinned to its own copy of the kits' skeleton. A
+  // fit file that kept the other copies loads with its bones renamed (three.js makes repeated names
+  // unique: Hips, Hips_1, Hips_2), and the clothes of every body but the first find no bones.
+  it('wears its own fit, on its own bones, 8 mm out from its skin', async () => {
+    const item = await convertItem(read('kits', 'items', 'test-tee', 'test-tee.glb'), { ktx2: false });
+    for (const kit of BODY_KITS) {
+      const avatar = await convertAvatar(read('kits', 'bodies', kit, `${kit}.vrm`), { ktx2: false });
+      const level = await parse(avatar.files.get(avatar.manifest.levels.lod0.file)!);
+      const meshes = wearFit(fitTemplate(await parse(item.files.get(item.manifest.fits[kit]!.file)!)), level);
+      expect(meshes, kit).toHaveLength(1);
+      level.add(...meshes!);
+      level.updateMatrixWorld(true);
+      const g = gaps(posed(skinOf(level)), posed(meshes![0]!));
+      expect(g[Math.floor(g.length / 2)], kit).toBeGreaterThan(6);
+      expect(g[Math.floor(g.length / 2)], kit).toBeLessThan(9);
+    }
+  }, 240_000);
 });
 
 describe('limbs at the sliders’ ends', () => {
