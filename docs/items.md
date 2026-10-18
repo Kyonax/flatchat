@@ -54,6 +54,8 @@ A standard body carries each point as a marker (its `attach_*` nodes). On any ot
 
 An effect (S6.01) is worn at a point too: an Effekseer effect, in the slot `effect`, uploaded with its declaration (its name, its point and a scale). It is held to an avatar's effect budget by its dry run rather than to a mesh's caps, and one effect may share a point with a prop. [effects.md](effects.md) has the rules.
 
+An overlay (S6.02) is an image shown on the screen rather than on the body: a PNG in the slot `overlay`, worn at one of nine screen points, uploaded with its declaration (its name, its point, size, opacity, motion and who sees it). One overlay to a screen point, four at most; others see one only when they allow its wearer. [overlays.md](overlays.md) has the rules and the safe-mode key.
+
 ## Skin layers
 
 Tattoos and makeup are not meshes. They are layers: RGBA images in the kits' UV space, 1,024 px like `kits/bodies/<name>/<name>-skin.png`, transparent where they leave the skin alone. Whenever an outfit changes, the platform composites a body's layers into one texture, the same bytes on every machine (`compositeSkin` in `packages/content/src/layers.ts`). They stack as skin, then tattoos, then makeup, then underwear on top, which covers what lies under it. Each layer can blend normally or multiply (ink), at an opacity. It can also bring a roughness and metalness image (glTF's ORM), composited beside the colour, so a shiny or metallic layer stays so. A standard body is never shown without its underwear layer.

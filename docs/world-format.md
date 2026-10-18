@@ -36,6 +36,13 @@ range = 25                       # metres at which a voice has faded to nothing 
 [[scenes]]
 id = "main"
 file = "scenes/main.glb"
+
+[[overlays]]                     # optional, at most four (S6.02)
+image = "overlays/frame.png"     # a PNG in the folder, 1024 px a side at most
+hud = "centre"                   # its screen point
+size = 1                         # its longer side as a share of the screen's height: 1 is the whole screen
+opacity = 0.5
+motion = "none"                  # none, pulse, bob or spin
 ```
 
 | Key | Rule |
@@ -47,6 +54,7 @@ file = "scenes/main.glb"
 | `avatars` | 0.1 to 20 m, `min_height` below `max_height` |
 | `voice.range` | 1 to 100 m |
 | `scenes` | At least one; ids are lowercase letters, digits and dashes, unique; files are relative paths inside the folder (no `..`, no absolute paths), ending in `.glb` or `.gltf`. The first scene is where players arrive |
+| `overlays` | Screen overlays every visitor sees until they switch worlds' overlays off (S6.02, [overlays](overlays.md)): at most four; `image` a PNG in the folder, 1024 px a side at most; `hud` one of the nine screen points (`centre` by default); `size` 0.03 to 1 (0.15 by default); `opacity` 0.1 to 0.8 (0.8 by default); `motion` `none`, `pulse`, `bob` or `spin` |
 
 Unknown keys are reported as warnings (a newer tool may know them), never silently used.
 
@@ -83,7 +91,7 @@ A scene may use any other extension the converter accepts (`KHR_materials_*`, `K
 
 ## What the validator reports
 
-Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`; an effect marker adds `effect-invalid` (not an Effekseer file), `effect-too-new` (saved by an editor newer than the runtime), `effect-materials` (it uses material files), `effect-file-missing` (a texture or model it names is not beside it; a missing sound is a warning) and `effect-texture` (a texture that is not PNG). The validator reads an effect and never plays it.
+Each problem has a code, a severity (`error` refuses the world, `warning` lets it through), where it is (a file, and a JSON path in a scene) and a sentence. Errors include `toml-syntax`, `format-unsupported`, `field`, `scene-missing`, `path-unsafe`, `gltf-syntax`, `gltf-version`, `extension-unsupported`, `uri-external`, `index-out-of-range`, `no-spawn`, `too-big`, `too-many-triangles`, `texture-too-large` and `marker-invalid`; a world overlay's image adds `overlay-image` (not a PNG, or too big); an effect marker adds `effect-invalid` (not an Effekseer file), `effect-too-new` (saved by an editor newer than the runtime), `effect-materials` (it uses material files), `effect-file-missing` (a texture or model it names is not beside it; a missing sound is a warning) and `effect-texture` (a texture that is not PNG). The validator reads an effect and never plays it.
 
 ## The base library (S2.05)
 
@@ -108,8 +116,8 @@ At most 10,000 parts in a world.
 
 ## What the converter makes of it
 
-The host tool's converter ([tools/converter](../tools/converter/README.md)) turns a folder that passes into a built world: `world.json` (the markers in world space, the files by their SHA-256) and the files themselves. Each scene becomes one GLB with meshopt-compressed geometry and KTX2 textures; a mesh of 2,000 triangles or more gets two simpler copies, its levels of detail, which the client switches to with distance, so a detailed world stays drawable on a weak laptop; the solids become `collision.bin`, and a navigation mesh is built for click-to-move. Each effect is played in the pinned runtime for 600 frames, three times, over a context that draws nothing (the dry run, [effects](effects.md)), then packed with exactly the files it names into one file of kind `effect`; the built world lists it by scene with its place, scale and the most it ever drew. An effect that does not play, or that is over a world's limits for one effect, refuses the world (`effect-refused`), and so do effects that together could draw more than a world may (`effects-over-budget`: 2,000 particles, 8,000 quads and 100,000 model triangles, the same effect counted once per marker). Nothing in the folder needs to change for this.
+The host tool's converter ([tools/converter](../tools/converter/README.md)) turns a folder that passes into a built world: `world.json` (the markers in world space, the files by their SHA-256) and the files themselves. Each scene becomes one GLB with meshopt-compressed geometry and KTX2 textures; a mesh of 2,000 triangles or more gets two simpler copies, its levels of detail, which the client switches to with distance, so a detailed world stays drawable on a weak laptop; the solids become `collision.bin`, and a navigation mesh is built for click-to-move. Each effect is played in the pinned runtime for 600 frames, three times, over a context that draws nothing (the dry run, [effects](effects.md)), then packed with exactly the files it names into one file of kind `effect`; the built world lists it by scene with its place, scale and the most it ever drew. An effect that does not play, or that is over a world's limits for one effect, refuses the world (`effect-refused`), and so do effects that together could draw more than a world may (`effects-over-budget`: 2,000 particles, 8,000 quads and 100,000 model triangles, the same effect counted once per marker). Each screen overlay's image is written again (one still frame, nothing else) as a file of kind `overlay`, listed in `world.json` with its look. Nothing in the folder needs to change for this.
 
 ## Versions
 
-Version 1 (Stage 2, S2.01): the folder, `world.toml`, the markers above. The effect marker came in Stage 6 (S6.01); a tool from before it leaves effects out and builds the rest. A change that older tools would misread raises `format`.
+Version 1 (Stage 2, S2.01): the folder, `world.toml`, the markers above. The effect marker came in Stage 6 (S6.01) and `[[overlays]]` in S6.02; a tool from before them leaves effects out and warns of an unknown key, and builds the rest. A change that older tools would misread raises `format`.
