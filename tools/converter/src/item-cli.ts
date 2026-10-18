@@ -3,7 +3,9 @@
 // it runs avatar-cli.ts, in a separate process under Node.js's permission model, reading only the
 // converter, the upload and the standard bodies (for the skeleton and clipping checks), writing
 // only its output folder, with a time and memory limit. Its formats are avatar-cli.ts's (S5.08); a
-// file that keeps no declaration of its own (an FBX, an OBJ, a DAE) is given one at upload.
+// file that keeps no declaration of its own (an FBX, an OBJ, a DAE) is given one at upload. An
+// effect (S6.01: an Effekseer file, package or zip, or the platform's bundle) becomes an item worn
+// at a point, after its dry run; it needs no standard body, so they are not read for it.
 //
 //   node src/item-cli.ts UPLOAD OUTDIR KITS [--no-ktx2] [--from fbx|obj|blend --source SHA256:BYTES]
 //                        [--declare DECLARATION.json]
@@ -16,10 +18,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { BODY_KITS, type BodyKit } from '@flatchat/content';
+import { BODY_KITS, type BodyKit, uploadFormat } from '@flatchat/content';
 import { readAvatarLevel } from './avatar/convert.ts';
 import { type KitBody, kitBody } from './item/clipping.ts';
-import { convertItem, ItemError } from './item/convert.ts';
+import { convertEffectItem } from './effect/item.ts';
+import { convertItem, ItemError, type ItemResult } from './item/convert.ts';
 import { sourceArgs } from './source/upload.ts';
 
 let parsed;
@@ -52,7 +55,6 @@ async function readKits(dir: string): Promise<Partial<Record<BodyKit, KitBody>>>
 }
 
 try {
-  const kits = await readKits(kitsDir);
   let declaration: unknown;
   if (parsed.values.declare !== undefined) {
     try {
@@ -61,7 +63,14 @@ try {
       throw new ItemError(['the declaration given at upload is not JSON']);
     }
   }
-  const r = await convertItem(new Uint8Array(readFileSync(input)), { ktx2: parsed.values['no-ktx2'] !== true, kits, ...(source ? { source } : {}), ...(declaration !== undefined ? { declaration } : {}) });
+  const upload = new Uint8Array(readFileSync(input));
+  let r: ItemResult;
+  if (!source && uploadFormat(upload) === 'effect') {
+    r = await convertEffectItem(upload, declaration !== undefined ? { declaration } : {});
+  } else {
+    const kits = await readKits(kitsDir);
+    r = await convertItem(upload, { ktx2: parsed.values['no-ktx2'] !== true, kits, ...(source ? { source } : {}), ...(declaration !== undefined ? { declaration } : {}) });
+  }
   for (const [hash, bytes] of r.files) write(hash, bytes);
   write('manifest.json', r.manifestBytes);
   write('result.json', JSON.stringify({ ok: true, id: r.id, manifest: r.manifest, fingerprint: r.fingerprint }));
