@@ -1,6 +1,6 @@
 {
-  "protocol": 9,
-  "fingerprint": "96b318d5",
+  "protocol": 10,
+  "fingerprint": "1a8dc09e",
   "schema": {
     "constants": {
       "maxMessageBytes": 65536,
@@ -720,6 +720,31 @@
                           ]
                         }
                       }
+                    },
+                    {
+                      "name": "emote",
+                      "type": {
+                        "kind": "optional",
+                        "of": {
+                          "kind": "struct",
+                          "fields": [
+                            {
+                              "name": "anim",
+                              "type": {
+                                "kind": "fixedBytes",
+                                "length": 32
+                              }
+                            },
+                            {
+                              "name": "tick",
+                              "type": {
+                                "kind": "uint",
+                                "bits": 32
+                              }
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
@@ -956,6 +981,27 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "emote",
+        "id": 25,
+        "from": "client",
+        "channel": "reliable",
+        "body": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "anim",
+              "type": {
+                "kind": "optional",
+                "of": {
+                  "kind": "fixedBytes",
+                  "length": 32
                 }
               }
             }

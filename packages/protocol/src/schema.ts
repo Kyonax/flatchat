@@ -25,7 +25,7 @@ import {
 } from './codec.ts';
 
 /** Goes up by one with every change to the messages or how they are written. */
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 
 /** The largest message any program sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 65_536;
@@ -94,6 +94,9 @@ const worn = struct({ item: fixedBytes(32), adjust: optional(struct({ x: int(8),
 /** The most items a player wears at once (version 9). */
 export const OUTFIT_MAX = 16;
 const outfit = list(worn, OUTFIT_MAX);
+/** An emote or a dance playing (version 10, S5.07): its animation manifest's SHA-256 in the core's
+ *  store and the world tick it started at, so every client shows it in step. */
+const playing = struct({ anim: fixedBytes(32), tick: u32 });
 
 /** One player in the world's roster. `avatar` is the content hash the client fetches from the
  *  core's asset store, never from the host; `height` is the world's fitted height. */
@@ -108,6 +111,7 @@ const player = struct({
   face,
   proportions,
   outfit,
+  emote: optional(playing),
 });
 
 export const REFUSE_REASONS = [
@@ -202,6 +206,9 @@ export const MESSAGES = {
   face: { id: 0x17, from: 'client', channel: 'reliable', body: face },
   // What the player wears (version 9, S5.05): the world fits it and keeps it in the roster.
   outfit: { id: 0x18, from: 'client', channel: 'reliable', body: struct({ items: outfit }) },
+  // An emote or a dance (version 10, S5.07): the animation to play, or none to stop; the world puts
+  // it in the roster with the tick it started at.
+  emote: { id: 0x19, from: 'client', channel: 'reliable', body: struct({ anim: optional(fixedBytes(32)) }) },
   // A move the client cannot walk (version 4, S2.06): onto a seat (`seat`, its index in the built
   // world), or to a clicked spot. The world checks it and answers `placed`: where the player is
   // now, and whether it moved them.
