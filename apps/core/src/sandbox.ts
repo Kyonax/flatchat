@@ -73,7 +73,7 @@ export function networkNamespace(): boolean {
 export interface ConverterRun {
   code: number | null;
   stderr: string;
-  result: { ok: boolean; id?: string; manifest?: unknown; problems?: string[] } | undefined;
+  result: { ok: boolean; id?: string; manifest?: unknown; problems?: string[]; fingerprint?: unknown } | undefined;
 }
 
 /** Runs a converter program on one upload, in the network namespace when `isolated`. */

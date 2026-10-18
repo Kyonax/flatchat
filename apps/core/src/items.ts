@@ -17,9 +17,10 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AttachPoint, BODY_KITS, checkItemManifest, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, readItemDeclaration, type Slot, type WornAdjust } from '@flatchat/content';
+import { type AttachPoint, BODY_KITS, checkItemManifest, type Fingerprint, fitWornAdjust, ITEM_SOURCE_LIMIT, type ItemDeclaration, ItemFormatError, type ItemManifest, outfitProblems, readItemDeclaration, type Slot, type WornAdjust } from '@flatchat/content';
 import { OUTFIT_MAX } from '@flatchat/protocol';
 import type { Db, Sql } from './db.ts';
+import { copyOf, readFingerprint, readKitFingerprints, strike } from './copies.ts';
 import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter, throughBlender } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
 
@@ -33,7 +34,8 @@ export const NAME_MAX = 64;
 export interface ItemRow {
   id: string;
   name: string;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  /** `removed`: taken down (S5.09); its problems say why. */
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   slot: Slot | null;
   /** The bodies it fits; empty for an attachment, which goes on any avatar. */
   fits: string[];
@@ -82,6 +84,8 @@ export class Items {
   private readonly isolated: boolean;
   private readonly converter: ConverterProgram;
   private readonly kits: string;
+  /** The standard bodies' fingerprints (S5.09): what they explain is no evidence of a copy. */
+  private readonly kitPrints: Fingerprint[];
   /** Conversions waiting or running, for tests and a clean shutdown. */
   pending = 0;
 
@@ -96,6 +100,7 @@ export class Items {
       reads: [join(ROOT, 'node_modules'), join(ROOT, 'tools', 'converter'), join(ROOT, 'packages')],
     };
     this.kits = o.kits ?? join(ROOT, 'kits', 'bodies');
+    this.kitPrints = readKitFingerprints(this.kits);
   }
 
   /** An upload slot: checked against the account's trust, its items and the size limit. */
@@ -158,7 +163,7 @@ export class Items {
       mkdirSync(out);
       const more: string[] = [this.kits];
       const reads: string[] = [this.kits];
-      const [row] = await this.o.db.query<{ declaration: unknown }>('select declaration from items where id = $1', [id]);
+      const [row] = await this.o.db.query<{ declaration: unknown; owner_id: string }>('select declaration, owner_id from items where id = $1', [id]);
       if (row?.declaration) {
         const declared = join(dir, 'declaration.json');
         writeFileSync(declared, JSON.stringify(row.declaration));
@@ -177,6 +182,15 @@ export class Items {
       const { code, result } = run;
       if (result?.ok && code === 0) {
         const manifest = checkItemManifest(result.manifest);
+        // A copy of something taken down, or of another's closed gallery entry, goes no further (S5.09).
+        const fingerprint = readFingerprint(result.fingerprint);
+        const caught = fingerprint && row ? await copyOf(this.o.db, fingerprint, row.owner_id, this.kitPrints) : undefined;
+        if (caught) {
+          if (caught.of === 'removed') await strike(this.o.db, row!.owner_id, 'copy', caught.detail, new Date());
+          this.o.log?.('item-copy', { of: caught.of });
+          await refuse([caught.reason]);
+          return;
+        }
         // Every file the manifest names, checked against its name, into the store.
         const names = new Set([...Object.values(manifest.fits).map((f) => f!.file), ...(manifest.prop ? [manifest.prop.file] : [])]);
         for (const name of readdirSync(out)) {
@@ -190,8 +204,8 @@ export class Items {
         if (manifestHash !== result.id) throw new Error('the manifest is not the one the converter named');
         const fits = BODY_KITS.filter((b) => manifest.fits[b]).join(',');
         await this.o.db.query(
-          "update items set status = 'ready', manifest_sha256 = $2, slot = $3, fits = $4, warnings = $5, converted_at = $6, name = case when name = '' then $7 else name end where id = $1",
-          [id, manifestHash, manifest.slot, fits, manifest.warnings.join('\n').slice(0, 4000), new Date(), cleanName(manifest.name, NAME_MAX)],
+          "update items set status = 'ready', manifest_sha256 = $2, slot = $3, fits = $4, warnings = $5, converted_at = $6, name = case when name = '' then $7 else name end, fingerprint = $8 where id = $1",
+          [id, manifestHash, manifest.slot, fits, manifest.warnings.join('\n').slice(0, 4000), new Date(), cleanName(manifest.name, NAME_MAX), fingerprint ? JSON.stringify(fingerprint) : null],
         );
         this.o.log?.('item-ready', { slot: manifest.slot, fits: fits || 'any avatar', ms: Date.now() - started });
       } else if (result && !result.ok) {
@@ -209,7 +223,7 @@ export class Items {
 
   async list(db: Sql, accountId: string): Promise<ItemRow[]> {
     const rows = await db.query<{ id: string; name: string; status: ItemRow['status']; slot: Slot | null; fits: string; problems: string; warnings: string; manifest_sha256: string | null; created_at: Date; published: string | null; gallery_id: string | null }>(
-      `select i.id, i.name, i.status, i.slot, i.fits, i.problems, i.warnings, i.manifest_sha256, i.created_at, i.gallery_id,
+      `select i.id, i.name, i.status, i.slot, i.fits, case when i.status = 'removed' then i.removal else i.problems end as problems, i.warnings, i.manifest_sha256, i.created_at, i.gallery_id,
          (select g.id from gallery g where g.item_id = i.id and g.withdrawn_at is null and g.removed_at is null limit 1) as published
        from items i where i.owner_id = $1 and i.deleted_at is null order by i.created_at desc limit 500`,
       [accountId],

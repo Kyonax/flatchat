@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The core's own pages: sign-in, sign-up, the privacy notice, an account's standing and appeal
-// (S3.07), the host agreement, the public report form (S3.02). Plain HTML forms with no script.
+// (S3.07), the host agreement, the public report form (S3.02), the takedown form and its status
+// (S5.09). Plain HTML forms with no script.
 // Every value goes through `html`, which escapes it; only `raw()` marks trusted markup, and only
 // this file builds any. The page's policy forbids scripts, frames and outside resources.
 import { COUNTRY_CODES } from './countries.ts';
@@ -189,7 +190,41 @@ ${values.error ? html`<p class="error" role="alert">${values.error}</p>` : ''}
 <label for="what">${s.reportWhat}</label><input id="what" name="what" maxlength="300" value="${values.what ?? ''}">
 <label for="text">${s.reportText}</label><textarea id="text" name="text" rows="6" maxlength="2000" required>${values.text ?? ''}</textarea>
 <label for="contact">${s.reportContact}</label><input id="contact" name="contact" type="email" maxlength="254" value="${values.contact ?? ''}">
-<button type="submit">${s.reportSend}</button></form>`,
+<button type="submit">${s.reportSend}</button></form>
+<p class="muted"><a href="/takedown?lang=${lang}">${s.reportTakedown}</a></p>`,
+  );
+}
+
+/** The takedown form, for rights holders (S5.09, G-10): beside the report form. */
+export function takedownPage(lang: Lang, values: { name?: string; contact?: string; work?: string; target?: string; signature?: string; error?: string } = {}): string {
+  const s = STRINGS[lang];
+  return page(
+    lang,
+    s.takedownTitle,
+    html`<h1>${s.takedownTitle}</h1><p class="muted">${s.takedownLead}</p>
+<form method="post" action="/takedown?lang=${lang}">
+${values.error ? html`<p class="error" role="alert">${values.error}</p>` : ''}
+<label for="name">${s.takedownName}</label><input id="name" name="name" maxlength="200" required value="${values.name ?? ''}">
+<label for="contact">${s.takedownContact}</label><input id="contact" name="contact" type="email" maxlength="254" required value="${values.contact ?? ''}">
+<label for="work">${s.takedownWork}</label><textarea id="work" name="work" rows="4" maxlength="2000" required>${values.work ?? ''}</textarea>
+<label for="target">${s.takedownTarget}</label><textarea id="target" name="target" rows="3" maxlength="2000" required>${values.target ?? ''}</textarea>
+<label class="check"><input type="checkbox" name="statement" value="yes" required> ${s.takedownStatement}</label>
+<label for="signature">${s.takedownSignature}</label><input id="signature" name="signature" maxlength="200" required value="${values.signature ?? ''}">
+<button type="submit">${s.takedownSend}</button></form>`,
+  );
+}
+
+/** A takedown request's decision, by its receipt. */
+export function takedownStatusPage(lang: Lang, receipt: string, found: { status: 'open' | 'removed' | 'rejected'; note: string } | undefined | null): string {
+  const s = STRINGS[lang];
+  return page(
+    lang,
+    s.takedownStatusTitle,
+    html`<h1>${s.takedownStatusTitle}</h1>
+<form method="get" action="/takedown/status"><input type="hidden" name="lang" value="${lang}">
+<label for="receipt">${s.takedownStatusAsk}</label><input id="receipt" name="receipt" maxlength="11" value="${receipt}" required>
+<button type="submit">${s.takedownStatusCheck}</button></form>
+${found === null ? '' : found === undefined ? html`<p class="error" role="alert">${s.takedownStatusUnknown}</p>` : html`<p role="status"><strong>${s.takedownStatus[found.status]}</strong></p>${found.note ? html`<p>${s.takedownStatusNote}: ${found.note}</p>` : ''}`}`,
   );
 }
 

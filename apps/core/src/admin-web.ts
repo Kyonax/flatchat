@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The admin page (S2.10, S3.07): where the owner approves the worlds other hosts ask for and
 // revokes them with a reason, suspends, bans or lifts accounts with a reason, and decides the
-// appeals against those decisions. It signs in with an admin account's email and password on its own form, and keeps a
+// appeals against those decisions. Since S5.09 it also reviews rights holders' takedown requests,
+// removes avatars and items that break the content rules, and lists the accounts with strikes. It signs in with an admin account's email and password on its own form, and keeps a
 // session in an HttpOnly, SameSite=Strict cookie; every form carries the session's CSRF token.
 // Sessions last 12 hours and are stored as digests.
 import { type CaseRow, DESTINATIONS } from './abuse.ts';
+import type { StruckAccount } from './copies.ts';
 import type { Db, Sql } from './db.ts';
 import type { QueuedReport } from './reports.ts';
 import { html, raw } from './pages.ts';
 import { digest, newToken } from './secrets.ts';
+import type { AdminTakedown } from './takedowns.ts';
 
 export const ADMIN_SESSION_MS = 12 * 3_600_000;
 export const ADMIN_COOKIE = 'fc_admin';
@@ -92,6 +95,8 @@ export function adminWorldsPage(
   reports: readonly QueuedReport[] = [],
   now = new Date(),
   cases: readonly CaseRow[] = [],
+  takedowns: readonly AdminTakedown[] = [],
+  struck: readonly StruckAccount[] = [],
 ): string {
   const csrf = html`<input type="hidden" name="csrf" value="${admin.csrf}">`;
   // The abuse path (S3.12): open on reports of abuse material or intimate images, folded on others.
@@ -130,6 +135,19 @@ ${
 <td>${w.status}${w.agreement ? '' : html`<br><span class="muted">no host agreement</span>`}</td><td>${w.owner}</td><td>${w.address}</td><td>${w.capacity}</td>
 <td>${w.status !== 'approved' ? html`<form method="post" action="/admin/worlds/${w.id}/approve">${csrf}<button type="submit">Approve</button></form>` : ''}
 ${w.status !== 'revoked' ? html`<form method="post" action="/admin/worlds/${w.id}/revoke">${csrf}<input name="note" aria-label="Why it is revoked" placeholder="Why (the host is told)" required maxlength="500"><button type="submit" class="secondary">Revoke</button></form>` : ''}</td></tr>`;
+  // Takedowns (S5.09): a rights holder's request, with the gallery entry it names when it names one.
+  const takedown = (t: AdminTakedown): ReturnType<typeof html> => html`<tr>
+<td><strong>${t.receipt}</strong><br><span class="muted">${ago(t.createdAt, now)}</span><br>${t.name} &lt;${t.contact}&gt;<br><span class="muted">signed ${t.signature}</span></td>
+<td>${t.work}</td>
+<td>${t.target}<br>${t.entry ? html`<span class="muted">${t.entry.kind} “${t.entry.name}” by ${t.entry.publisher}${t.entry.live ? '' : ' (no longer in the gallery)'}</span>` : raw('<span class="muted">names no gallery entry: give its manifest to remove it</span>')}</td>
+<td><form method="post" action="/admin/takedowns/${t.id}">${csrf}<input name="note" aria-label="The note" placeholder="The note (the claimant reads it)" maxlength="1000">
+${t.entry ? '' : html`<input name="manifest" aria-label="Its manifest" placeholder="Its manifest's SHA-256" maxlength="64">`}
+<label class="check"><input type="checkbox" name="ban" value="yes"> Ban its uploader</label>
+<button type="submit" name="decision" value="remove">Remove it everywhere</button><button type="submit" name="decision" value="reject" class="secondary">Reject</button></form></td></tr>`;
+  const struckRow = (a: StruckAccount): ReturnType<typeof html> => html`<tr>
+<td><strong>${a.name}</strong><br><span class="muted">${a.email} · ${a.status}</span></td>
+<td>${a.strikes}${a.copies ? html` <span class="muted">(${a.copies} caught re-uploads)</span>` : ''}</td>
+<td>${a.last}<br><span class="muted">${ago(a.lastAt, now)}</span></td></tr>`;
   const appeal = (a: AdminAppeal): ReturnType<typeof html> => html`<tr>
 <td><strong>${a.name}</strong><br><span class="muted">${a.account}</span></td>
 <td>${a.action}: ${a.reason}</td><td>${a.text}</td><td>${a.createdAt.toISOString().slice(0, 16).replace('T', ' ')}</td>
@@ -147,6 +165,19 @@ ${reports.length === 0 ? raw('<p class="muted">No open reports.</p>') : html`<ta
 <h2>The abuse path</h2>
 <p class="muted">Abuse material and intimate images come down at once and are preserved, sealed, for a year. Nothing is sent from here: file each draft on its official site, then record the reference it gave. The drill (admin command line: abuse drill) runs it all with a harmless stand-in.</p>
 ${cases.length === 0 ? raw('<p class="muted">No cases.</p>') : html`<table class="list"><thead><tr><th>Case</th><th>Removed</th><th>Preserved</th><th>Forms</th></tr></thead><tbody>${cases.map(abuseCase)}</tbody></table>`}
+<h2>Takedown requests</h2>
+<p class="muted">From rights holders, on the public form (<a href="/takedown">/takedown</a>). Removing takes it down everywhere: its gallery entries, every copy of its files, the outfits that hold it, whoever wears it; a re-exported copy uploaded later is caught by its fingerprint. The claimant reads your note by their reference.</p>
+${takedowns.length === 0 ? raw('<p class="muted">No open requests.</p>') : html`<table class="list"><thead><tr><th>Request</th><th>Their work</th><th>What copies it</th><th></th></tr></thead><tbody>${takedowns.map(takedown)}</tbody></table>`}
+<h2>Remove an avatar or item</h2>
+<p class="muted">For what breaks the content rules (no sexual content or nudity), with no request: by its gallery entry's ID or its manifest's SHA-256. It comes down everywhere, as for a takedown.</p>
+<form method="post" action="/admin/remove">${csrf}
+<label for="remove-what">Gallery entry ID or manifest SHA-256</label><input id="remove-what" name="what" required maxlength="64">
+<label for="remove-why">Reason (its uploader sees it)</label><input id="remove-why" name="reason" required maxlength="500">
+<label class="check"><input type="checkbox" name="ban" value="yes"> Ban its uploader</label>
+<button type="submit">Remove it everywhere</button></form>
+<h2>Repeat uploads</h2>
+<p class="muted">Accounts with strikes: something of theirs taken down, or a copy of something taken down caught at upload. Ban with the form below.</p>
+${struck.length === 0 ? raw('<p class="muted">No strikes.</p>') : html`<table class="list"><thead><tr><th>Account</th><th>Strikes</th><th>Last</th></tr></thead><tbody>${struck.map(struckRow)}</tbody></table>`}
 <h2>Appeals</h2>
 ${appeals.length === 0 ? raw('<p class="muted">No appeals wait for a decision.</p>') : html`<table class="list"><thead><tr><th>Account</th><th>Decision</th><th>Appeal</th><th>Sent</th><th></th></tr></thead><tbody>${appeals.map(appeal)}</tbody></table>`}
 <h2>Suspend, ban or lift an account</h2>

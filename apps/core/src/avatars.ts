@@ -16,8 +16,9 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AVATAR_SOURCE_LIMIT, type AvatarManifest, BODY_KITS, type BodyKit, checkManifest, LEVELS } from '@flatchat/content';
+import { AVATAR_SOURCE_LIMIT, type AvatarManifest, BODY_KITS, type BodyKit, checkManifest, type Fingerprint, LEVELS } from '@flatchat/content';
 import type { Db, Sql } from './db.ts';
+import { copyOf, readFingerprint, readKitFingerprints, strike } from './copies.ts';
 import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runConverter, throughBlender } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
 
@@ -30,7 +31,8 @@ export const NAME_MAX = 64;
 export interface AvatarRow {
   id: string;
   name: string;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  /** `removed`: taken down (S5.09); its problems say why. */
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   rank: string | null;
   problems: string[];
   manifest: string | null;
@@ -91,6 +93,8 @@ export class Avatars {
   /** The standard bodies, by name and by their VRM's SHA-256. */
   readonly kits: Map<BodyKit, KitFile>;
   private readonly kitBySource: Map<string, BodyKit>;
+  /** The standard bodies' fingerprints (S5.09): what they explain is no evidence of a copy. */
+  private readonly kitPrints: Fingerprint[];
   /** Conversions made since this start are made by this converter: a body converted once is reused. */
   private readonly startedAt = new Date();
   /** Conversions waiting or running, for tests and a clean shutdown. */
@@ -106,6 +110,7 @@ export class Avatars {
       reads: [join(ROOT, 'node_modules'), join(ROOT, 'tools', 'converter'), join(ROOT, 'packages')],
     };
     this.kits = readKits(o.kits ?? join(ROOT, 'kits', 'bodies'));
+    this.kitPrints = readKitFingerprints(o.kits ?? join(ROOT, 'kits', 'bodies'));
     this.kitBySource = new Map([...this.kits].map(([body, k]) => [k.sha256, body]));
     o.log?.('avatar-converter', { sandbox: this.isolated ? 'files, addons and network' : 'files and addons (no network namespace on this system)', kits: this.kits.size });
   }
@@ -223,6 +228,18 @@ export class Avatars {
       const { code, result } = run;
       if (result?.ok && code === 0) {
         const manifest = checkManifest(result.manifest);
+        // A copy of something taken down, or of another's closed gallery entry, goes no further (S5.09).
+        const fingerprint = readFingerprint(result.fingerprint);
+        if (fingerprint && !kit) {
+          const [row] = await this.o.db.query<{ owner_id: string }>('select owner_id from avatars where id = $1', [id]);
+          const caught = row ? await copyOf(this.o.db, fingerprint, row.owner_id, this.kitPrints) : undefined;
+          if (caught) {
+            if (caught.of === 'removed') await strike(this.o.db, row!.owner_id, 'copy', caught.detail, new Date());
+            this.o.log?.('avatar-copy', { of: caught.of });
+            await refuse([caught.reason]);
+            return;
+          }
+        }
         // Every file the manifest names, checked against its name, into the store.
         const names = new Set([...LEVELS.map((l) => manifest.levels[l].file), ...(manifest.thumbnail ? [manifest.thumbnail] : [])]);
         for (const name of readdirSync(out)) {
@@ -234,7 +251,7 @@ export class Avatars {
         for (const name of names) if (!this.o.store.has(name)) throw new Error('the converter left out a level');
         const manifestHash = this.o.store.put(readFileSync(join(out, 'manifest.json')));
         if (manifestHash !== result.id) throw new Error('the manifest is not the one the converter named');
-        await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, kit = $4, converted_at = $5, name = case when name = '' then $6 else name end where id = $1", [id, manifestHash, manifest.rank, kit, new Date(), cleanName(manifest.name, NAME_MAX)]);
+        await this.o.db.query("update avatars set status = 'ready', manifest_sha256 = $2, rank = $3, kit = $4, converted_at = $5, name = case when name = '' then $6 else name end, fingerprint = $7 where id = $1", [id, manifestHash, manifest.rank, kit, new Date(), cleanName(manifest.name, NAME_MAX), fingerprint ? JSON.stringify(fingerprint) : null]);
         this.o.log?.('avatar-ready', { rank: manifest.rank, ...(kit ? { kit } : {}), ms: Date.now() - started });
       } else if (result && !result.ok) {
         await refuse(result.problems ?? []);
@@ -251,7 +268,7 @@ export class Avatars {
 
   async list(db: Sql, accountId: string): Promise<AvatarRow[]> {
     const rows = await db.query<{ id: string; name: string; status: AvatarRow['status']; rank: string | null; problems: string; manifest_sha256: string | null; created_at: Date; wearing: boolean; kit: BodyKit | null; published: string | null; gallery_id: string | null }>(
-      `select v.id, v.name, v.status, v.rank, v.problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing, v.kit, v.gallery_id,
+      `select v.id, v.name, v.status, v.rank, case when v.status = 'removed' then v.removal else v.problems end as problems, v.manifest_sha256, v.created_at, a.avatar_id = v.id as wearing, v.kit, v.gallery_id,
          (select g.id from gallery g where g.avatar_id = v.id and g.withdrawn_at is null and g.removed_at is null limit 1) as published
        from avatars v join accounts a on a.id = v.owner_id where v.owner_id = $1 and v.deleted_at is null order by v.created_at desc limit 100`,
       [accountId],

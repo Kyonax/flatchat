@@ -8,7 +8,7 @@
 // avatars or items row naming the entry), worn, saved in outfits and delivered like its own. A
 // withdrawn entry (by its publisher, or its original deleted) leaves the gallery; taken copies stay.
 // An exact copy of someone else's entry is refused at upload unless its licence allows copies
-// (changed copies are S5.09's fingerprints).
+// (a changed copy is caught by its fingerprint after conversion: copies.ts, S5.09).
 import { BODY_KITS, type BodyKit, checkItemManifest, checkManifest, galleryProblems, type Licence, LicenceError, licenceOfFile, looserThan, readLicence, type Slot } from '@flatchat/content';
 import type { Db, Sql } from './db.ts';
 import { MAX_AVATARS } from './avatars.ts';

@@ -78,6 +78,8 @@ export const LIMITS = {
   reportByAccount: { burst: 10, everyMs: 360_000 },
   /** Reports from the public form per address: 5, then one every 10 minutes. */
   reportByAddress: { burst: 5, everyMs: 600_000 },
+  /** Takedown requests from the public form per address: 5, then one every 10 minutes (S5.09). */
+  takedownByAddress: { burst: 5, everyMs: 600_000 },
   /** Avatar uploads per account: 10, then one every 2.4 hours (ten a day, S4.01). */
   uploadByAccount: { burst: 10, everyMs: 8_640_000 },
   /** Any other API call per address. */

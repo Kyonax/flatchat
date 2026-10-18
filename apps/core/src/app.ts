@@ -58,7 +58,9 @@ import {
 import { befriend, blocksOf, friendsOf, MAX_BLOCKS, setBlock, unfriend } from './social.ts';
 import { isMinor } from './age.ts';
 import { guardianAskPage, guardianInvitePage, guardianPage, guardianSigninPage } from './pages.ts';
-import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage } from './pages.ts';
+import { agreementPage, CSS, messagePage, PAGE_POLICY, privacyPage, reportPage, signinPage, signupPage, type SignupValues, standingPage, takedownPage, takedownStatusPage } from './pages.ts';
+import { struckAccounts } from './copies.ts';
+import { decideTakedown, fileTakedown, removeContent, takedownProblem, takedownQueue, takedownStatus } from './takedowns.ts';
 import { CLIP_MAX, cleanEvidence, decideReport, fileReport, myReports, purgeReports, REPORT_CATEGORIES, type ReportCategory, ReportError, reportClip, reportQueue, TARGET_KINDS, type TargetKind, TEXT_MAX } from './reports.ts';
 import { openWorldKey, type PasswordCost, sealingKey, STANDARD_COST } from './secrets.ts';
 import {
@@ -172,6 +174,7 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     hostByAddress: new RateLimiter(LIMITS.hostByAddress),
     reportByAccount: new RateLimiter(LIMITS.reportByAccount),
     reportByAddress: new RateLimiter(LIMITS.reportByAddress),
+    takedownByAddress: new RateLimiter(LIMITS.takedownByAddress),
     uploadByAccount: new RateLimiter(LIMITS.uploadByAccount),
   };
   const hosts = new HostRegistry();
@@ -317,6 +320,34 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     const r = await fileReport(o.db, { contact, category, target: { kind: world ? 'world' : 'other', ...(world ? { world } : {}), ref: what }, text }, now());
     o.log?.('report', { category, from: 'public form' });
     return htmlPage(reply, messagePage(lang, s.reportSentTitle, s.reportSent.replace('{receipt}', r.receipt)));
+  });
+
+  // Takedown requests from rights holders (S5.09, G-10), and their decisions by reference.
+  app.get('/takedown', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    return htmlPage(reply, takedownPage(lang));
+  });
+
+  app.post('/takedown', async (req, reply) => {
+    const lang = pickLang((req.query as Record<string, unknown>)['lang'], req.headers['accept-language']);
+    const s = STRINGS[lang];
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const t = { name: str(b['name'], 200), contact: str(b['contact'], 254), work: str(b['work'], 2000), target: str(b['target'], 2000), statement: b['statement'] === 'yes', signature: str(b['signature'], 200) };
+    const missing = takedownProblem(t);
+    if (missing) return htmlPage(reply.code(400), takedownPage(lang, { ...t, error: s.takedownMissing[missing] }));
+    if (!limits.takedownByAddress.take(req.ip, now().getTime())) return htmlPage(reply.code(429), takedownPage(lang, { ...t, error: s.tooMany }));
+    const r = await fileTakedown(o.db, t, now());
+    o.log?.('takedown-requested', {});
+    return htmlPage(reply, messagePage(lang, s.takedownSentTitle, s.takedownSent.replace('{receipt}', r.receipt)));
+  });
+
+  app.get('/takedown/status', async (req, reply) => {
+    const q = req.query as Record<string, unknown>;
+    const lang = pickLang(q['lang'], req.headers['accept-language']);
+    const receipt = str(q['receipt'], 11).trim().toUpperCase();
+    if (!receipt) return htmlPage(reply, takedownStatusPage(lang, '', null));
+    if (!limits.takedownByAddress.take(req.ip, now().getTime())) return htmlPage(reply.code(429), messagePage(lang, STRINGS[lang].takedownStatusTitle, STRINGS[lang].tooMany, true));
+    return htmlPage(reply, takedownStatusPage(lang, receipt, await takedownStatus(o.db, receipt)));
   });
 
   app.get('/host-agreement', async (req, reply) => {
@@ -499,13 +530,18 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     abuse: 'Taken down and preserved. File each draft on its official site, then record the reference it gave.',
     sent: 'Recorded as sent.',
     removed: 'Recorded as removed by hand.',
+    'takedown-removed': 'Taken down everywhere. The claimant reads your note by their reference.',
+    'takedown-rejected': 'Request rejected. The claimant reads your note by their reference.',
+    'takedown-nothing': 'Nothing to remove: the request names no live gallery entry. Give its manifest’s SHA-256.',
+    'content-removed': 'Taken down everywhere.',
+    'remove-nothing': 'Nothing matched: no gallery entry or ready avatar or item by that ID or SHA-256.',
   };
 
   app.get('/admin', async (req, reply) => {
     const admin = await adminFromCookie(o.db, req.headers.cookie, now());
     if (!admin) return reply.code(303).header('location', '/admin/signin').send();
     const done = str((req.query as Record<string, unknown>)['done'], 24);
-    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db), await reportQueue(o.db), now(), await abuseCases(o.db)));
+    return htmlPage(reply, adminWorldsPage(admin, await adminWorlds(), adminNotices[done], await pendingPlatformAppeals(o.db), await reportQueue(o.db), now(), await abuseCases(o.db), await takedownQueue(o.db), await struckAccounts(o.db)));
   });
 
   app.get('/admin/signin', async (_req, reply) => htmlPage(reply, adminSigninPage()));
@@ -630,6 +666,36 @@ export async function buildCore(o: CoreOptions): Promise<FastifyInstance> {
     await moderateAccount(o.db, a.id, action, reason, `admin:${admin.accountId}`, now());
     o.log?.('account-moderated', { action });
     return reply.code(303).header('location', `/admin?done=${action}`).send();
+  });
+
+  // Takedowns and removals (S5.09): a request's decision, and removing for the content rules.
+  app.post('/admin/takedowns/:id', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const decision = str(b['decision'], 8);
+    if (decision !== 'remove' && decision !== 'reject') return reply.code(400).send();
+    const manifest = str(b['manifest'], 64).trim().toLowerCase();
+    const r = await decideTakedown(o.db, (req.params as { id: string }).id, { decision, note: str(b['note'], 1000).trim(), ...(manifest ? { manifest } : {}), ban: b['ban'] === 'yes' }, `admin:${admin.accountId}`, now());
+    if (!r.ok && r.why === 'not-found') return reply.code(404).send();
+    o.log?.('takedown-decided', { decision, ...(r.ok && r.removal ? { avatars: r.removal.avatars, items: r.removal.items } : {}) });
+    return reply.code(303).header('location', `/admin?done=${r.ok ? `takedown-${decision === 'remove' ? 'removed' : 'rejected'}` : 'takedown-nothing'}`).send();
+  });
+
+  app.post('/admin/remove', async (req, reply) => {
+    const admin = await adminFromCookie(o.db, req.headers.cookie, now());
+    if (!admin) return reply.code(303).header('location', '/admin/signin').send();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!sameToken(str(b['csrf'], 64), admin.csrf)) return htmlPage(reply.code(403), adminSigninPage('The form expired. Sign in again.'));
+    const what = str(b['what'], 64).trim().toLowerCase();
+    const reason = str(b['reason'], 500).trim();
+    if (!what || !reason) return reply.code(400).send();
+    const removal = await removeContent(o.db, /^[0-9a-f]{64}$/.test(what) ? { manifest: what } : { gallery: what }, reason, now());
+    if (!removal) return reply.code(303).header('location', '/admin?done=remove-nothing').send();
+    if (b['ban'] === 'yes') for (const u of removal.uploaders) await moderateAccount(o.db, u, 'ban', `uploaded what breaks the content rules: ${reason}`, `admin:${admin.accountId}`, now());
+    o.log?.('content-removed', { avatars: removal.avatars, items: removal.items });
+    return reply.code(303).header('location', '/admin?done=content-removed').send();
   });
 
   app.post('/admin/appeals/:id', async (req, reply) => {

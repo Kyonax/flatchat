@@ -101,6 +101,35 @@ An animation (a VRMA, a GLB clip, a BVH or an FBX, up to 64 MB) is uploaded the 
 
 Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packages/content's `licence.ts`): an account at trust level 2 (or a tester) publishes one of its own ready ones, with its word that it may share it and that it keeps to the content rules; every field is required, the gallery takes only what everyone may wear, and an avatar's licence may be stricter than its file's own terms, never looser. Anyone signed in browses it (by kind, slot, body, words; newest first, 40 to a page) and takes an entry: the account's own ready copy, an `avatars` or `items` row naming the entry, worn, saved in outfits and delivered like its own. The publisher withdraws an entry, and deleting its original does too; copies taken stay. An upload slot for an exact copy (the same SHA-256) of someone else's live entry is refused (`licence`) unless the entry's licence allows copies.
 
+## Fingerprints and Takedowns (S5.09)
+
+The converter fingerprints every upload as it arrived (`result.json` beside the manifest, never in it). Its shape is a MinHash of its triangles, one per part: an avatar, or each fit of an item. Each texture gets a perceptual hash. The core keeps the fingerprint with the row and compares it after the conversion (`copies.ts`) with two sets:
+
+- everything taken down;
+- the live gallery entries of others whose licence allows no copies.
+
+Whatever matches one of the standard bodies (`kits/bodies/fingerprints.json`) is set aside first, since anyone may make an avatar of a kit. A copy of something taken down is refused ("a copy of an avatar taken down from FlatChat") and is a strike against its uploader. A copy of a closed gallery entry is refused with the licence's reason and no strike.
+
+A rights holder asks for a takedown on the public form at `/takedown` (English and Spanish). The form takes:
+
+- their name and email;
+- the work and where it is published;
+- what on FlatChat copies it (a gallery link or ID names the entry);
+- a good-faith statement;
+- their name as a signature.
+
+They get a reference (`T-XXXX-XXXX`) and read the decision at `/takedown/status`.
+
+The admin page lists open requests with the entry each names. **Remove it everywhere** (`takedowns.ts`'s `removeContent`) takes down:
+
+- every gallery entry of the manifest;
+- every avatars or items row of it: the original, the copies taken from the gallery and exact re-uploads, each marked `removed` with the reason its owner sees;
+- the avatar from whoever wears it;
+- the item from every outfit;
+- the files: they are no longer delivered.
+
+The standard bodies are never removed. The admin page also removes, with no request, what breaks the content rules: by a gallery entry's ID or a manifest's SHA-256, banning the uploader if asked. It lists the accounts with strikes (a takedown of theirs, a caught re-upload) for a ban.
+
 ## The API
 
 | Method and path | Auth | What |
@@ -110,6 +139,9 @@ Avatars and items anyone may wear, under licence fields (VRM 1.0's terms, packag
 | `POST /api/v1/sessions` | — | `{ request, code, verifier }` → `{ access, refresh, accessExpiresAt, refreshExpiresAt, account }` |
 | `POST /api/v1/sessions/refresh` | — | `{ refresh }` → new tokens (a refresh token works once) |
 | `POST /api/v1/sessions/revoke` | Bearer | Signs out |
+| `GET`/`POST /takedown` | — | The takedown form (a page, S5.09): `name`, `contact`, `work`, `target`, `statement=yes`, `signature` → a reference; five an address, then one every ten minutes |
+| `GET /takedown/status?receipt=T-…` | — | A request's decision by its reference (a page) |
+| `POST /admin/takedowns/:id`, `POST /admin/remove` | The admin's cookie and CSRF token | A request's decision (`remove` everywhere or `reject`, a note the claimant reads, `manifest` when it names no entry, `ban`); removing for the content rules by `what` (a gallery entry ID or manifest SHA-256), `reason`, `ban` |
 | `GET /api/v1/me` | Bearer | The account: id, display name, email, verified, trust, tester, created, and whether it is under 18 (its client keeps a minor's defaults too) |
 | `POST /api/v1/worlds` | Bearer | `{ name, address, capacity?, listed?, agreement }` → a pending world; `agreement` is the host agreement's version the host accepts (1), else `agreement-required` |
 | `POST /api/v1/me/verify` | Bearer | Mails a new verification link (S3.03), one every ten minutes; `GET /verify?token=…` (a page) confirms the address |
