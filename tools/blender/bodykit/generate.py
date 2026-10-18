@@ -161,6 +161,8 @@ def toon(rig):
 
 
 UNDERWEAR_COLOUR = (0.08, 0.08, 0.09)
+# Where underwear() writes the skin layers (main sets it to the output folder).
+LAYERS_OUT = "."
 # MToon's shaded side, multiplied with the lit side's texture.
 SHADE = (0.72, 0.68, 0.74)
 SKIN_TEXTURE = 1024
@@ -241,6 +243,22 @@ def underwear(body, rig, parts):
     image = bpy.data.images.new(f"{body.name}_skin", size, size, alpha=False)
     image.pixels.foreach_set(rgba.ravel())
     image.pack()
+    # The layers apart (S5.03's merged skin layers): the bare skin, and the underwear as a layer of
+    # its own (its colour where painted, clear elsewhere). The VRM keeps their composite, so a kit
+    # is never shown without its underwear.
+    layer = np.zeros((size, size, 4), dtype=np.float32)
+    layer[:, :, :3] = UNDERWEAR_COLOUR
+    layer[:, :, 3] = np.all(np.isclose(rgba[:, :, :3], UNDERWEAR_COLOUR, atol=1e-6), axis=2).astype(np.float32)
+    bare = np.empty((size, size, 4), dtype=np.float32)
+    bare[:, :, :3] = colour
+    bare[:, :, 3] = 1.0
+    for name, pixels in (("skin", bare), ("underwear", layer)):
+        out_image = bpy.data.images.new(f"{body.name}_{name}_layer", size, size, alpha=True)
+        out_image.pixels.foreach_set(pixels.ravel())
+        out_image.filepath_raw = os.path.join(LAYERS_OUT, f"{body.name.rsplit('_', 1)[0]}-{name}.png")
+        out_image.file_format = "PNG"
+        out_image.save()
+        bpy.data.images.remove(out_image)
     texture = skin.node_tree.nodes.new("ShaderNodeTexImage")
     texture.image = image
     skin.node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
@@ -537,6 +555,9 @@ def export(preset, rig, body, recipes, out):
 
 def main():
     out, only = args()
+    os.makedirs(out, exist_ok=True)
+    global LAYERS_OUT
+    LAYERS_OUT = out
     enable_addons()
     HumanService, FaceService, TargetService, ExportService, LocationService = services()
     recipes = json.load(open(os.path.join(HERE, "expressions.json")))

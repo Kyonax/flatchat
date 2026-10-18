@@ -138,7 +138,7 @@ async function main(): Promise<number> {
       mkdirSync(join(KITS, name), { recursive: true });
       writeFileSync(join(KITS, name, `${name}.vrm`), bytes);
       cpSync(join(a, `${name}.blend`), join(KITS, name, `${name}.blend`));
-      for (const picture of ['thumbnail', 'emotions']) cpSync(join(a, `${name}-${picture}.png`), join(KITS, name, `${name}-${picture}.png`));
+      for (const picture of ['thumbnail', 'emotions', 'skin', 'underwear']) cpSync(join(a, `${name}-${picture}.png`), join(KITS, name, `${name}-${picture}.png`));
       report[name] = { ...first[name], vrmBytes: bytes.length, vrmSha256: sha(bytes), converter: converted };
       say(`${name}: ${(bytes.length / 1048576).toFixed(1)} MB, ${JSON.stringify(converted)}`);
     }
