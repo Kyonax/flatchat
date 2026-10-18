@@ -143,3 +143,10 @@ export async function startTurn(port: number, secret: string, dir: string): Prom
   await waitFor('coturn to answer STUN', 15_000, async () => ((await stunAnswers(port)) ? true : undefined));
   return turn;
 }
+
+/** The client's flags for a run without a window (FLATCHAT_HEADLESS=1): Chromium's own headless
+ *  platform, drawing in software as CI's virtual display does, so a local run never takes the
+ *  desktop's keyboard and mouse (a person at the machine pressed keys into a test window once). */
+export function headless(): string[] {
+  return process.env['FLATCHAT_HEADLESS'] === '1' ? ['--ozone-platform=headless', '--ozone-override-screen-size=1920,1080', '--enable-unsafe-swiftshader'] : [];
+}

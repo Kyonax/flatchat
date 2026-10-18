@@ -24,9 +24,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { sampleBvh, sampleSong } from '@flatchat/converter/animation-samples';
-import { sampleAvatar } from '@flatchat/converter/samples';
+import { sampleShaderAvatar } from '@flatchat/converter/samples';
 import { _electron as electron } from 'playwright-core';
-import { children, freePort, run, start, startTurn, stop, waitFor } from './procs.ts';
+import { children, freePort, headless, run, start, startTurn, stop, waitFor } from './procs.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const CORE = join(ROOT, 'apps', 'core');
@@ -87,7 +87,8 @@ try {
   // A tester may upload an avatar (S4.01); the reference VRM 1.0 avatar stands in for one of theirs.
   await admin('account', EMAIL, '--tester', 'on');
   const avatarFile = join(dir, 'sample.vrm');
-  writeFileSync(avatarFile, await sampleAvatar('vrm1'));
+  // The reference avatar with a creator shader on it (S6.03): a rim glow over its own colour.
+  writeFileSync(avatarFile, await sampleShaderAvatar());
   // A dance (S5.07): the converter's sample motion as BVH.
   const danceFile = join(dir, 'wave.bvh');
   writeFileSync(danceFile, sampleBvh());
@@ -132,7 +133,7 @@ try {
   // 3. The client, with its own empty profile; the system browser is replaced by this test.
   const app = await electron.launch({
     executablePath: client,
-    args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
+    args: [`--core=${coreUrl}`, ...(values.relay ? ['--relay-only'] : []), ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : []), ...headless()],
     env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config'), FLATCHAT_E2E_AVATAR: avatarFile, FLATCHAT_E2E_ITEM: TEE, FLATCHAT_E2E_ANIMATION: danceFile, FLATCHAT_E2E_AUDIO: songFile },
     timeout: 60_000,
   });
@@ -439,7 +440,7 @@ try {
       .locator('[data-test=effects][data-world="1"]')
       .waitFor({ state: 'attached', timeout: 60_000 })
       .then(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-instances')))
-      .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')}`);
+      .catch(async () => `world ${await page.locator('[data-test=effects]').getAttribute('data-world').catch(() => '?')}, refused ${await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '?')} (${await page.locator('[data-test=effects]').getAttribute('data-refused-why').catch(() => '?')})`);
     // The garden's own screen overlay (S6.02): on for every visitor.
     steps['worldOverlay'] = await page
       .locator('[data-test=overlays][data-world="1"]')
@@ -455,6 +456,28 @@ try {
       .catch(async () => Number(await page.locator('[data-test=effects]').getAttribute('data-refused').catch(() => '-1')));
     await page.waitForTimeout(500);
     await snap('3-travelled');
+    // A GPU reset (S6.03, T-01): the device lost as a driver reset loses it. The view joins the
+    // garden again with a fresh renderer, and creator shaders stay off for the session.
+    const lostAt = Date.now();
+    await page.evaluate(() => (globalThis as unknown as { flatchatTest?: { loseGpu(): void } }).flatchatTest?.loseGpu());
+    steps['gpuReset'] = await page
+      .locator('[data-test=travel][data-status=gpu]')
+      .waitFor({ state: 'attached', timeout: 10_000 })
+      .then(async () => {
+        await page.locator('[data-test=travel]').waitFor({ state: 'detached', timeout: 30_000 });
+        await page.locator('[data-test=players][data-players="1"]').waitFor({ timeout: 30_000 });
+        await page.locator('[data-test=avatar-counts][data-lod0="1"]').waitFor({ state: 'attached', timeout: 30_000 });
+        const recoveredMs = Date.now() - lostAt;
+        await page.waitForTimeout(1000);
+        const counts = page.locator('[data-test=avatar-counts]');
+        return { recoveredMs, resets: Number(await counts.getAttribute('data-gpu-resets')), shaders: Number(await counts.getAttribute('data-shaders')) };
+      })
+      .catch((err: unknown) => (err instanceof Error ? err.message.split('\n')[0] : String(err)));
+    await snap('4-after-gpu-reset');
+  } catch (err) {
+    // What was on screen when a step failed, for whoever reads the run.
+    if (values.shots) await (await app.firstWindow()).screenshot({ path: join(values.shots, 'failed.png') }).catch(() => undefined);
+    throw err;
   } finally {
     await app.close();
   }
@@ -487,7 +510,8 @@ try {
     (received['fetch']?.messages ?? 0) >= 3 &&
     (events['portal']?.messages ?? 0) >= 1 &&
     (events['leave:travel']?.messages ?? 0) === 1 &&
-    (garden2['join']?.messages ?? 0) === 1 &&
+    // The arrival through the portal, and the join again after the GPU reset.
+    (garden2['join']?.messages ?? 0) === 2 &&
     steps['sounds'] === '1' &&
     Number(steps['footsteps']) > 0 &&
     steps['people'] === 'owner' &&
@@ -520,6 +544,9 @@ try {
     steps['safeModeOff'] === true &&
     steps['overlayOff'] === true &&
     steps['worldOverlay'] === true &&
+    typeof steps['gpuReset'] === 'object' &&
+    (steps['gpuReset'] as { recoveredMs: number; resets: number }).recoveredMs < 15_000 &&
+    (steps['gpuReset'] as { recoveredMs: number; resets: number }).resets === 1 &&
     (steps['pageErrors'] as string[]).length === 0 &&
     // The park sends its plan, its effects and its overlay, never geometry.
     (gardenSent['chunk']?.bytes ?? Infinity) - gardenExtraBytes < 64 * 1024;

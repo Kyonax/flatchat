@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { _electron as electron, type Page } from 'playwright-core';
+import { headless } from './procs.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const MAKE_TRAVEL = join(ROOT, 'tools', 'converter', 'scripts', 'make-travel.ts');
@@ -41,7 +42,7 @@ async function visit(label: string, worldId: string, check: (page: Page) => Prom
   const app = await electron.launch({
     executablePath: client!,
     // Port 9 (discard) on this machine: nothing answers, so the client cannot sign in.
-    args: ['--core=http://127.0.0.1:9', `--offline-world=${FOLDER}`, ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : [])],
+    args: ['--core=http://127.0.0.1:9', `--offline-world=${FOLDER}`, ...(process.platform === 'linux' ? ['--enable-unsafe-swiftshader'] : []), ...headless()],
     env: { ...process.env, XDG_CONFIG_HOME: join(dir, 'config'), APPDATA: join(dir, 'config') },
     timeout: 60_000,
   });
