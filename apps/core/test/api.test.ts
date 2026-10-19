@@ -132,6 +132,9 @@ describe('sign-up by invitation (S1.02, S1.03)', () => {
     expect(cookie).toContain('HttpOnly');
     expect(Number((await db.query<{ n: string }>('select count(*) as n from accounts'))[0]!.n)).toBe(before);
     expect((await db.query("select 1 from accounts where email_key = 'kid@example.org'")).length).toBe(0);
+    const bound = await invite('bound@example.org');
+    expect((await signupWith(signupFields(bound, { email: 'bound@example.org', birthYear: '2012', birthMonth: '1' }))).statusCode).toBe(403);
+    expect((await db.query<{ email_key: string | null }>('select email_key from invitations where refused_at is not null')).every((row) => row.email_key === null)).toBe(true);
     // The same invitation, now with an adult's date: spent.
     expect((await signupWith(signupFields(code, { email: 'kid@example.org', birthYear: '1990' }))).statusCode).toBe(410);
     // Another invitation from the same browser: the cookie answers first.

@@ -21,7 +21,9 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInvitation } from '../src/accounts.ts';
 import { buildCore } from '../src/app.ts';
+import { animationTakenDown } from '../src/animations.ts';
 import { beyondKits, readKitFingerprints } from '../src/copies.ts';
+import { removeContent } from '../src/takedowns.ts';
 import type { Db } from '../src/db.ts';
 import { TEST_COST } from '../src/secrets.ts';
 import { startSession } from '../src/sessions.ts';
@@ -239,4 +241,22 @@ describe('a copy', () => {
     const other = await resaved(await resaved(FEMININE));
     expect((await upload(two, 'avatars', other, 'Mine too'))['status']).toBe('ready');
   }, 240_000);
+});
+
+describe('emotes and dances', () => {
+  it('takes one down by its manifest and remembers the fingerprint', async () => {
+    const who = await account('dancer');
+    const manifest = 'ab'.repeat(32);
+    const fingerprint = 'cd'.repeat(32);
+    await db.query(
+      `insert into animations (owner_id, name, use, status, source_sha256, source_bytes, manifest_sha256, fingerprint, created_at)
+       values ($1, 'wave', 'emote', 'ready', $2, 20, $3, $4, $5)`,
+      [who.id, 'ef'.repeat(32), manifest, fingerprint, clock],
+    );
+    const removal = await removeContent(db, { manifest }, 'a test takedown', clock);
+    expect(removal?.animations).toBe(1);
+    const [row] = await db.query<{ status: string; fingerprint: string }>('select status, fingerprint from animations where owner_id = $1', [who.id]);
+    expect(row).toEqual({ status: 'removed', fingerprint });
+    expect(await animationTakenDown(db, fingerprint)).toBe(true);
+  });
 });

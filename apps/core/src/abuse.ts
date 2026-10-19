@@ -127,6 +127,7 @@ export async function openAbuseCase(db: Db, secret: Uint8Array, o: OpenCase, now
       o.actor,
     ],
   );
+  if (r?.id) await db.query('update reports set hold = true where id = $1', [r.id]);
   const id = c!.id;
   const tag = drill ? 'Drill: ' : '';
 

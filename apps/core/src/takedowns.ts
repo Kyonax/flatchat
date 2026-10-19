@@ -106,6 +106,7 @@ export interface Removal {
   manifest: string;
   avatars: number;
   items: number;
+  animations: number;
   entries: number;
   /** The accounts whose own uploads (not copies taken from the gallery) came down. */
   uploaders: string[];
@@ -132,7 +133,11 @@ export async function removeContent(db: Db, target: { gallery?: string; manifest
       "update items set status = 'removed', removed_at = $2, removal = $3 where manifest_sha256 = $1 and status = 'ready' and deleted_at is null returning id, owner_id, gallery_id",
       [manifest, now, why],
     );
-    if (entries.length === 0 && avatars.length === 0 && items.length === 0) return undefined;
+    const animations = await t.query<{ id: string; owner_id: string }>(
+      "update animations set status = 'removed', removed_at = $2, removal = $3 where manifest_sha256 = $1 and status = 'ready' and deleted_at is null returning id, owner_id",
+      [manifest, now, why],
+    );
+    if (entries.length === 0 && avatars.length === 0 && items.length === 0 && animations.length === 0) return undefined;
     // No one wears it; no outfit holds it.
     await t.query('update accounts set avatar_id = null where avatar_id = any($1::uuid[])', [avatars.map((a) => a.id)]);
     await t.query(
@@ -140,9 +145,12 @@ export async function removeContent(db: Db, target: { gallery?: string; manifest
         where exists (select 1 from jsonb_array_elements(items) e where e->>'item' = $1)`,
       [manifest, now],
     );
-    const uploaders = [...new Set([...avatars, ...items].filter((r) => r.gallery_id === null).map((r) => r.owner_id))];
+    const uploaders = [...new Set([
+      ...[...avatars, ...items].filter((r) => r.gallery_id === null).map((r) => r.owner_id),
+      ...animations.map((r) => r.owner_id),
+    ])];
     for (const u of uploaders) await strike(t, u, 'removed', `taken down: ${why}`, now);
-    return { manifest, avatars: avatars.length, items: items.length, entries: entries.length, uploaders };
+    return { manifest, avatars: avatars.length, items: items.length, animations: animations.length, entries: entries.length, uploaders };
   });
 }
 

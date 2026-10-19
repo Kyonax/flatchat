@@ -10,7 +10,7 @@ import type { Db, Sql } from './db.ts';
 import { digest, newToken } from './secrets.ts';
 import { revokeAccountSessions } from './sessions.ts';
 
-/** The host agreement's version (docs/host-agreement.md); a change asks every host to accept again. */
+/** The host agreement's version (the `agreement` document in strings.ts, served at /host-agreement); a change asks every host to accept again. */
 export const HOST_AGREEMENT_VERSION = 1;
 
 export type PlatformAction = 'suspend' | 'ban' | 'lift';

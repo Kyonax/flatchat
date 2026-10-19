@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createInvitation } from '../src/accounts.ts';
 import { buildCore } from '../src/app.ts';
 import type { Db } from '../src/db.ts';
+import { logAuthorityRequest } from '../src/authorities.ts';
 import { KEEP_DAYS, purgeReports, REPORT_CATEGORIES } from '../src/reports.ts';
 import { TEST_COST } from '../src/secrets.ts';
 import { startSession } from '../src/sessions.ts';
@@ -184,6 +185,19 @@ describe('keeping evidence', () => {
     expect((await row(abuse.receipt)).purged).toBe(false);
     await purgeReports(db, new Date(Date.now() + (KEEP_DAYS.abuse + 1) * 86_400_000));
     expect((await row(abuse.receipt)).purged).toBe(true);
+  });
+
+  it('keeps a report an authority asked to preserve, and logs the request', async () => {
+    const reporter = await account('held@example.org');
+    const sent = (await app.inject({ method: 'POST', url: '/api/v1/reports', headers: reporter.bearer, payload: { category: 'harassment', target: { kind: 'other' }, text: 'keep this', evidence: evidence('h') } })).json() as { receipt: string };
+    const [report] = await db.query<{ id: string }>('select id from reports where receipt = $1', [sent.receipt]);
+    const id = await logAuthorityRequest(db, { authority: 'Fiscalía', who: 'a written request', asked: 'preserve the report', reportIds: [report!.id], holdUntil: new Date('2027-10-19T00:00:00Z') }, new Date());
+    expect(id).toMatch(/^[0-9a-f-]{36}$/i);
+    await purgeReports(db, new Date(Date.now() + (KEEP_DAYS.abuse + 1) * 86_400_000));
+    const [kept] = await db.query<{ text: string; purged: boolean; hold: boolean }>('select text, purged, hold from reports where id = $1', [report!.id]);
+    expect(kept).toEqual({ text: 'keep this', purged: false, hold: true });
+    const [logged] = await db.query<{ authority: string }>('select authority from authority_requests where id = $1', [id]);
+    expect(logged?.authority).toBe('Fiscalía');
   });
 });
 

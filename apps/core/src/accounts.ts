@@ -206,7 +206,9 @@ export async function signUp(db: Db, s: SignUp, o: SignUpOptions): Promise<SignU
     const verdict = ageRule({ year: s.birthYear, month: s.birthMonth, country: s.country }, o.now, o.policy);
     if (!verdict.ok && verdict.reason === 'invalid') return { ok: false, problem: 'birth' };
     if (!verdict.ok) {
-      if (invited) await sql.query('update invitations set refused_at = $2 where code_hash = $1', [digest(s.invitation), o.now]);
+      // The age rule spends the invitation and keeps nothing: not what the person typed, and not
+      // the address the owner typed when making the invitation.
+      if (invited) await sql.query('update invitations set refused_at = $2, email_key = null where code_hash = $1', [digest(s.invitation), o.now]);
       return { ok: false, problem: 'age' };
     }
     if (!s.consent) return { ok: false, problem: 'consent' };

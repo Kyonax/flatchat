@@ -187,8 +187,9 @@ export async function reportClip(db: Sql, id: string): Promise<Buffer | undefine
 }
 
 /** Drops the evidence of reports past their keeping time: the text, the evidence and the clip go;
- *  the category, the decision and the dates stay. Answers how many were purged. */
+ *  the category, the decision and the dates stay. A report on legal hold is left whole, whatever
+ *  its date. Answers how many were purged. */
 export async function purgeReports(db: Sql, now: Date): Promise<number> {
-  const rows = await db.query("update reports set text = '', evidence = '{}', clip = null, target_ref = '', reporter_contact = '', purged = true where keep_until <= $1 and not purged returning id", [now]);
+  const rows = await db.query("update reports set text = '', evidence = '{}', clip = null, target_ref = '', reporter_contact = '', purged = true where keep_until <= $1 and not purged and not hold returning id", [now]);
   return rows.length;
 }

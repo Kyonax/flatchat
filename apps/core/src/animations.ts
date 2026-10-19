@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ANIMATION_AUDIO_LIMIT, ANIMATION_SOURCE_LIMIT, ANIMATION_USES, type AnimationManifest, type AnimationUse, checkAnimationManifest, uploadFormat } from '@flatchat/content';
+import { strike } from './copies.ts';
 import type { Db, Sql } from './db.ts';
 import { cleanName, ContentProblem, converterArgs, converterFailure, type ConverterProgram, networkNamespace, runBlender, runConverter, runRhubarb } from './sandbox.ts';
 import { checkSignature, type FileStore, HASH, linkKey, sha256, signPath } from './store.ts';
@@ -28,11 +29,17 @@ export const BLENDER_MS = 2 * 60_000;
 export const RHUBARB_MS = 2 * 60_000;
 export const NAME_MAX = 64;
 
+/** Whether a converted motion matches an emote or dance that was taken down. */
+export async function animationTakenDown(db: Sql, fingerprint: string): Promise<boolean> {
+  const [row] = await db.query('select 1 from animations where fingerprint = $1 and status = $2 limit 1', [fingerprint, 'removed']);
+  return row !== undefined;
+}
+
 export interface AnimationRow {
   id: string;
   name: string;
   use: AnimationUse;
-  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed';
+  status: 'uploading' | 'converting' | 'ready' | 'refused' | 'failed' | 'removed';
   source: string;
   /** It has a sound, and the sound moves the mouth. */
   sound: boolean;
@@ -197,9 +204,22 @@ export class Animations {
         for (const name of names) if (!this.o.store.has(name)) throw new Error('the converter left out a file');
         const manifestHash = this.o.store.put(readFileSync(join(out, 'manifest.json')));
         if (manifestHash !== result.id) throw new Error('the manifest is not the one the converter named');
+        // The fingerprint is the converted VRMA. The same motion through this converter hashes the same.
+        const fingerprint = manifest.file;
+        const now = new Date();
+        if (await animationTakenDown(this.o.db, fingerprint)) {
+          const [owner] = await this.o.db.query<{ owner_id: string }>('select owner_id from animations where id = $1', [id]);
+          await this.o.db.query(
+            "update animations set status = 'refused', fingerprint = $2, problems = $3, converted_at = $4 where id = $1",
+            [id, fingerprint, 'a copy of an emote or dance taken down from FlatChat', now],
+          );
+          if (owner) await strike(this.o.db, owner.owner_id, 'copy', 're-uploaded an emote or dance that was taken down', now);
+          this.o.log?.('animation-refused', { problems: 1, copy: true, ms: Date.now() - started });
+          return;
+        }
         await this.o.db.query(
-          "update animations set status = 'ready', manifest_sha256 = $2, source_format = $3, duration = $4, loop = $5, warnings = $6, converted_at = $7 where id = $1",
-          [id, manifestHash, manifest.source.format, manifest.duration, manifest.loop, manifest.warnings.join('\n').slice(0, 4000), new Date()],
+          "update animations set status = 'ready', manifest_sha256 = $2, fingerprint = $3, source_format = $4, duration = $5, loop = $6, warnings = $7, converted_at = $8 where id = $1",
+          [id, manifestHash, fingerprint, manifest.source.format, manifest.duration, manifest.loop, manifest.warnings.join('\n').slice(0, 4000), now],
         );
         this.o.log?.('animation-ready', { format: manifest.source.format, seconds: manifest.duration, ms: Date.now() - started });
       } else if (result && !result.ok) {
