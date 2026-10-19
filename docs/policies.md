@@ -141,13 +141,13 @@ The owner supplies these; most are `[TO DECIDE: …]` notes in the documents:
 - **No deletion:** an account cannot be deleted on request. `deleteAccount` runs only for a confirmed under-age report.
 - **No cleanup:** expired sessions, login requests, verifications and guardian rows are never cleaned up, and the file store never deletes files.
 - **Teens:** the guardian link does not end at 18, and the client ignores a guardian's `everyone` choice.
-- **Emotes and dances:** they have no takedown path and no fingerprint.
+- **Emotes and dances:** a takedown removes them by their manifest, and each converted one keeps a fingerprint (the VRMA's SHA-256). A later upload of that same motion is refused. Closed in code, 2026-10-19.
 - **Moderation:** there is no warning step, and removed content cannot be appealed.
-- **Authorities:** there is no record of authorities' requests, and no legal hold (`purgeReports` runs whatever an authority asked).
-- **Refused sign-ups:** the invitation keeps the email the owner typed when making it. The header of `apps/core/src/age.ts` says nothing is kept.
+- **Authorities:** a request is a row in `authority_requests` (`logAuthorityRequest`). Naming reports holds them, and `purgeReports` skips a held report. An abuse case holds its report too. Closed in code, 2026-10-19.
+- **Refused sign-ups:** when the age rule spends an invitation it clears `email_key`, so the address the owner typed is not kept. Closed in code, 2026-10-19.
 
 **Smaller points:**
 
-- `moderation.ts` points to `docs/host-agreement.md`, which does not exist: the agreement lives in `strings.ts`.
+- `moderation.ts` names the host agreement in `strings.ts`, served at `/host-agreement`. Closed in code, 2026-10-19.
 - The Spanish interface uses *bloquear* for a player's block and for a ban (`bannedSince` in `strings.ts`; `moderation.ban*` in the client's `es.ts`). The documents keep that wording, but *vetar* for bans would read less ambiguously.
 - The client labels the guardians page "Para acudientes". The documents and the core's pages say "madre, padre o tutor".
