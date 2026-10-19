@@ -6,6 +6,9 @@
 // server's ports (the bytes on the wire, IP and UDP headers included, which the transports cannot
 // see themselves), and optionally add delay and loss with netem. Everything ends with the run.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export function isIsolated(): boolean {
   return process.env['FLATCHAT_NETNS'] === '1';
@@ -55,7 +58,16 @@ export function setupNetwork({ mtu, netem, ports }: NetworkSetup): void {
     rules.push(`    udp dport ${port} counter comment "to-${port}"`);
   }
   rules.push('  }', '}');
-  execFileSync('nft', ['-f', '-'], { input: rules.join('\n') });
+  // nft 1.1 (Ubuntu 24.04's runners) refuses `nft -f -`: it stats /dev/stdin and
+  // errors "Not a regular file". A real file is the same ruleset.
+  const dir = mkdtempSync(join(tmpdir(), 'flatchat-nft-'));
+  const file = join(dir, 'rules.nft');
+  try {
+    writeFileSync(file, rules.join('\n'));
+    execFileSync('nft', ['-f', file]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   if (netem) execFileSync('tc', ['qdisc', 'add', 'dev', 'lo', 'root', 'netem', ...netem.trim().split(/\s+/)]);
 }
 
