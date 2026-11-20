@@ -5,7 +5,7 @@
 # what testers download (S1.14): an AppImage (one file, most distributions) and a .tar.gz.
 appId: com.kyonax.flatchat
 productName: FlatChat
-electronVersion: 44.8.0
+electronVersion: 44.9.1
 directories:
   output: release
 files:

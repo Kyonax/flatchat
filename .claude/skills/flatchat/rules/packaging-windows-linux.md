@@ -13,7 +13,7 @@ This rule governs turning the built client into something a person can run, on L
 |---|---|---|
 | `appId` | `com.kyonax.flatchat` | Stable identity for later installers and updates |
 | `productName` | `FlatChat` | The Windows executable becomes `FlatChat.exe` |
-| `electronVersion` | `44.8.0` | Must equal `electron` in `apps/client/package.json`; change both together |
+| `electronVersion` | `44.9.1` | Must equal `electron` in `apps/client/package.json`; change both together |
 | `directories.output` | `release` | Builds land in `apps/client/release/` (git-ignored) |
 | `files` | `out/**`, `package.json` | Only the built app ships |
 | `asar` | `true` | The app's files packed in one archive |
