@@ -37,7 +37,7 @@ Run Node from `.tool-versions`: `mise install` once, then `mise exec -- npm …`
 | `@eslint/js`, `globals`, `eslint-plugin-vue`, `vue-eslint-parser` | `^10.0.1`, `^17.13.0`, `^10.11.1`, `^10.4.1` | JavaScript, browser and Node globals, and Vue rules |
 | `vitest` | `^5.0.5` | Unit and process tests in every workspace |
 | `yaml` | `^2.9.1` | Reads CI workflows and skill frontmatter in the harness (ISC, no dependencies) |
-| `electron` | `44.8.0` (exact) | Chromium 152 and Node 24; exact because `electron-builder.yml` repeats it as `electronVersion` |
+| `electron` | `44.9.1` (exact) | Chromium 152 and Node 24; exact because `electron-builder.yml` repeats it as `electronVersion` |
 | `electron-vite` | `^6.0.0` | Builds main, preload and renderer with Vite 8 |
 | `vite` | `^8.3.4` | Rolldown-based; its native bindings (`@rolldown/binding-*`, `lightningcss-*`) for Linux and Windows are both in the lockfile |
 | `electron-builder` | `^26.15.3` | Linux folder and Windows zip targets |

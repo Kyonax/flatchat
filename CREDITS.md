@@ -31,7 +31,7 @@ npm packages are not stored here; `package-lock.json` pins them. These are the o
 
 | Package | Ships in | Creator | Source | Licence | Version |
 |---|---|---|---|---|---|
-| Electron | the client | the Electron contributors (OpenJS Foundation) | [electron/electron](https://github.com/electron/electron) | MIT | 44.8.0 |
+| Electron | the client | the Electron contributors (OpenJS Foundation) | [electron/electron](https://github.com/electron/electron) | MIT | 44.9.1 |
 | three.js | the client | Ricardo Cabello (mrdoob) and the three.js authors | [mrdoob/three.js](https://github.com/mrdoob/three.js) | MIT | 0.186.1 |
 | Vue, with its `@vue/*` runtime | the client | Evan You and the Vue contributors | [vuejs/core](https://github.com/vuejs/core) | MIT | 3.5.44 |
 | libopus-wasm | the client | openclaw | [openclaw/libopus-wasm](https://github.com/openclaw/libopus-wasm) | MIT | 0.4.1 |
